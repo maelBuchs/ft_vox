@@ -44,11 +44,57 @@ FetchContent_MakeAvailable(stb)
 
 include_directories(${stb_SOURCE_DIR})
 
+# --- Shader Compilation ---
+
+find_program(GLSLC glslc HINTS
+    "$ENV{VULKAN_SDK}/Bin"
+    "$ENV{VULKAN_SDK}/bin"
+)
+
+if(NOT GLSLC)
+    message(FATAL_ERROR "glslc not found! Please install the Vulkan SDK and ensure glslc is in your PATH.")
+endif()
+
+# Collect all shader files
+file(GLOB_RECURSE SHADER_SOURCES
+    "${CMAKE_SOURCE_DIR}/src/shaders/*.vert"
+    "${CMAKE_SOURCE_DIR}/src/shaders/*.frag"
+    "${CMAKE_SOURCE_DIR}/src/shaders/*.comp"
+    "${CMAKE_SOURCE_DIR}/src/shaders/*.geom"
+    "${CMAKE_SOURCE_DIR}/src/shaders/*.tesc"
+    "${CMAKE_SOURCE_DIR}/src/shaders/*.tese"
+)
+
+# Create output directory for compiled shaders
+set(SHADER_OUTPUT_DIR "${CMAKE_BINARY_DIR}/shaders")
+file(MAKE_DIRECTORY ${SHADER_OUTPUT_DIR})
+
+# Compile each shader to SPIR-V
+foreach(SHADER ${SHADER_SOURCES})
+    get_filename_component(SHADER_NAME ${SHADER} NAME)
+    set(SHADER_OUTPUT "${SHADER_OUTPUT_DIR}/${SHADER_NAME}.spv")
+
+    add_custom_command(
+        OUTPUT ${SHADER_OUTPUT}
+        COMMAND ${GLSLC} ${SHADER} -o ${SHADER_OUTPUT}
+        DEPENDS ${SHADER}
+        COMMENT "Compiling shader: ${SHADER_NAME}"
+    )
+
+    list(APPEND SPIRV_SHADERS ${SHADER_OUTPUT})
+endforeach()
+
+# Create a custom target for shader compilation
+add_custom_target(shaders ALL DEPENDS ${SPIRV_SHADERS})
+
 add_executable(ft_vox
     src/main.cpp
     src/Window.cpp
     src/App.cpp
 )
+
+# Make sure shaders are compiled before building the executable
+add_dependencies(ft_vox shaders)
 
 # Link the libraries to our executable "ft_vox"
 
