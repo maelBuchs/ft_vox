@@ -134,6 +134,17 @@ endif()
 # #define STB_IMAGE_IMPLEMENTATION
 # #include <stb_image.h>
 
+# Copy compiled shaders to the executable directory
+add_custom_command(
+    TARGET ft_vox POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        $<TARGET_FILE_DIR:ft_vox>/shaders
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${SHADER_OUTPUT_DIR}
+        $<TARGET_FILE_DIR:ft_vox>/shaders
+    COMMENT "Copying compiled shaders to executable directory"
+)
+
 if(WIN32)
     add_custom_command(
         TARGET ft_vox POST_BUILD

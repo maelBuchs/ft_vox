@@ -90,7 +90,7 @@ function run_project() {
     fi
 
     echo -e "${CYAN}🚀 Launching ft_vox...${NC}"
-    $exe_path
+    (cd build && ./ft_vox)
 }
 
 case "$ACTION" in
@@ -109,7 +109,7 @@ case "$ACTION" in
         ;;
     run-debug)
         build_project "Debug"
-        build/ft_vox
+        (cd build && ./ft_vox)
         ;;
     help)
         show_help
