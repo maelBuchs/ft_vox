@@ -77,7 +77,7 @@ function build_project() {
         echo -e "${YELLOW}ℹ Using existing configuration${NC}"
     fi
 
-    cmake --build build
+    cmake --build build --parallel
     echo -e "${GREEN}✓ Build successful${NC}"
 }
 

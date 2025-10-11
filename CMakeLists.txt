@@ -4,6 +4,25 @@ project(ft_vox LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# --- Compilation Flags ---
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    if(MSVC)
+        add_compile_options(/W4 /Od /Zi /DEBUG)
+    else()
+        add_compile_options(-Wall -Wextra -g -O0)
+    endif()
+endif()
+
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    if(MSVC)
+        add_compile_options(/O2 /GL /DNDEBUG)
+        add_link_options(/LTCG)
+    else()
+        add_compile_options(-O3 -march=native -DNDEBUG)
+    endif()
+endif()
+
 include(FetchContent)
 
 # --- Dependency Management ---
