@@ -46,6 +46,8 @@ include_directories(${stb_SOURCE_DIR})
 
 add_executable(ft_vox
     src/main.cpp
+    src/Window.cpp
+    src/App.cpp
 )
 
 # Link the libraries to our executable "ft_vox"
