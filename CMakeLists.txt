@@ -91,6 +91,7 @@ add_executable(ft_vox
     src/main.cpp
     src/Window.cpp
     src/App.cpp
+    src/Pipeline.cpp
 )
 
 # Make sure shaders are compiled before building the executable
