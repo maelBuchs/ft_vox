@@ -4,25 +4,6 @@ project(ft_vox LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# --- Compilation Flags ---
-
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    if(MSVC)
-        add_compile_options(/W4 /Od /Zi /DEBUG)
-    else()
-        add_compile_options(-Wall -Wextra -g -O0)
-    endif()
-endif()
-
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    if(MSVC)
-        add_compile_options(/O2 /GL /DNDEBUG)
-        add_link_options(/LTCG)
-    else()
-        add_compile_options(-O3 -march=native -DNDEBUG)
-    endif()
-endif()
-
 include(FetchContent)
 
 # --- Dependency Management ---
@@ -78,6 +59,25 @@ target_link_libraries(ft_vox PRIVATE SDL3::SDL3)
 
 # 3. GLM
 target_link_libraries(ft_vox PRIVATE glm::glm)
+
+# --- Compilation Flags for ft_vox only ---
+if(MSVC)
+    # Debug flags
+    target_compile_options(ft_vox PRIVATE $<$<CONFIG:Debug>:/W4 /Od /Zi>)
+    target_link_options(ft_vox PRIVATE $<$<CONFIG:Debug>:/DEBUG>)
+
+    # Release flags
+    target_compile_options(ft_vox PRIVATE $<$<CONFIG:Release>:/W4 /O2 /GL>)
+    target_link_options(ft_vox PRIVATE $<$<CONFIG:Release>:/LTCG>)
+    target_compile_definitions(ft_vox PRIVATE $<$<CONFIG:Release>:NDEBUG>)
+else()
+    # GCC/Clang Debug flags
+    target_compile_options(ft_vox PRIVATE $<$<CONFIG:Debug>:-Wall -Wextra -g -O0>)
+
+    # GCC/Clang Release flags
+    target_compile_options(ft_vox PRIVATE $<$<CONFIG:Release>:-Wall -Wextra -O3 -march=native>)
+    target_compile_definitions(ft_vox PRIVATE $<$<CONFIG:Release>:NDEBUG>)
+endif()
 
 # Note for STB :
 # To use stb_image.h, we must define STB_IMAGE_IMPLEMENTATION
