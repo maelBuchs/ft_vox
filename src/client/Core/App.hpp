@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Pipeline.hpp"
+#include "../Graphics/Pipeline.hpp"
 #include "Window.hpp"
 
 class App {

@@ -1,4 +1,4 @@
-#include "App.hpp"
+#include "client/Core/App.hpp"
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>

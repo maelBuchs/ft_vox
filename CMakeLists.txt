@@ -43,6 +43,7 @@ FetchContent_MakeAvailable(stb)
 # --- Project Structure ---
 
 include_directories(${stb_SOURCE_DIR})
+include_directories(${CMAKE_SOURCE_DIR}/src)
 
 # --- Shader Compilation ---
 
@@ -57,16 +58,16 @@ endif()
 
 # Collect all shader files
 file(GLOB_RECURSE SHADER_SOURCES
-    "${CMAKE_SOURCE_DIR}/src/shaders/*.vert"
-    "${CMAKE_SOURCE_DIR}/src/shaders/*.frag"
-    "${CMAKE_SOURCE_DIR}/src/shaders/*.comp"
-    "${CMAKE_SOURCE_DIR}/src/shaders/*.geom"
-    "${CMAKE_SOURCE_DIR}/src/shaders/*.tesc"
-    "${CMAKE_SOURCE_DIR}/src/shaders/*.tese"
+    "${CMAKE_SOURCE_DIR}/shaders/glsl/*.vert"
+    "${CMAKE_SOURCE_DIR}/shaders/glsl/*.frag"
+    "${CMAKE_SOURCE_DIR}/shaders/glsl/*.comp"
+    "${CMAKE_SOURCE_DIR}/shaders/glsl/*.geom"
+    "${CMAKE_SOURCE_DIR}/shaders/glsl/*.tesc"
+    "${CMAKE_SOURCE_DIR}/shaders/glsl/*.tese"
 )
 
 # Create output directory for compiled shaders
-set(SHADER_OUTPUT_DIR "${CMAKE_BINARY_DIR}/shaders")
+set(SHADER_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/shaders/spv")
 file(MAKE_DIRECTORY ${SHADER_OUTPUT_DIR})
 
 # Compile each shader to SPIR-V
@@ -87,15 +88,37 @@ endforeach()
 # Create a custom target for shader compilation
 add_custom_target(shaders ALL DEPENDS ${SPIRV_SHADERS})
 
+# Collect source files
+file(GLOB_RECURSE CLIENT_SOURCES
+    "${CMAKE_SOURCE_DIR}/src/client/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/client/*.hpp"
+)
+
+file(GLOB_RECURSE COMMON_SOURCES
+    "${CMAKE_SOURCE_DIR}/src/common/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/common/*.hpp"
+)
+
 add_executable(ft_vox
-    src/main.cpp
-    src/Window.cpp
-    src/App.cpp
-    src/Pipeline.cpp
+    src/main_client.cpp
+    ${CLIENT_SOURCES}
+    ${COMMON_SOURCES}
 )
 
 # Make sure shaders are compiled before building the executable
 add_dependencies(ft_vox shaders)
+
+# Server executable
+file(GLOB_RECURSE SERVER_SOURCES
+    "${CMAKE_SOURCE_DIR}/src/server/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/server/*.hpp"
+)
+
+add_executable(ft_vox_server
+    src/main_server.cpp
+    ${SERVER_SOURCES}
+    ${COMMON_SOURCES}
+)
 
 # Link the libraries to our executable "ft_vox"
 
@@ -109,23 +132,34 @@ target_link_libraries(ft_vox PRIVATE SDL3::SDL3)
 # 3. GLM
 target_link_libraries(ft_vox PRIVATE glm::glm)
 
-# --- Compilation Flags for ft_vox only ---
+# Link libraries to server
+target_link_libraries(ft_vox_server PRIVATE glm::glm)
+
+# --- Compilation Flags ---
 if(MSVC)
     # Debug flags
     target_compile_options(ft_vox PRIVATE $<$<CONFIG:Debug>:/W4 /Od /Zi>)
     target_link_options(ft_vox PRIVATE $<$<CONFIG:Debug>:/DEBUG>)
+    target_compile_options(ft_vox_server PRIVATE $<$<CONFIG:Debug>:/W4 /Od /Zi>)
+    target_link_options(ft_vox_server PRIVATE $<$<CONFIG:Debug>:/DEBUG>)
 
     # Release flags
     target_compile_options(ft_vox PRIVATE $<$<CONFIG:Release>:/W4 /O2 /GL>)
     target_link_options(ft_vox PRIVATE $<$<CONFIG:Release>:/LTCG>)
     target_compile_definitions(ft_vox PRIVATE $<$<CONFIG:Release>:NDEBUG>)
+    target_compile_options(ft_vox_server PRIVATE $<$<CONFIG:Release>:/W4 /O2 /GL>)
+    target_link_options(ft_vox_server PRIVATE $<$<CONFIG:Release>:/LTCG>)
+    target_compile_definitions(ft_vox_server PRIVATE $<$<CONFIG:Release>:NDEBUG>)
 else()
     # GCC/Clang Debug flags
     target_compile_options(ft_vox PRIVATE $<$<CONFIG:Debug>:-Wall -Wextra -g -O0>)
+    target_compile_options(ft_vox_server PRIVATE $<$<CONFIG:Debug>:-Wall -Wextra -g -O0>)
 
     # GCC/Clang Release flags
     target_compile_options(ft_vox PRIVATE $<$<CONFIG:Release>:-Wall -Wextra -O3 -march=native>)
     target_compile_definitions(ft_vox PRIVATE $<$<CONFIG:Release>:NDEBUG>)
+    target_compile_options(ft_vox_server PRIVATE $<$<CONFIG:Release>:-Wall -Wextra -O3 -march=native>)
+    target_compile_definitions(ft_vox_server PRIVATE $<$<CONFIG:Release>:NDEBUG>)
 endif()
 
 # Note for STB :
@@ -140,7 +174,7 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E make_directory
         $<TARGET_FILE_DIR:ft_vox>/shaders
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${SHADER_OUTPUT_DIR}
+        ${CMAKE_SOURCE_DIR}/shaders/spv
         $<TARGET_FILE_DIR:ft_vox>/shaders
     COMMENT "Copying compiled shaders to executable directory"
 )
