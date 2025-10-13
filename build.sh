@@ -46,20 +46,38 @@ function clean_build() {
 }
 
 function configure_cmake() {
-    local build_type=$1
-    echo -e "${CYAN}⚙️  Configuring CMake ($build_type)...${NC}"
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=$build_type
+    local config=$1
+    echo -e "${CYAN}⚙️  Configuring CMake with Ninja Multi-Config (${config} mode)...${NC}"
+
+    # Force use of clang/clang++ as compiler
+    export CC=clang
+    export CXX=clang++
+
+    cmake -S . -B build -G "Ninja Multi-Config" \
+        -DCMAKE_C_COMPILER=clang \
+        -DCMAKE_CXX_COMPILER=clang++
+
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}❌ Error during CMake configuration${NC}"
+        echo -e "${YELLOW}ℹ Make sure Ninja and clang are installed${NC}"
+        exit 1
+    fi
     echo -e "${GREEN}✓ Configuration successful${NC}"
 }
 
 function should_reconfigure() {
-    local build_type=$1
+    local config=$1
+
+    # With Ninja Multi-Config, we need to reconfigure if cache doesn't exist
+    # or if build type has changed
     if [ ! -f "build/CMakeCache.txt" ]; then
         return 0
     fi
 
-    local current_type=$(grep "CMAKE_BUILD_TYPE:" build/CMakeCache.txt | cut -d'=' -f2)
-    if [ "$current_type" != "$build_type" ]; then
+    # Check if build type has changed
+    local current_config=$(grep "CMAKE_BUILD_TYPE:STRING=" build/CMakeCache.txt | cut -d'=' -f2)
+    if [ "$current_config" != "$config" ]; then
+        echo -e "${YELLOW}ℹ Configuration change: $current_config -> $config${NC}"
         return 0
     fi
 
@@ -67,30 +85,47 @@ function should_reconfigure() {
 }
 
 function build_project() {
-    local build_type=$1
+    local config=$1
 
-    echo -e "${CYAN}🔨 Building in $build_type mode...${NC}"
+    echo -e "${CYAN}🔨 Building in $config mode...${NC}"
 
-    if should_reconfigure $build_type; then
-        configure_cmake $build_type
+    if should_reconfigure $config; then
+        configure_cmake $config
     else
         echo -e "${YELLOW}ℹ Using existing configuration${NC}"
     fi
 
-    cmake --build build --parallel
+    # Use all available CPU cores for faster compilation
+    # With Ninja Multi-Config, we need to specify --config
+    cmake --build build --config $config --parallel
+
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}❌ Error during compilation${NC}"
+        exit 1
+    fi
+
+    # Copy compile_commands.json to root for LSP tools
+    if [ -f "build/compile_commands.json" ]; then
+        cp build/compile_commands.json .
+        echo -e "${GREEN}✓ compile_commands.json copied to root${NC}"
+    fi
+
     echo -e "${GREEN}✓ Build successful${NC}"
 }
 
 function run_project() {
-    local exe_path="build/ft_vox"
+    local config=$1
+
+    # With Ninja Multi-Config, executables are in build/<Config> directory
+    local exe_path="build/${config}/ft_vox"
 
     if [ ! -f "$exe_path" ]; then
         echo -e "${YELLOW}⚠️  Executable doesn't exist, building required...${NC}"
-        build_project "Release"
+        build_project "$config"
     fi
 
-    echo -e "${CYAN}🚀 Launching ft_vox...${NC}"
-    (cd build && ./ft_vox)
+    echo -e "${CYAN}🚀 Launching ft_vox ($config)...${NC}"
+    $exe_path
 }
 
 case "$ACTION" in
@@ -105,11 +140,11 @@ case "$ACTION" in
         ;;
     run)
         build_project "Release"
-        run_project
+        run_project "Release"
         ;;
     run-debug)
         build_project "Debug"
-        (cd build && ./ft_vox)
+        run_project "Debug"
         ;;
     help)
         show_help

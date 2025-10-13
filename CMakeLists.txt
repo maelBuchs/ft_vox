@@ -3,6 +3,13 @@ project(ft_vox LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Copy compile_commands.json to root if it exists (for LSP support)
+if(EXISTS "${CMAKE_BINARY_DIR}/compile_commands.json")
+    file(COPY "${CMAKE_BINARY_DIR}/compile_commands.json"
+         DESTINATION "${CMAKE_SOURCE_DIR}")
+endif()
 
 include(FetchContent)
 
@@ -136,30 +143,38 @@ target_link_libraries(ft_vox PRIVATE glm::glm)
 target_link_libraries(ft_vox_server PRIVATE glm::glm)
 
 # --- Compilation Flags ---
-if(MSVC)
-    # Debug flags
-    target_compile_options(ft_vox PRIVATE $<$<CONFIG:Debug>:/W4 /Od /Zi>)
-    target_link_options(ft_vox PRIVATE $<$<CONFIG:Debug>:/DEBUG>)
-    target_compile_options(ft_vox_server PRIVATE $<$<CONFIG:Debug>:/W4 /Od /Zi>)
-    target_link_options(ft_vox_server PRIVATE $<$<CONFIG:Debug>:/DEBUG>)
 
-    # Release flags
-    target_compile_options(ft_vox PRIVATE $<$<CONFIG:Release>:/W4 /O2 /GL>)
-    target_link_options(ft_vox PRIVATE $<$<CONFIG:Release>:/LTCG>)
-    target_compile_definitions(ft_vox PRIVATE $<$<CONFIG:Release>:NDEBUG>)
-    target_compile_options(ft_vox_server PRIVATE $<$<CONFIG:Release>:/W4 /O2 /GL>)
-    target_link_options(ft_vox_server PRIVATE $<$<CONFIG:Release>:/LTCG>)
-    target_compile_definitions(ft_vox_server PRIVATE $<$<CONFIG:Release>:NDEBUG>)
+# Set default build type if not specified (for single-configuration generators like Ninja)
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Choose the type of build." FORCE)
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
+endif()
+
+# Detect compiler type - use GCC-like flags for Clang even on Windows
+if(MSVC AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    # Pure MSVC compiler
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        target_compile_options(ft_vox PRIVATE /W4 /Od /Zi)
+        target_link_options(ft_vox PRIVATE /DEBUG)
+        target_compile_options(ft_vox_server PRIVATE /W4 /Od /Zi)
+        target_link_options(ft_vox_server PRIVATE /DEBUG)
+    elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
+        target_compile_options(ft_vox PRIVATE /W4 /O2)
+        target_compile_definitions(ft_vox PRIVATE NDEBUG)
+        target_compile_options(ft_vox_server PRIVATE /W4 /O2)
+        target_compile_definitions(ft_vox_server PRIVATE NDEBUG)
+    endif()
 else()
-    # GCC/Clang Debug flags
-    target_compile_options(ft_vox PRIVATE $<$<CONFIG:Debug>:-Wall -Wextra -g -O0>)
-    target_compile_options(ft_vox_server PRIVATE $<$<CONFIG:Debug>:-Wall -Wextra -g -O0>)
-
-    # GCC/Clang Release flags
-    target_compile_options(ft_vox PRIVATE $<$<CONFIG:Release>:-Wall -Wextra -O3 -march=native>)
-    target_compile_definitions(ft_vox PRIVATE $<$<CONFIG:Release>:NDEBUG>)
-    target_compile_options(ft_vox_server PRIVATE $<$<CONFIG:Release>:-Wall -Wextra -O3 -march=native>)
-    target_compile_definitions(ft_vox_server PRIVATE $<$<CONFIG:Release>:NDEBUG>)
+    # GCC/Clang (including Clang on Windows)
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        target_compile_options(ft_vox PRIVATE -Wall -Wextra -g -O0)
+        target_compile_options(ft_vox_server PRIVATE -Wall -Wextra -g -O0)
+    elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
+        target_compile_options(ft_vox PRIVATE -Wall -Wextra -O3 -march=native)
+        target_compile_definitions(ft_vox PRIVATE NDEBUG)
+        target_compile_options(ft_vox_server PRIVATE -Wall -Wextra -O3 -march=native)
+        target_compile_definitions(ft_vox_server PRIVATE NDEBUG)
+    endif()
 endif()
 
 # Note for STB :
