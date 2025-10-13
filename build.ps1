@@ -126,7 +126,19 @@ function Run-Project {
     $exePath = "build\$Config\ft_vox.exe"
 
     Write-Host "Lancement de ft_vox ($Config)..." -ForegroundColor Cyan
-    & $exePath
+
+    # Save current directory and change to the executable's directory
+    # This ensures relative paths (like shaders) work correctly
+    $originalDir = Get-Location
+    Set-Location "build\$Config"
+
+    try {
+        & ".\ft_vox.exe"
+    }
+    finally {
+        # Always return to the original directory
+        Set-Location $originalDir
+    }
 }# Exécution selon l'action
 switch ($Action) {
     'clean' {
