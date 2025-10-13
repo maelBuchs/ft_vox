@@ -5,12 +5,6 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Copy compile_commands.json to root if it exists (for LSP support)
-if(EXISTS "${CMAKE_BINARY_DIR}/compile_commands.json")
-    file(COPY "${CMAKE_BINARY_DIR}/compile_commands.json"
-         DESTINATION "${CMAKE_SOURCE_DIR}")
-endif()
-
 include(FetchContent)
 
 # --- Dependency Management ---

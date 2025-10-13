@@ -20,8 +20,8 @@ Usage: ./build.sh [action]
 
 Available actions:
   clean        - Clean the build directory
-  debug        - Compile in Debug mode
-  release      - Compile in Release mode (default)
+  debug        - Compile in Debug mode (default)
+  release      - Compile in Release mode
   run          - Compile and run in Release mode
   run-debug    - Compile and run in Debug mode
   help         - Show this help
@@ -116,13 +116,12 @@ function build_project() {
 function run_project() {
     local config=$1
 
+    # Always build before running - Ninja is smart and only recompiles what changed
+    # This ensures we always run the latest version
+    build_project "$config"
+
     # With Ninja Multi-Config, executables are in build/<Config> directory
     local exe_path="build/${config}/ft_vox"
-
-    if [ ! -f "$exe_path" ]; then
-        echo -e "${YELLOW}⚠️  Executable doesn't exist, building required...${NC}"
-        build_project "$config"
-    fi
 
     echo -e "${CYAN}🚀 Launching ft_vox ($config)...${NC}"
     $exe_path
@@ -139,11 +138,9 @@ case "$ACTION" in
         build_project "Release"
         ;;
     run)
-        build_project "Release"
         run_project "Release"
         ;;
     run-debug)
-        build_project "Debug"
         run_project "Debug"
         ;;
     help)
