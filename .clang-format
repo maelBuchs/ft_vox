@@ -1,0 +1,57 @@
+Language: Cpp
+BasedOnStyle: LLVM
+
+# === Width of line ===
+ColumnLimit: 100
+
+# === Indentation ===
+IndentWidth: 4
+UseTab: Never
+
+# === Braces ===
+BreakBeforeBraces: Attach
+
+# === Functions ===
+AllowShortFunctionsOnASingleLine: Inline
+
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+
+# === Spaces ===
+SpaceAfterCStyleCast: false
+SpaceBeforeParens: ControlStatements
+
+# === Pointers and references ===
+PointerAlignment: Left
+
+# === Includes ===
+SortIncludes: CaseInsensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex:           '^<SDL3/'
+    Priority:        2
+  - Regex:           '^<vulkan/'
+    Priority:        2
+  - Regex:           '^<glm/'
+    Priority:        3
+  - Regex:           '^<.*\.h>'
+    Priority:        1
+  - Regex:           '^<.*>'
+    Priority:        1
+  - Regex:           '".*"'
+    Priority:        4
+
+# === Alignments ===
+AlignConsecutiveAssignments: None
+AlignConsecutiveDeclarations: None
+
+# === Namespaces ===
+CompactNamespaces: false
+NamespaceIndentation: None
+
+# === Constructor ===
+BreakConstructorInitializers: BeforeColon
+ConstructorInitializerIndentWidth: 4
+
+# === Performance ===
+Standard: c++20
