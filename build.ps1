@@ -71,6 +71,14 @@ function Should-Reconfigure {
         return $true
     }
 
+    # Reconfigure if CMakeLists.txt is newer than the cache
+    $cmakeFile = Get-Item "CMakeLists.txt"
+    $cacheFile = Get-Item "build\CMakeCache.txt"
+    if ($cmakeFile.LastWriteTime -gt $cacheFile.LastWriteTime) {
+        Write-Host "[INFO] CMakeLists.txt a ete modifie, reconfiguration..." -ForegroundColor Yellow
+        return $true
+    }
+
     return $false
 }
 

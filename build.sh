@@ -72,6 +72,12 @@ function should_reconfigure() {
         return 0
     fi
 
+    # Reconfigure if CMakeLists.txt is newer than the cache
+    if [ "CMakeLists.txt" -nt "build/CMakeCache.txt" ]; then
+        echo -e "${YELLOW}ℹ CMakeLists.txt has been modified, reconfiguring...${NC}"
+        return 0
+    fi
+
     return 1
 }
 
