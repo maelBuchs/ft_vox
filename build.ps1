@@ -65,22 +65,10 @@ function Configure-CMake {
 }
 
 function Should-Reconfigure {
-    param([string]$Config)
-
-    # With Ninja, we need to reconfigure if cache doesn't exist
-    # or if build type has changed
+    # With Ninja Multi-Config, we only need to reconfigure if cache doesn't exist
+    # The generator supports multiple build types simultaneously
     if (-not (Test-Path "build\CMakeCache.txt")) {
         return $true
-    }
-
-    # Check if build type has changed
-    $cacheContent = Get-Content "build\CMakeCache.txt" -Raw
-    if ($cacheContent -match "CMAKE_BUILD_TYPE:STRING=(.+)") {
-        $currentConfig = $matches[1].Trim()
-        if ($currentConfig -ne $Config) {
-            Write-Host "[INFO] Changement de configuration: $currentConfig -> $Config" -ForegroundColor Yellow
-            return $true
-        }
     }
 
     return $false

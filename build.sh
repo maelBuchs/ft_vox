@@ -66,18 +66,9 @@ function configure_cmake() {
 }
 
 function should_reconfigure() {
-    local config=$1
-
-    # With Ninja Multi-Config, we need to reconfigure if cache doesn't exist
-    # or if build type has changed
+    # With Ninja Multi-Config, we only need to reconfigure if cache doesn't exist
+    # The generator supports multiple build types simultaneously
     if [ ! -f "build/CMakeCache.txt" ]; then
-        return 0
-    fi
-
-    # Check if build type has changed
-    local current_config=$(grep "CMAKE_BUILD_TYPE:STRING=" build/CMakeCache.txt | cut -d'=' -f2)
-    if [ "$current_config" != "$config" ]; then
-        echo -e "${YELLOW}ℹ Configuration change: $current_config -> $config${NC}"
         return 0
     fi
 
@@ -124,7 +115,16 @@ function run_project() {
     local exe_path="build/${config}/ft_vox"
 
     echo -e "${CYAN}🚀 Launching ft_vox ($config)...${NC}"
-    $exe_path
+
+    # Save current directory and change to the executable's directory
+    # This ensures relative paths (like shaders) work correctly
+    local original_dir=$(pwd)
+    cd "build/${config}"
+
+    ./ft_vox
+
+    # Always return to the original directory
+    cd "$original_dir"
 }
 
 case "$ACTION" in
