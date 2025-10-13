@@ -67,8 +67,8 @@ file(GLOB_RECURSE SHADER_SOURCES
     "${CMAKE_SOURCE_DIR}/shaders/glsl/*.tese"
 )
 
-# Create output directory for compiled shaders
-set(SHADER_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/shaders/spv")
+# Create output directory for compiled shaders in build folder
+set(SHADER_OUTPUT_DIR "${CMAKE_BINARY_DIR}/shaders")
 file(MAKE_DIRECTORY ${SHADER_OUTPUT_DIR})
 
 # Compile each shader to SPIR-V
@@ -183,7 +183,7 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E make_directory
         $<TARGET_FILE_DIR:ft_vox>/shaders
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/shaders/spv
+        ${SHADER_OUTPUT_DIR}
         $<TARGET_FILE_DIR:ft_vox>/shaders
     COMMENT "Copying compiled shaders to executable directory"
 )
