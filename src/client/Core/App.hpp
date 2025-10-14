@@ -1,16 +1,25 @@
 #pragma once
 
-#include "../Graphics/Pipeline.hpp"
-#include "Window.hpp"
+#include <memory>
+
+class Window;
 
 class App {
   public:
+    App();
+    ~App();
+
+    App(const App&) = delete;
+    App& operator=(const App&) = delete;
+    App(App&&) = delete;
+    App& operator=(App&&) = delete;
+
     static constexpr int WIDTH = 800;
     static constexpr int HEIGHT = 600;
+    static constexpr const char* WINDOW_TITLE = "Vulkan App";
 
     void run();
 
   private:
-    Window window{WIDTH, HEIGHT, "Hello Vulkan!"};
-    Pipeline pipeline{"shaders/simple_shader.vert.spv", "shaders/simple_shader.frag.spv"};
+    std::unique_ptr<Window> window;
 };

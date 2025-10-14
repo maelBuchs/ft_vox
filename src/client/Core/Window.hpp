@@ -2,27 +2,23 @@
 
 #include <string>
 
-#include <SDL3/SDL.h>
-#include <SDL3/SDL_video.h>
-#include <SDL3/SDL_vulkan.h>
-#include <vulkan/vulkan.h>
+struct SDL_Window;
 
 class Window {
   public:
     Window(int w, int h, std::string name);
     ~Window();
 
-    void setShouldClose(bool i) { _shouldClose = i; }
-    bool shouldClose() { return _shouldClose; }
+    [[nodiscard]] SDL_Window* getSDLWindow() const { return window; }
+
     Window(const Window&) = delete;
     Window& operator=(const Window&) = delete;
+    Window(Window&&) = delete;
+    Window& operator=(Window&&) = delete;
 
   private:
-    void initWindow();
-
     const int width;
     const int height;
-    bool _shouldClose = false;
     std::string windowName;
     SDL_Window* window;
 };
