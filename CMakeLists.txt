@@ -40,6 +40,30 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(stb)
 
+# 4. vk-bootstrap (Vulkan initialization helper)
+FetchContent_Declare(
+  vk-bootstrap
+  GIT_REPOSITORY https://github.com/charles-lunarg/vk-bootstrap.git
+  GIT_TAG        v1.4.329
+)
+FetchContent_MakeAvailable(vk-bootstrap)
+
+# 5. VMA (Vulkan Memory Allocator)
+FetchContent_Declare(
+  VulkanMemoryAllocator
+  GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
+  GIT_TAG        v3.3.0
+)
+FetchContent_MakeAvailable(VulkanMemoryAllocator)
+
+# 6. FastNoise2 (Procedural terrain generation)
+FetchContent_Declare(
+  FastNoise2
+  GIT_REPOSITORY https://github.com/Auburn/FastNoise2.git
+  GIT_TAG        v0.10.0-alpha
+)
+FetchContent_MakeAvailable(FastNoise2)
+
 
 # --- Project Structure ---
 
@@ -132,6 +156,15 @@ target_link_libraries(ft_vox PRIVATE SDL3::SDL3)
 
 # 3. GLM
 target_link_libraries(ft_vox PRIVATE glm::glm)
+
+# 4. vk-bootstrap
+target_link_libraries(ft_vox PRIVATE vk-bootstrap::vk-bootstrap)
+
+# 5. VMA
+target_link_libraries(ft_vox PRIVATE VulkanMemoryAllocator)
+
+# 6. FastNoise2
+target_link_libraries(ft_vox PRIVATE FastNoise)
 
 # Link libraries to server
 target_link_libraries(ft_vox_server PRIVATE glm::glm)
