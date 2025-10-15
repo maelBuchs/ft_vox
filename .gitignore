@@ -45,3 +45,5 @@
 .vscode/
 .cache/
 compile_commands.json
+subject.md
+.github/copilot-instructions.md

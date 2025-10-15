@@ -3,6 +3,7 @@
 #include <memory>
 
 class Window;
+class VulkanDevice;
 
 class App {
   public:
@@ -21,5 +22,6 @@ class App {
     void run();
 
   private:
-    std::unique_ptr<Window> window;
+    std::unique_ptr<Window> _window;
+    std::unique_ptr<VulkanDevice> _vulkanDevice;
 };

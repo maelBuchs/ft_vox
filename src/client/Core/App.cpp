@@ -1,15 +1,18 @@
 #include "App.hpp"
 
 #include <iostream>
+#include <memory>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_events.h>
 
+#include "client/Graphics/VulkanDevice.hpp"
 #include "Window.hpp"
 
 App::App() {
     try {
-        window = std::make_unique<Window>(WIDTH, HEIGHT, WINDOW_TITLE);
+        _window = std::make_unique<Window>(WIDTH, HEIGHT, WINDOW_TITLE);
+        _vulkanDevice = std::make_unique<VulkanDevice>(_window->getSDLWindow());
     } catch (const std::exception& e) {
         std::cerr << "Failed to create window: " << e.what() << "\n";
         throw;
@@ -19,7 +22,7 @@ App::App() {
 App::~App() {}
 
 void App::run() {
-    if (!window) {
+    if (!_window) {
         std::cerr << "Window not initialized!\n";
         return;
     }
