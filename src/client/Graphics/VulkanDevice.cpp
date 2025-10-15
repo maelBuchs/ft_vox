@@ -67,18 +67,23 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
     if (!queueRet) {
         throw std::runtime_error("Failed to get graphics queue: " + queueRet.error().message());
     }
-
     _graphicsQueue = queueRet.value();
+
+    auto queueFamilyRet = vkbDevice.get_queue_index(vkb::QueueType::graphics);
+    if (!queueFamilyRet) {
+        throw std::runtime_error("Failed to get graphics queue family index: " +
+                                 queueFamilyRet.error().message());
+    }
+    _graphicsQueueFamily = queueFamilyRet.value();
 }
 
 VulkanDevice::~VulkanDevice() {
+    if (_device != nullptr) {
+        vkDestroyDevice(_device, nullptr);
+    }
 
     if (_surface != nullptr) {
         vkDestroySurfaceKHR(_instance, _surface, nullptr);
-    }
-
-    if (_device != nullptr) {
-        vkDestroyDevice(_device, nullptr);
     }
 
     if (_debugMessenger != nullptr) {

@@ -19,6 +19,7 @@ class VulkanDevice {
     [[nodiscard]] VkPhysicalDevice getPhysicalDevice() const { return _physicalDevice; }
     [[nodiscard]] VkDevice getDevice() const { return _device; }
     [[nodiscard]] VkQueue getQueue() const { return _graphicsQueue; }
+    [[nodiscard]] uint32_t getGraphicsQueueFamily() const { return _graphicsQueueFamily; }
 
   private:
     VkInstance _instance;
@@ -27,4 +28,5 @@ class VulkanDevice {
     VkPhysicalDevice _physicalDevice;
     VkDevice _device;
     VkQueue _graphicsQueue;
+    uint32_t _graphicsQueueFamily;
 };
