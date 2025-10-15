@@ -6,6 +6,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_events.h>
 
+#include "client/Graphics/Renderer.hpp"
 #include "client/Graphics/VulkanDevice.hpp"
 #include "Window.hpp"
 
@@ -13,6 +14,7 @@ App::App() {
     try {
         _window = std::make_unique<Window>(WIDTH, HEIGHT, WINDOW_TITLE);
         _vulkanDevice = std::make_unique<VulkanDevice>(_window->getSDLWindow());
+        _renderer = std::make_unique<Renderer>(*_window, *_vulkanDevice);
     } catch (const std::exception& e) {
         std::cerr << "Failed to create window: " << e.what() << "\n";
         throw;

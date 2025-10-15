@@ -4,6 +4,7 @@
 
 class Window;
 class VulkanDevice;
+class Renderer;
 
 class App {
   public:
@@ -24,4 +25,5 @@ class App {
   private:
     std::unique_ptr<Window> _window;
     std::unique_ptr<VulkanDevice> _vulkanDevice;
+    std::unique_ptr<Renderer> _renderer;
 };

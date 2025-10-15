@@ -72,12 +72,13 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
 }
 
 VulkanDevice::~VulkanDevice() {
-    if (_device != nullptr) {
-        vkDestroyDevice(_device, nullptr);
-    }
 
     if (_surface != nullptr) {
         vkDestroySurfaceKHR(_instance, _surface, nullptr);
+    }
+
+    if (_device != nullptr) {
+        vkDestroyDevice(_device, nullptr);
     }
 
     if (_debugMessenger != nullptr) {
