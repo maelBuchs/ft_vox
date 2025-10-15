@@ -56,14 +56,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(VulkanMemoryAllocator)
 
-# 6. FastNoise2 (Procedural terrain generation)
-FetchContent_Declare(
-  FastNoise2
-  GIT_REPOSITORY https://github.com/Auburn/FastNoise2.git
-  GIT_TAG        v0.10.0-alpha
-)
-FetchContent_MakeAvailable(FastNoise2)
-
 
 # --- Project Structure ---
 
@@ -162,9 +154,6 @@ target_link_libraries(ft_vox PRIVATE vk-bootstrap::vk-bootstrap)
 
 # 5. VMA
 target_link_libraries(ft_vox PRIVATE VulkanMemoryAllocator)
-
-# 6. FastNoise2
-target_link_libraries(ft_vox PRIVATE FastNoise)
 
 # Link libraries to server
 target_link_libraries(ft_vox_server PRIVATE glm::glm)
