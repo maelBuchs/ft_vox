@@ -17,56 +17,8 @@ Renderer::Renderer(Window& window, VulkanDevice& device)
         throw;
     }
 
-    VkCommandPoolCreateInfo commandPoolInfo = {.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-                                               .pNext = nullptr,
-                                               .flags =
-                                                   VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-                                               .queueFamilyIndex = device.getGraphicsQueueFamily()};
-
-    for (uint64_t i = 0; i < FRAME_OVERLAP; i++) {
-        VkResult res = vkCreateCommandPool(_device.getDevice(), &commandPoolInfo, nullptr,
-                                           &_frameData.at(i)._commandPool);
-        if (res != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create command pool");
-        }
-
-        VkCommandBufferAllocateInfo cmdAllocInfo{.sType =
-                                                     VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-                                                 .pNext = nullptr,
-                                                 .commandPool = _frameData.at(i)._commandPool,
-                                                 .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-                                                 .commandBufferCount = 1};
-
-        vkAllocateCommandBuffers(device.getDevice(), &cmdAllocInfo,
-                                 &_frameData.at(i)._mainCommandBuffer);
-    }
-
-    VkFenceCreateInfo fenceCreateInfo{.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-                                      .pNext = nullptr,
-                                      .flags = VK_FENCE_CREATE_SIGNALED_BIT};
-
-    VkSemaphoreCreateInfo semaphoreCreateInfo{
-        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, .pNext = nullptr, .flags = 0};
-
-    for (uint64_t i = 0; i < FRAME_OVERLAP; i++) {
-        VkResult retFence = vkCreateFence(device.getDevice(), &fenceCreateInfo, nullptr,
-                                          &_frameData.at(i)._renderFence);
-        if (retFence != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create");
-        }
-
-        VkResult retSemaphore = vkCreateSemaphore(device.getDevice(), &semaphoreCreateInfo, nullptr,
-                                                  &_frameData.at(i)._swapchainSemaphore);
-        if (retSemaphore != VK_SUCCESS) {
-            throw std::runtime_error("Failed to Semaphore");
-        }
-
-        retSemaphore = vkCreateSemaphore(device.getDevice(), &semaphoreCreateInfo, nullptr,
-                                         &_frameData.at(i)._renderSemaphore);
-        if (retSemaphore != VK_SUCCESS) {
-            throw std::runtime_error("Failed to Semaphore");
-        }
-    }
+    createFrameCommandPools();
+    createFrameSyncStructures();
 }
 
 Renderer::~Renderer() {
@@ -81,30 +33,25 @@ Renderer::~Renderer() {
 }
 
 void Renderer::draw() {
-    VkResult ret = vkWaitForFences(_device.getDevice(), 1, &getCurrentFrame()._renderFence,
-                                   static_cast<VkBool32>(true), 1000000000);
-    if (ret != VK_SUCCESS) {
-        throw std::runtime_error("Failed to wait for fence");
-    }
+    // Wait for the previous frame to finish
+    VkResult ret = vkWaitForFences(_device.getDevice(), 1, &getCurrentFrame()._renderFence, VK_TRUE,
+                                   VULKAN_TIMEOUT_NS);
+    checkVkResult(ret, "Failed to wait for fence");
 
     ret = vkResetFences(_device.getDevice(), 1, &getCurrentFrame()._renderFence);
-    if (ret != VK_SUCCESS) {
-        throw std::runtime_error("Failed to reset fence");
-    }
+    checkVkResult(ret, "Failed to reset fence");
 
+    // Acquire swapchain image
     uint32_t swapchainImageIndex = 0;
     ret =
-        vkAcquireNextImageKHR(_device.getDevice(), _swapchain->getSwapchain(), 1000000000,
+        vkAcquireNextImageKHR(_device.getDevice(), _swapchain->getSwapchain(), VULKAN_TIMEOUT_NS,
                               getCurrentFrame()._swapchainSemaphore, nullptr, &swapchainImageIndex);
-    if (ret != VK_SUCCESS) {
-        throw std::runtime_error("Failed to acquire next image");
-    }
+    checkVkResult(ret, "Failed to acquire next image");
 
+    // Reset and begin command buffer
     VkCommandBuffer commandBuffer = getCurrentFrame()._mainCommandBuffer;
     ret = vkResetCommandBuffer(commandBuffer, 0);
-    if (ret != VK_SUCCESS) {
-        throw std::runtime_error("Failed to reset command buffer");
-    }
+    checkVkResult(ret, "Failed to reset command buffer");
 
     VkCommandBufferBeginInfo cmdBeginInfo{.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
                                           .pNext = nullptr,
@@ -112,48 +59,16 @@ void Renderer::draw() {
                                           .pInheritanceInfo = nullptr};
 
     ret = vkBeginCommandBuffer(commandBuffer, &cmdBeginInfo);
-    if (ret != VK_SUCCESS) {
-        throw std::runtime_error("Failed to begin command buffer");
-    }
+    checkVkResult(ret, "Failed to begin command buffer");
 
-    VkImageMemoryBarrier2 imageBarrier{
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-        .pNext = nullptr,
-        .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-        .srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT,
-        .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-        .dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT,
-        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .newLayout = VK_IMAGE_LAYOUT_GENERAL,
-        .image = _swapchain->getSwapchainImages().at(swapchainImageIndex)};
+    // Transition swapchain image to GENERAL layout for clearing
+    VkImage swapchainImage = _swapchain->getSwapchainImages().at(swapchainImageIndex);
+    transitionImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_UNDEFINED,
+                    VK_IMAGE_LAYOUT_GENERAL);
 
-    VkImageAspectFlags aspectMask =
-        (imageBarrier.newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL)
-            ? VK_IMAGE_ASPECT_DEPTH_BIT
-            : VK_IMAGE_ASPECT_COLOR_BIT;
-
-    imageBarrier.subresourceRange = {.aspectMask = aspectMask,
-                                     .baseMipLevel = 0,
-                                     .levelCount = 1,
-                                     .baseArrayLayer = 0,
-                                     .layerCount = 1};
-
-    VkDependencyInfo depInfo{.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                             .pNext = nullptr,
-                             .dependencyFlags = 0,
-                             .memoryBarrierCount = 0,
-                             .pMemoryBarriers = nullptr,
-                             .bufferMemoryBarrierCount = 0,
-                             .pBufferMemoryBarriers = nullptr,
-                             .imageMemoryBarrierCount = 1,
-                             .pImageMemoryBarriers = &imageBarrier};
-
-    vkCmdPipelineBarrier2(commandBuffer, &depInfo);
-
-    VkClearValue clearValue;
-
-    float flash = std::abs(std::sin(_frameNumber / 120.f));
-    clearValue = {{0.0f, 0.0f, flash, 1.0f}};
+    // Clear the swapchain image with an animated color
+    float flash = std::abs(std::sin(static_cast<float>(_frameNumber) / 120.0F));
+    VkClearValue clearValue{.color = {{0.0F, 0.0F, flash, 1.0F}}};
 
     VkImageSubresourceRange clearRange{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                                        .baseMipLevel = 0,
@@ -161,48 +76,17 @@ void Renderer::draw() {
                                        .baseArrayLayer = 0,
                                        .layerCount = VK_REMAINING_ARRAY_LAYERS};
 
-    vkCmdClearColorImage(commandBuffer, _swapchain->getSwapchainImages().at(swapchainImageIndex),
-                         VK_IMAGE_LAYOUT_GENERAL, &clearValue.color, 1, &clearRange);
+    vkCmdClearColorImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_GENERAL, &clearValue.color,
+                         1, &clearRange);
 
-    VkImageMemoryBarrier2 imageBarrier2{
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-        .pNext = nullptr,
-        .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-        .srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT,
-        .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-        .dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT,
-        .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
-        .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-        .image = _swapchain->getSwapchainImages().at(swapchainImageIndex)};
-
-    VkImageAspectFlags aspectMask2 =
-        (imageBarrier2.newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL)
-            ? VK_IMAGE_ASPECT_DEPTH_BIT
-            : VK_IMAGE_ASPECT_COLOR_BIT;
-
-    imageBarrier2.subresourceRange = {.aspectMask = aspectMask2,
-                                      .baseMipLevel = 0,
-                                      .levelCount = 1,
-                                      .baseArrayLayer = 0,
-                                      .layerCount = 1};
-
-    VkDependencyInfo depInfo2{.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                              .pNext = nullptr,
-                              .dependencyFlags = 0,
-                              .memoryBarrierCount = 0,
-                              .pMemoryBarriers = nullptr,
-                              .bufferMemoryBarrierCount = 0,
-                              .pBufferMemoryBarriers = nullptr,
-                              .imageMemoryBarrierCount = 1,
-                              .pImageMemoryBarriers = &imageBarrier2};
-
-    vkCmdPipelineBarrier2(commandBuffer, &depInfo2);
+    // Transition swapchain image to PRESENT_SRC layout
+    transitionImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_GENERAL,
+                    VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     ret = vkEndCommandBuffer(commandBuffer);
-    if (ret != VK_SUCCESS) {
-        throw std::runtime_error("Failed to end command buffer");
-    }
+    checkVkResult(ret, "Failed to end command buffer");
 
+    // Submit command buffer to graphics queue
     VkCommandBufferSubmitInfo cmdinfo{.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
                                       .pNext = nullptr,
                                       .commandBuffer = commandBuffer,
@@ -224,18 +108,17 @@ void Renderer::draw() {
     VkSubmitInfo2 submit{.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
                          .pNext = nullptr,
                          .flags = 0,
-                         .waitSemaphoreInfoCount = &waitInfo == nullptr ? 0 : 1,
+                         .waitSemaphoreInfoCount = 1,
                          .pWaitSemaphoreInfos = &waitInfo,
                          .commandBufferInfoCount = 1,
                          .pCommandBufferInfos = &cmdinfo,
-                         .signalSemaphoreInfoCount = &signalInfo == nullptr ? 0 : 1,
+                         .signalSemaphoreInfoCount = 1,
                          .pSignalSemaphoreInfos = &signalInfo};
 
     ret = vkQueueSubmit2(_device.getQueue(), 1, &submit, getCurrentFrame()._renderFence);
-    if (ret != VK_SUCCESS) {
-        throw std::runtime_error("Failed to submit to queue");
-    }
+    checkVkResult(ret, "Failed to submit to queue");
 
+    // Present the rendered image to the screen
     VkSwapchainKHR retSwapchain = {_swapchain->getSwapchain()};
     VkPresentInfoKHR presentInfo{.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
                                  .pNext = nullptr,
@@ -246,8 +129,107 @@ void Renderer::draw() {
                                  .pImageIndices = &swapchainImageIndex,
                                  .pResults = nullptr};
     ret = vkQueuePresentKHR(_device.getQueue(), &presentInfo);
-    if (ret != VK_SUCCESS) {
-        throw std::runtime_error("Failed to present swapchain image");
-    }
+    checkVkResult(ret, "Failed to present swapchain image");
+
     _frameNumber++;
+}
+
+void Renderer::checkVkResult(VkResult result, const char* errorMessage) {
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error(errorMessage);
+    }
+}
+
+void Renderer::createFrameCommandPools() {
+    VkCommandPoolCreateInfo commandPoolInfo{.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+                                            .pNext = nullptr,
+                                            .flags =
+                                                VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+                                            .queueFamilyIndex = _device.getGraphicsQueueFamily()};
+
+    for (uint64_t i = 0; i < FRAME_OVERLAP; i++) {
+        VkResult res = vkCreateCommandPool(_device.getDevice(), &commandPoolInfo, nullptr,
+                                           &_frameData.at(i)._commandPool);
+        checkVkResult(res, "Failed to create command pool");
+
+        VkCommandBufferAllocateInfo cmdAllocInfo{.sType =
+                                                     VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                                                 .pNext = nullptr,
+                                                 .commandPool = _frameData.at(i)._commandPool,
+                                                 .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+                                                 .commandBufferCount = 1};
+
+        VkResult allocRes = vkAllocateCommandBuffers(_device.getDevice(), &cmdAllocInfo,
+                                                     &_frameData.at(i)._mainCommandBuffer);
+        checkVkResult(allocRes, "Failed to allocate command buffers");
+    }
+}
+
+void Renderer::createFrameSyncStructures() {
+    VkFenceCreateInfo fenceCreateInfo{.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+                                      .pNext = nullptr,
+                                      .flags = VK_FENCE_CREATE_SIGNALED_BIT};
+
+    VkSemaphoreCreateInfo semaphoreCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, .pNext = nullptr, .flags = 0};
+
+    for (uint64_t i = 0; i < FRAME_OVERLAP; i++) {
+        VkResult fenceRes = vkCreateFence(_device.getDevice(), &fenceCreateInfo, nullptr,
+                                          &_frameData.at(i)._renderFence);
+        checkVkResult(fenceRes, "Failed to create render fence");
+
+        VkResult swapchainSemRes =
+            vkCreateSemaphore(_device.getDevice(), &semaphoreCreateInfo, nullptr,
+                              &_frameData.at(i)._swapchainSemaphore);
+        checkVkResult(swapchainSemRes, "Failed to create swapchain semaphore");
+
+        VkResult renderSemRes = vkCreateSemaphore(_device.getDevice(), &semaphoreCreateInfo,
+                                                  nullptr, &_frameData.at(i)._renderSemaphore);
+        checkVkResult(renderSemRes, "Failed to create render semaphore");
+    }
+}
+
+VkImageAspectFlags Renderer::getImageAspectMask(VkImageLayout layout) {
+    return (layout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL) ? VK_IMAGE_ASPECT_DEPTH_BIT
+                                                                : VK_IMAGE_ASPECT_COLOR_BIT;
+}
+
+VkImageMemoryBarrier2 Renderer::createImageBarrier(VkImage image, VkImageLayout oldLayout,
+                                                   VkImageLayout newLayout) const {
+    VkImageMemoryBarrier2 barrier{.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                                  .pNext = nullptr,
+                                  .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                                  .srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT,
+                                  .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                                  .dstAccessMask =
+                                      VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT,
+                                  .oldLayout = oldLayout,
+                                  .newLayout = newLayout,
+                                  .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                                  .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                                  .image = image,
+                                  .subresourceRange = {.aspectMask = getImageAspectMask(newLayout),
+                                                       .baseMipLevel = 0,
+                                                       .levelCount = 1,
+                                                       .baseArrayLayer = 0,
+                                                       .layerCount = 1}};
+
+    return barrier;
+}
+
+void Renderer::transitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout oldLayout,
+                               VkImageLayout newLayout) const {
+    VkImageMemoryBarrier2 imageBarrier = createImageBarrier(image, oldLayout, newLayout);
+
+    VkDependencyInfo depInfo{.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                             .pNext = nullptr,
+                             .dependencyFlags = 0,
+                             .memoryBarrierCount = 0,
+                             .pMemoryBarriers = nullptr,
+                             .bufferMemoryBarrierCount = 0,
+                             .pBufferMemoryBarriers = nullptr,
+                             .imageMemoryBarrierCount = 1,
+                             .pImageMemoryBarriers = &imageBarrier};
+
+    vkCmdPipelineBarrier2(cmd, &depInfo);
 }
