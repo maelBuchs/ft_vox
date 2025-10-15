@@ -37,5 +37,6 @@ void App::run() {
                 running = false;
             }
         }
+        _renderer->draw();
     }
 }
