@@ -11,16 +11,21 @@
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_vulkan.h"
+#include "MeshManager.hpp"
 #include "Pipeline.hpp"
 #include "Pipeline/ComputePipelineBuilder.hpp"
 #include "Pipeline/GraphicsPipelineBuilder.hpp"
+#include "VulkanBuffer.hpp"
 #include "VulkanDevice.hpp"
 #include "VulkanSwapchain.hpp"
+
 
 Renderer::Renderer(Window& window, VulkanDevice& device)
     : _window(window), _device(device), _frameNumber(0) {
     try {
         _swapchain = std::make_unique<VulkanSwapchain>(window, device);
+        _bufferManager = std::make_unique<VulkanBuffer>(device);
+        _meshManager = std::make_unique<MeshManager>(device, *_bufferManager);
     } catch (const std::runtime_error& e) {
         std::cerr << "Failed to create VulkanSwapchain: " << e.what() << "\n";
         throw;
@@ -210,6 +215,12 @@ Renderer::Renderer(Window& window, VulkanDevice& device)
 
     // Initialize triangle pipeline
     initTrianglePipeline();
+
+    // Initialize mesh pipeline
+    initMeshPipeline();
+
+    // Initialize default mesh data
+    initDefaultData();
 
     // Initialize ImGui - must be last after all Vulkan resources are ready
     initImGui();
@@ -718,5 +729,96 @@ void Renderer::drawGeometry(VkCommandBuffer cmd) {
 
     vkCmdDraw(cmd, 3, 1, 0, 0);
 
+    // Draw mesh
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline.getPipeline());
+
+    GPUDrawPushConstants pushConstants{};
+    pushConstants.worldMatrix = glm::mat4{1.0F};
+    pushConstants.vertexBuffer = _testRectangle.vertexBufferAddress;
+
+    vkCmdPushConstants(cmd, _meshPipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0,
+                       sizeof(GPUDrawPushConstants), &pushConstants);
+    vkCmdBindIndexBuffer(cmd, _testRectangle.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+    vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
+
     vkCmdEndRendering(cmd);
+}
+
+void Renderer::initMeshPipeline() {
+    VkShaderModule triangleFragShader =
+        Pipeline::loadShaderModule(_device, "shaders/colored_triangle.frag.spv");
+    VkShaderModule meshVertexShader =
+        Pipeline::loadShaderModule(_device, "shaders/colored_triangle_mesh.vert.spv");
+
+    VkPushConstantRange bufferRange{.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+                                    .offset = 0,
+                                    .size = sizeof(GPUDrawPushConstants)};
+
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{.sType =
+                                                      VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                                                  .pNext = nullptr,
+                                                  .flags = 0,
+                                                  .setLayoutCount = 0,
+                                                  .pSetLayouts = nullptr,
+                                                  .pushConstantRangeCount = 1,
+                                                  .pPushConstantRanges = &bufferRange};
+
+    VkPipelineLayout meshPipelineLayout = VK_NULL_HANDLE;
+    if (vkCreatePipelineLayout(_device.getDevice(), &pipelineLayoutInfo, nullptr,
+                               &meshPipelineLayout) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create mesh pipeline layout");
+    }
+
+    GraphicsPipelineBuilder pipelineBuilder;
+    pipelineBuilder.setPipelineLayout(meshPipelineLayout);
+    pipelineBuilder.setShaders(meshVertexShader, triangleFragShader);
+    pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
+    pipelineBuilder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+    pipelineBuilder.setMultisamplingNone();
+    pipelineBuilder.disableBlending();
+    pipelineBuilder.disableDepthtest();
+    pipelineBuilder.setColorAttachmentFormat(_drawImage.format);
+    pipelineBuilder.setDepthFormat(VK_FORMAT_UNDEFINED);
+
+    VkPipeline meshPipeline = pipelineBuilder.build(_device.getDevice());
+
+    vkDestroyShaderModule(_device.getDevice(), triangleFragShader, nullptr);
+    vkDestroyShaderModule(_device.getDevice(), meshVertexShader, nullptr);
+
+    _meshPipeline.init(meshPipeline, meshPipelineLayout);
+
+    _mainDeletionQueue.push([this]() { _meshPipeline.cleanup(_device); });
+}
+
+void Renderer::initDefaultData() {
+    std::array<Vertex, 4> rectVertices{};
+
+    rectVertices[0].position = {0.5F, -0.5F, 0.0F};
+    rectVertices[1].position = {0.5F, 0.5F, 0.0F};
+    rectVertices[2].position = {-0.5F, -0.5F, 0.0F};
+    rectVertices[3].position = {-0.5F, 0.5F, 0.0F};
+
+    rectVertices[0].color = {0.0F, 0.0F, 0.0F, 1.0F};
+    rectVertices[1].color = {0.5F, 0.5F, 0.5F, 1.0F};
+    rectVertices[2].color = {1.0F, 0.0F, 0.0F, 1.0F};
+    rectVertices[3].color = {0.0F, 1.0F, 0.0F, 1.0F};
+
+    std::array<uint32_t, 6> rectIndices{};
+
+    rectIndices[0] = 0;
+    rectIndices[1] = 1;
+    rectIndices[2] = 2;
+
+    rectIndices[3] = 2;
+    rectIndices[4] = 1;
+    rectIndices[5] = 3;
+
+    _testRectangle = _meshManager->uploadMesh(
+        rectIndices, rectVertices,
+        [this](std::function<void(VkCommandBuffer)>&& func) { immediateSubmit(std::move(func)); });
+
+    // Delete the rectangle data on engine shutdown
+    _mainDeletionQueue.push([this]() { _meshManager->destroyMesh(_testRectangle); });
 }

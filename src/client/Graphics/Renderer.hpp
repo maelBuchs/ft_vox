@@ -10,10 +10,13 @@
 #include "DeletionQueue.hpp"
 #include "DescriptorAllocator.hpp"
 #include "Pipeline.hpp"
+#include "VulkanTypes.hpp"
 
 class VulkanDevice;
 class VulkanSwapchain;
 class Window;
+class VulkanBuffer;
+class MeshManager;
 
 class Renderer {
   public:
@@ -70,6 +73,8 @@ class Renderer {
     void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
     void initImGui();
     void initTrianglePipeline();
+    void initMeshPipeline();
+    void initDefaultData();
     void drawGeometry(VkCommandBuffer cmd);
 
     Window& _window;
@@ -88,4 +93,8 @@ class Renderer {
     VkCommandPool _immCommandPool;
     VkCommandBuffer _immCommandBuffer;
     Pipeline _trianglePipeline;
+    Pipeline _meshPipeline;
+    std::unique_ptr<VulkanBuffer> _bufferManager;
+    std::unique_ptr<MeshManager> _meshManager;
+    GPUMeshBuffers _testRectangle;
 };
