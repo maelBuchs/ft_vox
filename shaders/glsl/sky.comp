@@ -1,0 +1,55 @@
+#version 460
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(rgba16f, set = 0, binding = 0) uniform image2D image;
+
+// push constants block
+layout(push_constant) uniform constants {
+    vec4 data1; // xyz = sky color, w = star intensity
+    vec4 data2;
+    vec4 data3;
+    vec4 data4;
+}
+PushConstants;
+
+// Simple hash function for randomness
+float hash(vec2 p) {
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+}
+
+// Generate stars
+float stars(vec2 uv, float threshold) {
+    vec2 id = floor(uv * 100.0);
+    float h = hash(id);
+    if (h > threshold) {
+        vec2 local = fract(uv * 100.0) - 0.5;
+        float dist = length(local);
+        float brightness = smoothstep(0.05, 0.01, dist);
+        return brightness * h;
+    }
+    return 0.0;
+}
+
+void main() {
+    ivec2 texelCoord = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(image);
+
+    if (texelCoord.x < size.x && texelCoord.y < size.y) {
+        vec2 uv = vec2(texelCoord) / vec2(size);
+
+        // Sky gradient
+        vec3 skyColor = PushConstants.data1.xyz;
+        vec3 horizonColor = skyColor * 1.2;
+        vec3 col = mix(horizonColor, skyColor * 0.5, uv.y);
+
+        // Add stars
+        float starThreshold = PushConstants.data1.w;
+        float starBrightness = stars(uv, starThreshold);
+        col += vec3(starBrightness);
+
+        imageStore(image, texelCoord, vec4(col, 1.0));
+    }
+}

@@ -1,5 +1,6 @@
 #include "Renderer.hpp"
 
+#include <array>
 #include <cmath>
 #include <iostream>
 #include <memory>
@@ -7,6 +8,9 @@
 #include <vulkan/vulkan.h>
 
 #include "../Core/Window.hpp"
+#include "imgui.h"
+#include "imgui_impl_sdl3.h"
+#include "imgui_impl_vulkan.h"
 #include "Pipeline.hpp"
 #include "VulkanDevice.hpp"
 #include "VulkanSwapchain.hpp"
@@ -84,9 +88,22 @@ Renderer::Renderer(Window& window, VulkanDevice& device)
                                 nullptr);
     });
 
-    _gradientPipeline = std::make_unique<Pipeline>(_device, "shaders/gradient.comp.spv");
+    // Create gradient effect
+    ComputeEffect gradient;
+    gradient.name = "gradient";
+    gradient.pipeline = std::make_unique<Pipeline>(_device, "shaders/gradient.comp.spv");
+    gradient.data.data1 = glm::vec4(1.0F, 0.0F, 0.0F, 1.0F); // Red
+    gradient.data.data2 = glm::vec4(0.0F, 0.0F, 1.0F, 1.0F); // Blue
+    _backgroundEffects.push_back(std::move(gradient));
 
-    VkDescriptorSetLayout layout = _gradientPipeline->getDescriptorSetLayout();
+    // Create sky effect
+    ComputeEffect sky;
+    sky.name = "sky";
+    sky.pipeline = std::make_unique<Pipeline>(_device, "shaders/sky.comp.spv");
+    sky.data.data1 = glm::vec4(0.1F, 0.2F, 0.4F, 0.97F); // Sky color + star threshold
+    _backgroundEffects.push_back(std::move(sky));
+
+    VkDescriptorSetLayout layout = _backgroundEffects[0].pipeline->getDescriptorSetLayout();
     _drawImageDescriptorSet = _globalDescriptorAllocator->allocate(_device, layout);
 
     VkDescriptorImageInfo imgInfo{};
@@ -104,6 +121,45 @@ Renderer::Renderer(Window& window, VulkanDevice& device)
     write.pImageInfo = &imgInfo;
 
     vkUpdateDescriptorSets(_device.getDevice(), 1, &write, 0, nullptr);
+
+    VkCommandPoolCreateInfo immCommandPoolInfo{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        .queueFamilyIndex = _device.getGraphicsQueueFamily()};
+
+    if (vkCreateCommandPool(_device.getDevice(), &immCommandPoolInfo, nullptr, &_immCommandPool) !=
+        VK_SUCCESS) {
+        throw std::runtime_error("Failed to create immediate command pool");
+    }
+
+    VkCommandBufferAllocateInfo immCmdAllocInfo{.sType =
+                                                    VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                                                .pNext = nullptr,
+                                                .commandPool = _immCommandPool,
+                                                .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+                                                .commandBufferCount = 1};
+
+    if (vkAllocateCommandBuffers(_device.getDevice(), &immCmdAllocInfo, &_immCommandBuffer) !=
+        VK_SUCCESS) {
+        throw std::runtime_error("Failed to allocate immediate command buffer");
+    }
+
+    VkFenceCreateInfo immFenceCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, .pNext = nullptr, .flags = 0};
+
+    if (vkCreateFence(_device.getDevice(), &immFenceCreateInfo, nullptr, &_immFence) !=
+        VK_SUCCESS) {
+        throw std::runtime_error("Failed to create immediate fence");
+    }
+
+    _mainDeletionQueue.push([this]() {
+        vkDestroyFence(_device.getDevice(), _immFence, nullptr);
+        vkDestroyCommandPool(_device.getDevice(), _immCommandPool, nullptr);
+    });
+
+    // Initialize ImGui - must be last after all Vulkan resources are ready
+    initImGui();
 }
 
 Renderer::~Renderer() {
@@ -162,13 +218,21 @@ void Renderer::draw() {
     // vkCmdClearColorImage(commandBuffer, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL,
     //                      &clearValue.color, 1, &clearRange);
 
+    // Bind the selected compute effect
+    ComputeEffect& effect = _backgroundEffects[static_cast<size_t>(_currentBackgroundEffect)];
+
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
-                      _gradientPipeline->getPipeline());
+                      effect.pipeline->getPipeline());
 
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
-                            _gradientPipeline->getLayout(), 0, 1, &_drawImageDescriptorSet, 0,
+                            effect.pipeline->getLayout(), 0, 1, &_drawImageDescriptorSet, 0,
                             nullptr);
 
+    // Push constants to shader
+    vkCmdPushConstants(commandBuffer, effect.pipeline->getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                       sizeof(ComputePushConstants), &effect.data);
+
+    // Execute compute shader dispatch
     vkCmdDispatch(commandBuffer, static_cast<uint32_t>(std::ceil(_drawExtent.width / 16.0)),
                   static_cast<uint32_t>(std::ceil(_drawExtent.height / 16.0)), 1);
 
@@ -185,6 +249,30 @@ void Renderer::draw() {
                         _swapchain->getSwapchainExtent());
 
     transitionImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    VkRenderingAttachmentInfo colorAttachment{};
+    colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    colorAttachment.imageView = _swapchain->getSwapchainImageViews()[swapchainImageIndex];
+    colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    colorAttachment.loadOp =
+        VK_ATTACHMENT_LOAD_OP_LOAD; // On charge ce qui a déjà été dessiné (notre scène)
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+    VkRenderingInfo renderInfo{};
+    renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    renderInfo.renderArea = {.offset = {0, 0}, .extent = _swapchain->getSwapchainExtent()};
+    renderInfo.layerCount = 1;
+    renderInfo.colorAttachmentCount = 1;
+    renderInfo.pColorAttachments = &colorAttachment;
+
+    vkCmdBeginRendering(commandBuffer, &renderInfo);
+
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
+
+    vkCmdEndRendering(commandBuffer);
+
+    transitionImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                     VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     ret = vkEndCommandBuffer(commandBuffer);
@@ -390,4 +478,116 @@ void Renderer::copy_image_to_image(VkCommandBuffer cmd, VkImage source, VkImage 
     blitInfo.pRegions = &blitRegion;
 
     vkCmdBlitImage2(cmd, &blitInfo);
+}
+
+void Renderer::immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function) {
+    vkResetCommandBuffer(_immCommandBuffer, 0);
+
+    VkCommandBuffer cmd = _immCommandBuffer;
+
+    VkCommandBufferBeginInfo cmdBeginInfo{.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                                          .pNext = nullptr,
+                                          .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+                                          .pInheritanceInfo = nullptr};
+
+    if (vkBeginCommandBuffer(cmd, &cmdBeginInfo) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to begin command buffer");
+    }
+
+    function(cmd);
+
+    if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to end command buffer");
+    }
+
+    VkCommandBufferSubmitInfo cmdinfo{.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+                                      .pNext = nullptr,
+                                      .commandBuffer = cmd,
+                                      .deviceMask = 0};
+
+    VkSubmitInfo2 submit{.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+                         .pNext = nullptr,
+                         .flags = 0,
+                         .waitSemaphoreInfoCount = 0,
+                         .pWaitSemaphoreInfos = nullptr,
+                         .commandBufferInfoCount = 1,
+                         .pCommandBufferInfos = &cmdinfo,
+                         .signalSemaphoreInfoCount = 0,
+                         .pSignalSemaphoreInfos = nullptr};
+
+    if (vkQueueSubmit2(_device.getQueue(), 1, &submit, _immFence) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to submit to queue");
+    }
+
+    if (vkWaitForFences(_device.getDevice(), 1, &_immFence, VK_TRUE, VULKAN_TIMEOUT_NS) !=
+        VK_SUCCESS) {
+        throw std::runtime_error("Failed to wait for fence");
+    }
+
+    if (vkResetFences(_device.getDevice(), 1, &_immFence) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to reset fence");
+    }
+}
+
+void Renderer::initImGui() {
+    std::array<VkDescriptorPoolSize, 11> pool_sizes = {
+        {{.type = VK_DESCRIPTOR_TYPE_SAMPLER, .descriptorCount = 1000},
+         {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = 1000},
+         {.type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .descriptorCount = 1000},
+         {.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .descriptorCount = 1000},
+         {.type = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, .descriptorCount = 1000},
+         {.type = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, .descriptorCount = 1000},
+         {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = 1000},
+         {.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount = 1000},
+         {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, .descriptorCount = 1000},
+         {.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, .descriptorCount = 1000},
+         {.type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, .descriptorCount = 1000}}};
+
+    VkDescriptorPoolCreateInfo pool_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+        .maxSets = 1000,
+        .poolSizeCount = static_cast<uint32_t>(std::size(pool_sizes)),
+        .pPoolSizes = pool_sizes.data()};
+
+    VkDescriptorPool imguiPool = VK_NULL_HANDLE;
+
+    if (vkCreateDescriptorPool(_device.getDevice(), &pool_info, nullptr, &imguiPool) !=
+        VK_SUCCESS) {
+        throw std::runtime_error("Failed to create ImGui descriptor pool");
+    }
+
+    ImGui::CreateContext();
+
+    ImGui_ImplSDL3_InitForVulkan(_window.getSDLWindow());
+
+    ImGui_ImplVulkan_InitInfo init_info = {};
+    init_info.Instance = _device.getInstance();
+    init_info.PhysicalDevice = _device.getPhysicalDevice();
+    init_info.Device = _device.getDevice();
+    init_info.QueueFamily = _device.getGraphicsQueueFamily();
+    init_info.Queue = _device.getQueue();
+    init_info.DescriptorPool = imguiPool;
+    init_info.MinImageCount = 3;
+    init_info.ImageCount = 3;
+    init_info.UseDynamicRendering = true;
+
+    // Configure dynamic rendering pipeline info
+    init_info.PipelineInfoMain.PipelineRenderingCreateInfo.sType =
+        VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+    init_info.PipelineInfoMain.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
+    VkFormat swapchainFormat = _swapchain->getSwapchainImageFormat();
+    init_info.PipelineInfoMain.PipelineRenderingCreateInfo.pColorAttachmentFormats =
+        &swapchainFormat;
+
+    ImGui_ImplVulkan_Init(&init_info);
+
+    // 5. Ajouter le nettoyage à la DeletionQueue
+    _mainDeletionQueue.push([this, imguiPool]() {
+        ImGui_ImplVulkan_Shutdown();
+        ImGui_ImplSDL3_Shutdown();
+        ImGui::DestroyContext();
+        vkDestroyDescriptorPool(_device.getDevice(), imguiPool, nullptr);
+    });
 }

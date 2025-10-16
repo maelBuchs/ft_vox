@@ -29,14 +29,18 @@ Pipeline::Pipeline(VulkanDevice& device, std::string_view computeShaderPath) : _
         throw std::runtime_error("Failed to create descriptor set layout");
     }
 
+    VkPushConstantRange pushConstant{.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                                     .offset = 0,
+                                     .size = sizeof(ComputePushConstants)};
+
     VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .pNext = nullptr,
         .flags = 0,
         .setLayoutCount = 1,
         .pSetLayouts = &_descriptorSetLayout,
-        .pushConstantRangeCount = 0,
-        .pPushConstantRanges = nullptr,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &pushConstant,
     };
 
     if (vkCreatePipelineLayout(_device.getDevice(), &pipelineLayoutCreateInfo, nullptr,

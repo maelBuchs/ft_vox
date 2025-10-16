@@ -56,6 +56,35 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(VulkanMemoryAllocator)
 
+# 6. Dear ImGui
+FetchContent_Declare(
+  imgui
+  GIT_REPOSITORY https://github.com/ocornut/imgui.git
+  GIT_TAG        v1.92.4
+)
+FetchContent_MakeAvailable(imgui)
+
+# ImGui requires manual setup - create library with backends
+add_library(imgui STATIC
+  ${imgui_SOURCE_DIR}/imgui.cpp
+  ${imgui_SOURCE_DIR}/imgui_demo.cpp
+  ${imgui_SOURCE_DIR}/imgui_draw.cpp
+  ${imgui_SOURCE_DIR}/imgui_tables.cpp
+  ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+  ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp
+  ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp
+)
+
+target_include_directories(imgui PUBLIC
+  ${imgui_SOURCE_DIR}
+  ${imgui_SOURCE_DIR}/backends
+)
+
+target_link_libraries(imgui PUBLIC
+  SDL3::SDL3
+  Vulkan::Vulkan
+)
+
 
 # --- Project Structure ---
 
@@ -154,6 +183,9 @@ target_link_libraries(ft_vox PRIVATE vk-bootstrap::vk-bootstrap)
 
 # 5. VMA
 target_link_libraries(ft_vox PRIVATE VulkanMemoryAllocator)
+
+# 6. ImGui
+target_link_libraries(ft_vox PRIVATE imgui)
 
 # Link libraries to server
 target_link_libraries(ft_vox_server PRIVATE glm::glm)

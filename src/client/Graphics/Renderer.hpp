@@ -2,17 +2,18 @@
 
 #include <array>
 #include <memory>
+#include <string>
 #include <vk_mem_alloc.h>
 
 #include <vulkan/vulkan.h>
 
 #include "DeletionQueue.hpp"
 #include "DescriptorAllocator.hpp"
+#include "Pipeline.hpp"
 
 class VulkanDevice;
 class VulkanSwapchain;
 class Window;
-class Pipeline;
 
 class Renderer {
   public:
@@ -41,10 +42,18 @@ class Renderer {
         VkFormat format;
     };
 
+    struct ComputeEffect {
+        std::string name;
+        std::unique_ptr<Pipeline> pipeline;
+        ComputePushConstants data;
+    };
+
     static constexpr unsigned int FRAME_OVERLAP = 2;
     static constexpr uint64_t VULKAN_TIMEOUT_NS = 1000000000; // 1 second
 
     FrameData& getCurrentFrame() { return _frameData.at(_frameNumber % FRAME_OVERLAP); }
+    [[nodiscard]] std::vector<ComputeEffect>& getBackgroundEffects() { return _backgroundEffects; }
+    [[nodiscard]] int& getCurrentBackgroundEffect() { return _currentBackgroundEffect; }
     void draw();
 
   private:
@@ -58,11 +67,14 @@ class Renderer {
                          VkImageLayout newLayout) const;
     void copy_image_to_image(VkCommandBuffer cmd, VkImage source, VkImage destination,
                              VkExtent2D srcSize, VkExtent2D dstSize);
+    void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
+    void initImGui();
 
     Window& _window;
     VulkanDevice& _device;
     std::unique_ptr<VulkanSwapchain> _swapchain;
-    std::unique_ptr<Pipeline> _gradientPipeline;
+    std::vector<ComputeEffect> _backgroundEffects;
+    int _currentBackgroundEffect = 0;
     std::unique_ptr<DescriptorAllocator> _globalDescriptorAllocator;
     uint64_t _frameNumber;
     std::array<FrameData, FRAME_OVERLAP> _frameData;
@@ -70,4 +82,7 @@ class Renderer {
     VkExtent2D _drawExtent;
     DeletionQueue _mainDeletionQueue;
     VkDescriptorSet _drawImageDescriptorSet;
+    VkFence _immFence;
+    VkCommandPool _immCommandPool;
+    VkCommandBuffer _immCommandBuffer;
 };
