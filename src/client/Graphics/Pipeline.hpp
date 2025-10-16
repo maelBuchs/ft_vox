@@ -31,9 +31,9 @@ class Pipeline {
         return _descriptorSetLayout;
     }
 
-  private:
-    VkShaderModule loadShaderModule(std::string_view computeShaderPath);
+    static VkShaderModule loadShaderModule(VulkanDevice& device, std::string_view shaderPath);
 
+  private:
     VulkanDevice& _device;
     VkPipeline _pipeline = VK_NULL_HANDLE;
     VkPipelineLayout _pipelineLayout = VK_NULL_HANDLE;

@@ -12,6 +12,7 @@
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_vulkan.h"
 #include "Pipeline.hpp"
+#include "Pipeline/GraphicsPipelineBuilder.hpp"
 #include "VulkanDevice.hpp"
 #include "VulkanSwapchain.hpp"
 
@@ -158,6 +159,9 @@ Renderer::Renderer(Window& window, VulkanDevice& device)
         vkDestroyCommandPool(_device.getDevice(), _immCommandPool, nullptr);
     });
 
+    // Initialize triangle pipeline
+    initTrianglePipeline();
+
     // Initialize ImGui - must be last after all Vulkan resources are ready
     initImGui();
 }
@@ -201,24 +205,11 @@ void Renderer::draw() {
     ret = vkBeginCommandBuffer(commandBuffer, &cmdBeginInfo);
     checkVkResult(ret, "Failed to begin command buffer");
 
-    // Transition swapchain image to GENERAL layout for clearing
+    // Transition draw image to GENERAL layout for compute shader
     transitionImage(commandBuffer, _drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED,
                     VK_IMAGE_LAYOUT_GENERAL);
 
-    // Clear the swapchain image with an animated color
-    // float flash = std::abs(std::sin(static_cast<float>(_frameNumber) / 120.0F));
-    // VkClearValue clearValue{.color = {{0.0F, 0.0F, flash, 1.0F}}};
-
-    // VkImageSubresourceRange clearRange{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-    //                                    .baseMipLevel = 0,
-    //                                    .levelCount = VK_REMAINING_MIP_LEVELS,
-    //                                    .baseArrayLayer = 0,
-    //                                    .layerCount = VK_REMAINING_ARRAY_LAYERS};
-
-    // vkCmdClearColorImage(commandBuffer, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL,
-    //                      &clearValue.color, 1, &clearRange);
-
-    // Bind the selected compute effect
+    // Execute compute shader for background
     ComputeEffect& effect = _backgroundEffects[static_cast<size_t>(_currentBackgroundEffect)];
 
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
@@ -228,16 +219,21 @@ void Renderer::draw() {
                             effect.pipeline->getLayout(), 0, 1, &_drawImageDescriptorSet, 0,
                             nullptr);
 
-    // Push constants to shader
     vkCmdPushConstants(commandBuffer, effect.pipeline->getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0,
                        sizeof(ComputePushConstants), &effect.data);
 
-    // Execute compute shader dispatch
     vkCmdDispatch(commandBuffer, static_cast<uint32_t>(std::ceil(_drawExtent.width / 16.0)),
                   static_cast<uint32_t>(std::ceil(_drawExtent.height / 16.0)), 1);
 
-    // Transition swapchain image to PRESENT_SRC layout
+    // Transition draw image to COLOR_ATTACHMENT_OPTIMAL for triangle rendering
     transitionImage(commandBuffer, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL,
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    // Draw triangle geometry
+    drawGeometry(commandBuffer);
+
+    // Transition draw image to TRANSFER_SRC for copying to swapchain
+    transitionImage(commandBuffer, _drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                     VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
     VkImage swapchainImage = _swapchain->getSwapchainImages().at(swapchainImageIndex);
@@ -590,4 +586,91 @@ void Renderer::initImGui() {
         ImGui::DestroyContext();
         vkDestroyDescriptorPool(_device.getDevice(), imguiPool, nullptr);
     });
+}
+
+void Renderer::initTrianglePipeline() {
+    VkShaderModule triangleFragShader =
+        Pipeline::loadShaderModule(_device, "shaders/colored_triangle.frag.spv");
+    VkShaderModule triangleVertexShader =
+        Pipeline::loadShaderModule(_device, "shaders/colored_triangle.vert.spv");
+
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{.sType =
+                                                      VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                                                  .pNext = nullptr,
+                                                  .flags = 0,
+                                                  .setLayoutCount = 0,
+                                                  .pSetLayouts = nullptr,
+                                                  .pushConstantRangeCount = 0,
+                                                  .pPushConstantRanges = nullptr};
+
+    if (vkCreatePipelineLayout(_device.getDevice(), &pipelineLayoutInfo, nullptr,
+                               &_trianglePipelineLayout) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create triangle pipeline layout");
+    }
+
+    GraphicsPipelineBuilder pipelineBuilder;
+    pipelineBuilder.setPipelineLayout(_trianglePipelineLayout);
+    pipelineBuilder.setShaders(triangleVertexShader, triangleFragShader);
+    pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
+    pipelineBuilder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+    pipelineBuilder.setMultisamplingNone();
+    pipelineBuilder.disableBlending();
+    pipelineBuilder.disableDepthtest();
+    pipelineBuilder.setColorAttachmentFormat(_drawImage.format);
+    pipelineBuilder.setDepthFormat(VK_FORMAT_UNDEFINED);
+
+    _trianglePipeline = pipelineBuilder.build(_device.getDevice());
+
+    vkDestroyShaderModule(_device.getDevice(), triangleFragShader, nullptr);
+    vkDestroyShaderModule(_device.getDevice(), triangleVertexShader, nullptr);
+
+    _mainDeletionQueue.push([this]() {
+        vkDestroyPipelineLayout(_device.getDevice(), _trianglePipelineLayout, nullptr);
+        vkDestroyPipeline(_device.getDevice(), _trianglePipeline, nullptr);
+    });
+}
+
+void Renderer::drawGeometry(VkCommandBuffer cmd) {
+    VkRenderingAttachmentInfo colorAttachment{.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                                              .pNext = nullptr,
+                                              .imageView = _drawImage.imageView,
+                                              .imageLayout =
+                                                  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                              .resolveMode = VK_RESOLVE_MODE_NONE,
+                                              .resolveImageView = VK_NULL_HANDLE,
+                                              .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                                              .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+                                              .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                                              .clearValue = {}};
+
+    VkRenderingInfo renderInfo{.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                               .pNext = nullptr,
+                               .flags = 0,
+                               .renderArea = {.offset = {0, 0}, .extent = _drawExtent},
+                               .layerCount = 1,
+                               .viewMask = 0,
+                               .colorAttachmentCount = 1,
+                               .pColorAttachments = &colorAttachment,
+                               .pDepthAttachment = nullptr,
+                               .pStencilAttachment = nullptr};
+
+    vkCmdBeginRendering(cmd, &renderInfo);
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _trianglePipeline);
+
+    VkViewport viewport{.x = 0.0F,
+                        .y = 0.0F,
+                        .width = static_cast<float>(_drawExtent.width),
+                        .height = static_cast<float>(_drawExtent.height),
+                        .minDepth = 0.0F,
+                        .maxDepth = 1.0F};
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+    VkRect2D scissor{.offset = {0, 0}, .extent = _drawExtent};
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+    vkCmdDraw(cmd, 3, 1, 0, 0);
+
+    vkCmdEndRendering(cmd);
 }

@@ -69,6 +69,8 @@ class Renderer {
                              VkExtent2D srcSize, VkExtent2D dstSize);
     void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
     void initImGui();
+    void initTrianglePipeline();
+    void drawGeometry(VkCommandBuffer cmd);
 
     Window& _window;
     VulkanDevice& _device;
@@ -85,4 +87,6 @@ class Renderer {
     VkFence _immFence;
     VkCommandPool _immCommandPool;
     VkCommandBuffer _immCommandBuffer;
+    VkPipelineLayout _trianglePipelineLayout;
+    VkPipeline _trianglePipeline;
 };

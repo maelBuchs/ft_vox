@@ -48,7 +48,7 @@ Pipeline::Pipeline(VulkanDevice& device, std::string_view computeShaderPath) : _
         throw std::runtime_error("Failed to create pipeline layout");
     }
 
-    VkShaderModule computeShaderModule = loadShaderModule(computeShaderPath);
+    VkShaderModule computeShaderModule = loadShaderModule(_device, computeShaderPath);
 
     VkPipelineShaderStageCreateInfo shaderStageCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -90,11 +90,11 @@ Pipeline::~Pipeline() {
     }
 }
 
-VkShaderModule Pipeline::loadShaderModule(std::string_view computeShaderPath) {
-    std::ifstream file(std::string(computeShaderPath), std::ios::ate | std::ios::binary);
+VkShaderModule Pipeline::loadShaderModule(VulkanDevice& device, std::string_view shaderPath) {
+    std::ifstream file(std::string(shaderPath), std::ios::ate | std::ios::binary);
 
     if (!file.is_open()) {
-        throw std::runtime_error("Failed to open shader file: " + std::string(computeShaderPath));
+        throw std::runtime_error("Failed to open shader file: " + std::string(shaderPath));
     }
     size_t fileSize = static_cast<size_t>(file.tellg());
 
@@ -114,7 +114,7 @@ VkShaderModule Pipeline::loadShaderModule(std::string_view computeShaderPath) {
     createInfo.pCode = buffer.data();
 
     VkShaderModule shaderModule = VK_NULL_HANDLE;
-    if (vkCreateShaderModule(_device.getDevice(), &createInfo, nullptr, &shaderModule) !=
+    if (vkCreateShaderModule(device.getDevice(), &createInfo, nullptr, &shaderModule) !=
         VK_SUCCESS) {
         throw std::runtime_error("Failed to create shader module");
     }
