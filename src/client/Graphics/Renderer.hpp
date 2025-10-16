@@ -23,11 +23,11 @@ class Renderer {
     Renderer& operator=(Renderer&&) = delete;
 
     struct FrameData {
-        VkCommandPool _commandPool;
-        VkCommandBuffer _mainCommandBuffer;
-        VkFence _renderFence;
-        VkSemaphore _swapchainSemaphore;
-        VkSemaphore _renderSemaphore;
+        VkCommandPool _commandPool{};
+        VkCommandBuffer _mainCommandBuffer{};
+        VkFence _renderFence{};
+        VkSemaphore _swapchainSemaphore{};
+        VkSemaphore _renderSemaphore{};
         DeletionQueue _deletionQueue;
     };
 

@@ -1,5 +1,6 @@
 #include "Renderer.hpp"
 
+#include <cmath>
 #include <iostream>
 
 #include <vulkan/vulkan.h>
