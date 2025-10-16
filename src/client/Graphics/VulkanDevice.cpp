@@ -1,3 +1,5 @@
+#define VMA_IMPLEMENTATION
+
 #include "VulkanDevice.hpp"
 
 #include <VkBootstrap.h>
@@ -75,9 +77,19 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
                                  queueFamilyRet.error().message());
     }
     _graphicsQueueFamily = queueFamilyRet.value();
+
+    VmaAllocatorCreateInfo allocatorInfo = {.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+                                            .physicalDevice = _physicalDevice,
+                                            .device = _device,
+                                            .instance = _instance};
+    vmaCreateAllocator(&allocatorInfo, &_allocator);
 }
 
 VulkanDevice::~VulkanDevice() {
+    if (_allocator != nullptr) {
+        vmaDestroyAllocator(_allocator);
+    }
+
     if (_device != nullptr) {
         vkDestroyDevice(_device, nullptr);
     }

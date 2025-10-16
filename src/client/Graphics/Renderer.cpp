@@ -16,6 +16,58 @@ Renderer::Renderer(Window& window, VulkanDevice& device)
         std::cerr << "Failed to create VulkanSwapchain: " << e.what() << "\n";
         throw;
     }
+    VkExtent2D swapchainExtent = _swapchain->getSwapchainExtent();
+    _drawImage.extent = {
+        .width = swapchainExtent.width, .height = swapchainExtent.height, .depth = 1};
+    _drawImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+
+    VkImageUsageFlags drawImageUsages{VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                                      VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
+                                      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT};
+
+    VkImageCreateInfo rimg_info{.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                                .pNext = nullptr,
+                                .flags = 0,
+                                .imageType = VK_IMAGE_TYPE_2D,
+                                .format = _drawImage.format,
+                                .extent = _drawImage.extent,
+                                .mipLevels = 1,
+                                .arrayLayers = 1,
+                                .samples = VK_SAMPLE_COUNT_1_BIT,
+                                .tiling = VK_IMAGE_TILING_OPTIMAL,
+                                .usage = drawImageUsages};
+
+    VmaAllocationCreateInfo rimg_allocinfo{
+        .usage = VMA_MEMORY_USAGE_GPU_ONLY,
+        .requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)};
+
+    VkResult ret = vmaCreateImage(_device.getAllocator(), &rimg_info, &rimg_allocinfo,
+                                  &_drawImage.image, &_drawImage.allocation, nullptr);
+    checkVkResult(ret, "Failed to create draw image");
+
+    VkImageViewCreateInfo rview_info{.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                                     .pNext = nullptr,
+                                     .flags = 0,
+                                     .image = _drawImage.image,
+                                     .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                                     .format = _drawImage.format,
+                                     .subresourceRange = {
+                                         .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                                         .baseMipLevel = 0,
+                                         .levelCount = 1,
+                                         .baseArrayLayer = 0,
+                                         .layerCount = 1,
+                                     }};
+
+    ret = vkCreateImageView(_device.getDevice(), &rview_info, nullptr, &_drawImage.imageView);
+    checkVkResult(ret, "Failed to create draw image view");
+
+    // Register draw image cleanup in main deletion queue
+    _mainDeletionQueue.push(
+        [this]() { vkDestroyImageView(_device.getDevice(), _drawImage.imageView, nullptr); });
+    _mainDeletionQueue.push([this]() {
+        vmaDestroyImage(_device.getAllocator(), _drawImage.image, _drawImage.allocation);
+    });
 
     createFrameCommandPools();
     createFrameSyncStructures();
@@ -23,13 +75,7 @@ Renderer::Renderer(Window& window, VulkanDevice& device)
 
 Renderer::~Renderer() {
     vkDeviceWaitIdle(_device.getDevice());
-
-    for (uint64_t i = 0; i < FRAME_OVERLAP; i++) {
-        vkDestroyFence(_device.getDevice(), _frameData.at(i)._renderFence, nullptr);
-        vkDestroySemaphore(_device.getDevice(), _frameData.at(i)._renderSemaphore, nullptr);
-        vkDestroySemaphore(_device.getDevice(), _frameData.at(i)._swapchainSemaphore, nullptr);
-        vkDestroyCommandPool(_device.getDevice(), _frameData.at(i)._commandPool, nullptr);
-    }
+    _mainDeletionQueue.flush();
 }
 
 void Renderer::draw() {
@@ -37,6 +83,8 @@ void Renderer::draw() {
     VkResult ret = vkWaitForFences(_device.getDevice(), 1, &getCurrentFrame()._renderFence, VK_TRUE,
                                    VULKAN_TIMEOUT_NS);
     checkVkResult(ret, "Failed to wait for fence");
+
+    getCurrentFrame()._deletionQueue.flush();
 
     ret = vkResetFences(_device.getDevice(), 1, &getCurrentFrame()._renderFence);
     checkVkResult(ret, "Failed to reset fence");
@@ -62,8 +110,7 @@ void Renderer::draw() {
     checkVkResult(ret, "Failed to begin command buffer");
 
     // Transition swapchain image to GENERAL layout for clearing
-    VkImage swapchainImage = _swapchain->getSwapchainImages().at(swapchainImageIndex);
-    transitionImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_UNDEFINED,
+    transitionImage(commandBuffer, _drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED,
                     VK_IMAGE_LAYOUT_GENERAL);
 
     // Clear the swapchain image with an animated color
@@ -76,11 +123,22 @@ void Renderer::draw() {
                                        .baseArrayLayer = 0,
                                        .layerCount = VK_REMAINING_ARRAY_LAYERS};
 
-    vkCmdClearColorImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_GENERAL, &clearValue.color,
-                         1, &clearRange);
+    vkCmdClearColorImage(commandBuffer, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL,
+                         &clearValue.color, 1, &clearRange);
 
     // Transition swapchain image to PRESENT_SRC layout
-    transitionImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_GENERAL,
+    transitionImage(commandBuffer, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL,
+                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+
+    VkImage swapchainImage = _swapchain->getSwapchainImages().at(swapchainImageIndex);
+    transitionImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_UNDEFINED,
+                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    copy_image_to_image(commandBuffer, _drawImage.image, swapchainImage,
+                        {_drawImage.extent.width, _drawImage.extent.height},
+                        _swapchain->getSwapchainExtent());
+
+    transitionImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                     VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     ret = vkEndCommandBuffer(commandBuffer);
@@ -152,6 +210,11 @@ void Renderer::createFrameCommandPools() {
                                            &_frameData.at(i)._commandPool);
         checkVkResult(res, "Failed to create command pool");
 
+        // Register command pool cleanup in main deletion queue
+        _mainDeletionQueue.push([this, i]() {
+            vkDestroyCommandPool(_device.getDevice(), _frameData.at(i)._commandPool, nullptr);
+        });
+
         VkCommandBufferAllocateInfo cmdAllocInfo{.sType =
                                                      VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
                                                  .pNext = nullptr,
@@ -178,14 +241,29 @@ void Renderer::createFrameSyncStructures() {
                                           &_frameData.at(i)._renderFence);
         checkVkResult(fenceRes, "Failed to create render fence");
 
+        // Register fence cleanup in main deletion queue
+        _mainDeletionQueue.push([this, i]() {
+            vkDestroyFence(_device.getDevice(), _frameData.at(i)._renderFence, nullptr);
+        });
+
         VkResult swapchainSemRes =
             vkCreateSemaphore(_device.getDevice(), &semaphoreCreateInfo, nullptr,
                               &_frameData.at(i)._swapchainSemaphore);
         checkVkResult(swapchainSemRes, "Failed to create swapchain semaphore");
 
+        // Register swapchain semaphore cleanup in main deletion queue
+        _mainDeletionQueue.push([this, i]() {
+            vkDestroySemaphore(_device.getDevice(), _frameData.at(i)._swapchainSemaphore, nullptr);
+        });
+
         VkResult renderSemRes = vkCreateSemaphore(_device.getDevice(), &semaphoreCreateInfo,
                                                   nullptr, &_frameData.at(i)._renderSemaphore);
         checkVkResult(renderSemRes, "Failed to create render semaphore");
+
+        // Register render semaphore cleanup in main deletion queue
+        _mainDeletionQueue.push([this, i]() {
+            vkDestroySemaphore(_device.getDevice(), _frameData.at(i)._renderSemaphore, nullptr);
+        });
     }
 }
 
@@ -210,9 +288,9 @@ VkImageMemoryBarrier2 Renderer::createImageBarrier(VkImage image, VkImageLayout 
                                   .image = image,
                                   .subresourceRange = {.aspectMask = getImageAspectMask(newLayout),
                                                        .baseMipLevel = 0,
-                                                       .levelCount = 1,
+                                                       .levelCount = VK_REMAINING_MIP_LEVELS,
                                                        .baseArrayLayer = 0,
-                                                       .layerCount = 1}};
+                                                       .layerCount = VK_REMAINING_ARRAY_LAYERS}};
 
     return barrier;
 }
@@ -232,4 +310,38 @@ void Renderer::transitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout
                              .pImageMemoryBarriers = &imageBarrier};
 
     vkCmdPipelineBarrier2(cmd, &depInfo);
+}
+
+void Renderer::copy_image_to_image(VkCommandBuffer cmd, VkImage source, VkImage destination,
+                                   VkExtent2D srcSize, VkExtent2D dstSize) {
+    VkImageBlit2 blitRegion{.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2, .pNext = nullptr};
+
+    blitRegion.srcOffsets[1].x = static_cast<int32_t>(srcSize.width);
+    blitRegion.srcOffsets[1].y = static_cast<int32_t>(srcSize.height);
+    blitRegion.srcOffsets[1].z = 1;
+
+    blitRegion.dstOffsets[1].x = static_cast<int32_t>(dstSize.width);
+    blitRegion.dstOffsets[1].y = static_cast<int32_t>(dstSize.height);
+    blitRegion.dstOffsets[1].z = 1;
+
+    blitRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    blitRegion.srcSubresource.baseArrayLayer = 0;
+    blitRegion.srcSubresource.layerCount = 1;
+    blitRegion.srcSubresource.mipLevel = 0;
+
+    blitRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    blitRegion.dstSubresource.baseArrayLayer = 0;
+    blitRegion.dstSubresource.layerCount = 1;
+    blitRegion.dstSubresource.mipLevel = 0;
+
+    VkBlitImageInfo2 blitInfo{.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2, .pNext = nullptr};
+    blitInfo.dstImage = destination;
+    blitInfo.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    blitInfo.srcImage = source;
+    blitInfo.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    blitInfo.filter = VK_FILTER_LINEAR;
+    blitInfo.regionCount = 1;
+    blitInfo.pRegions = &blitRegion;
+
+    vkCmdBlitImage2(cmd, &blitInfo);
 }

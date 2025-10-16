@@ -2,8 +2,11 @@
 
 #include <array>
 #include <memory>
+#include <vk_mem_alloc.h>
 
 #include <vulkan/vulkan.h>
+
+#include "DeletionQueue.hpp"
 
 class VulkanDevice;
 class VulkanSwapchain;
@@ -25,6 +28,15 @@ class Renderer {
         VkFence _renderFence;
         VkSemaphore _swapchainSemaphore;
         VkSemaphore _renderSemaphore;
+        DeletionQueue _deletionQueue;
+    };
+
+    struct AllocatedImage {
+        VkImage image;
+        VkImageView imageView;
+        VmaAllocation allocation;
+        VkExtent3D extent;
+        VkFormat format;
     };
 
     static constexpr unsigned int FRAME_OVERLAP = 2;
@@ -42,10 +54,15 @@ class Renderer {
     static VkImageAspectFlags getImageAspectMask(VkImageLayout layout);
     void transitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout oldLayout,
                          VkImageLayout newLayout) const;
+    void copy_image_to_image(VkCommandBuffer cmd, VkImage source, VkImage destination,
+                             VkExtent2D srcSize, VkExtent2D dstSize);
 
     Window& _window;
     VulkanDevice& _device;
     std::unique_ptr<VulkanSwapchain> _swapchain;
     uint64_t _frameNumber;
     std::array<FrameData, FRAME_OVERLAP> _frameData;
+    AllocatedImage _drawImage;
+    VkExtent2D _drawExtent;
+    DeletionQueue _mainDeletionQueue;
 };

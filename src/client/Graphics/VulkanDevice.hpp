@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vk_mem_alloc.h>
+
 #include <SDL3/SDL_video.h>
 #include <vulkan/vulkan.h>
 
@@ -20,6 +22,7 @@ class VulkanDevice {
     [[nodiscard]] VkDevice getDevice() const { return _device; }
     [[nodiscard]] VkQueue getQueue() const { return _graphicsQueue; }
     [[nodiscard]] uint32_t getGraphicsQueueFamily() const { return _graphicsQueueFamily; }
+    [[nodiscard]] VmaAllocator getAllocator() const { return _allocator; }
 
   private:
     VkInstance _instance;
@@ -29,4 +32,5 @@ class VulkanDevice {
     VkDevice _device;
     VkQueue _graphicsQueue;
     uint32_t _graphicsQueueFamily;
+    VmaAllocator _allocator;
 };
