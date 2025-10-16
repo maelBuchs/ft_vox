@@ -44,7 +44,7 @@ class Renderer {
 
     struct ComputeEffect {
         std::string name;
-        std::unique_ptr<Pipeline> pipeline;
+        Pipeline pipeline;
         ComputePushConstants data;
     };
 
@@ -87,6 +87,5 @@ class Renderer {
     VkFence _immFence;
     VkCommandPool _immCommandPool;
     VkCommandBuffer _immCommandBuffer;
-    VkPipelineLayout _trianglePipelineLayout;
-    VkPipeline _trianglePipeline;
+    Pipeline _trianglePipeline;
 };

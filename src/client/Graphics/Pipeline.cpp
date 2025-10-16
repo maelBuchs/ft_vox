@@ -7,86 +7,25 @@
 
 #include "VulkanDevice.hpp"
 
-Pipeline::Pipeline(VulkanDevice& device, std::string_view computeShaderPath) : _device(device) {
-
-    VkDescriptorSetLayoutBinding storageImageBinding{.binding = 0,
-                                                     .descriptorType =
-                                                         VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-                                                     .descriptorCount = 1,
-                                                     .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-                                                     .pImmutableSamplers = nullptr};
-
-    VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .pNext = nullptr,
-        .flags = 0,
-        .bindingCount = 1,
-        .pBindings = &storageImageBinding,
-    };
-
-    if (vkCreateDescriptorSetLayout(_device.getDevice(), &descriptorSetLayoutCreateInfo, nullptr,
-                                    &_descriptorSetLayout) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create descriptor set layout");
-    }
-
-    VkPushConstantRange pushConstant{.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-                                     .offset = 0,
-                                     .size = sizeof(ComputePushConstants)};
-
-    VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .pNext = nullptr,
-        .flags = 0,
-        .setLayoutCount = 1,
-        .pSetLayouts = &_descriptorSetLayout,
-        .pushConstantRangeCount = 1,
-        .pPushConstantRanges = &pushConstant,
-    };
-
-    if (vkCreatePipelineLayout(_device.getDevice(), &pipelineLayoutCreateInfo, nullptr,
-                               &_pipelineLayout) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create pipeline layout");
-    }
-
-    VkShaderModule computeShaderModule = loadShaderModule(_device, computeShaderPath);
-
-    VkPipelineShaderStageCreateInfo shaderStageCreateInfo = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-        .pNext = nullptr,
-        .flags = 0,
-        .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-        .module = computeShaderModule,
-        .pName = "main",
-        .pSpecializationInfo = nullptr,
-    };
-
-    VkComputePipelineCreateInfo pipelineCreateInfo = {
-        .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-        .pNext = nullptr,
-        .flags = 0,
-        .stage = shaderStageCreateInfo,
-        .layout = _pipelineLayout,
-        .basePipelineHandle = VK_NULL_HANDLE,
-        .basePipelineIndex = -1,
-    };
-
-    if (vkCreateComputePipelines(_device.getDevice(), VK_NULL_HANDLE, 1, &pipelineCreateInfo,
-                                 nullptr, &_pipeline) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create compute pipeline");
-    }
-
-    vkDestroyShaderModule(_device.getDevice(), computeShaderModule, nullptr);
+void Pipeline::init(VkPipeline pipeline, VkPipelineLayout layout,
+                    VkDescriptorSetLayout descriptorSetLayout) {
+    _pipeline = pipeline;
+    _pipelineLayout = layout;
+    _descriptorSetLayout = descriptorSetLayout;
 }
 
-Pipeline::~Pipeline() {
+void Pipeline::cleanup(VulkanDevice& device) {
     if (_pipeline != VK_NULL_HANDLE) {
-        vkDestroyPipeline(_device.getDevice(), _pipeline, nullptr);
+        vkDestroyPipeline(device.getDevice(), _pipeline, nullptr);
+        _pipeline = VK_NULL_HANDLE;
     }
     if (_pipelineLayout != VK_NULL_HANDLE) {
-        vkDestroyPipelineLayout(_device.getDevice(), _pipelineLayout, nullptr);
+        vkDestroyPipelineLayout(device.getDevice(), _pipelineLayout, nullptr);
+        _pipelineLayout = VK_NULL_HANDLE;
     }
     if (_descriptorSetLayout != VK_NULL_HANDLE) {
-        vkDestroyDescriptorSetLayout(_device.getDevice(), _descriptorSetLayout, nullptr);
+        vkDestroyDescriptorSetLayout(device.getDevice(), _descriptorSetLayout, nullptr);
+        _descriptorSetLayout = VK_NULL_HANDLE;
     }
 }
 

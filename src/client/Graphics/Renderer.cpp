@@ -12,6 +12,7 @@
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_vulkan.h"
 #include "Pipeline.hpp"
+#include "Pipeline/ComputePipelineBuilder.hpp"
 #include "Pipeline/GraphicsPipelineBuilder.hpp"
 #include "VulkanDevice.hpp"
 #include "VulkanSwapchain.hpp"
@@ -89,22 +90,70 @@ Renderer::Renderer(Window& window, VulkanDevice& device)
                                 nullptr);
     });
 
+    VkDescriptorSetLayoutBinding storageImageBinding{.binding = 0,
+                                                     .descriptorType =
+                                                         VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                                                     .descriptorCount = 1,
+                                                     .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                                                     .pImmutableSamplers = nullptr};
+
+    VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .bindingCount = 1,
+        .pBindings = &storageImageBinding,
+    };
+
+    VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE;
+    if (vkCreateDescriptorSetLayout(_device.getDevice(), &descriptorSetLayoutCreateInfo, nullptr,
+                                    &computeDescriptorSetLayout) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create compute descriptor set layout");
+    }
+
+    _mainDeletionQueue.push([this, computeDescriptorSetLayout]() {
+        vkDestroyDescriptorSetLayout(_device.getDevice(), computeDescriptorSetLayout, nullptr);
+    });
+
     // Create gradient effect
     ComputeEffect gradient;
     gradient.name = "gradient";
-    gradient.pipeline = std::make_unique<Pipeline>(_device, "shaders/gradient.comp.spv");
-    gradient.data.data1 = glm::vec4(1.0F, 0.0F, 0.0F, 1.0F); // Red
-    gradient.data.data2 = glm::vec4(0.0F, 0.0F, 1.0F, 1.0F); // Blue
+    gradient.data.data1 = glm::vec4(1.0F, 0.0F, 0.0F, 1.0F);
+    gradient.data.data2 = glm::vec4(0.0F, 0.0F, 1.0F, 1.0F);
+
+    ComputePipelineBuilder gradientBuilder;
+    gradientBuilder.setShader("shaders/gradient.comp.spv");
+    gradientBuilder.setDescriptorSetLayout(computeDescriptorSetLayout);
+    gradientBuilder.setPushConstantRange(
+        VkPushConstantRange{.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                            .offset = 0,
+                            .size = sizeof(ComputePushConstants)});
+    auto gradientResult = gradientBuilder.build(_device);
+    gradient.pipeline.init(gradientResult.pipeline, gradientResult.layout, VK_NULL_HANDLE);
     _backgroundEffects.push_back(std::move(gradient));
 
     // Create sky effect
     ComputeEffect sky;
     sky.name = "sky";
-    sky.pipeline = std::make_unique<Pipeline>(_device, "shaders/sky.comp.spv");
     sky.data.data1 = glm::vec4(0.1F, 0.2F, 0.4F, 0.97F); // Sky color + star threshold
+
+    ComputePipelineBuilder skyBuilder;
+    skyBuilder.setShader("shaders/sky.comp.spv");
+    skyBuilder.setDescriptorSetLayout(computeDescriptorSetLayout);
+    skyBuilder.setPushConstantRange(VkPushConstantRange{.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                                                        .offset = 0,
+                                                        .size = sizeof(ComputePushConstants)});
+    auto skyResult = skyBuilder.build(_device);
+    sky.pipeline.init(skyResult.pipeline, skyResult.layout, VK_NULL_HANDLE);
     _backgroundEffects.push_back(std::move(sky));
 
-    VkDescriptorSetLayout layout = _backgroundEffects[0].pipeline->getDescriptorSetLayout();
+    _mainDeletionQueue.push([this]() {
+        for (auto& effect : _backgroundEffects) {
+            effect.pipeline.cleanup(_device);
+        }
+    });
+
+    VkDescriptorSetLayout layout = computeDescriptorSetLayout;
     _drawImageDescriptorSet = _globalDescriptorAllocator->allocate(_device, layout);
 
     VkDescriptorImageInfo imgInfo{};
@@ -212,14 +261,13 @@ void Renderer::draw() {
     // Execute compute shader for background
     ComputeEffect& effect = _backgroundEffects[static_cast<size_t>(_currentBackgroundEffect)];
 
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
-                      effect.pipeline->getPipeline());
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, effect.pipeline.getPipeline());
 
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
-                            effect.pipeline->getLayout(), 0, 1, &_drawImageDescriptorSet, 0,
+                            effect.pipeline.getLayout(), 0, 1, &_drawImageDescriptorSet, 0,
                             nullptr);
 
-    vkCmdPushConstants(commandBuffer, effect.pipeline->getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0,
+    vkCmdPushConstants(commandBuffer, effect.pipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0,
                        sizeof(ComputePushConstants), &effect.data);
 
     vkCmdDispatch(commandBuffer, static_cast<uint32_t>(std::ceil(_drawExtent.width / 16.0)),
@@ -569,7 +617,6 @@ void Renderer::initImGui() {
     init_info.ImageCount = 3;
     init_info.UseDynamicRendering = true;
 
-    // Configure dynamic rendering pipeline info
     init_info.PipelineInfoMain.PipelineRenderingCreateInfo.sType =
         VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
     init_info.PipelineInfoMain.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
@@ -579,7 +626,6 @@ void Renderer::initImGui() {
 
     ImGui_ImplVulkan_Init(&init_info);
 
-    // 5. Ajouter le nettoyage à la DeletionQueue
     _mainDeletionQueue.push([this, imguiPool]() {
         ImGui_ImplVulkan_Shutdown();
         ImGui_ImplSDL3_Shutdown();
@@ -603,13 +649,14 @@ void Renderer::initTrianglePipeline() {
                                                   .pushConstantRangeCount = 0,
                                                   .pPushConstantRanges = nullptr};
 
+    VkPipelineLayout trianglePipelineLayout = VK_NULL_HANDLE;
     if (vkCreatePipelineLayout(_device.getDevice(), &pipelineLayoutInfo, nullptr,
-                               &_trianglePipelineLayout) != VK_SUCCESS) {
+                               &trianglePipelineLayout) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create triangle pipeline layout");
     }
 
     GraphicsPipelineBuilder pipelineBuilder;
-    pipelineBuilder.setPipelineLayout(_trianglePipelineLayout);
+    pipelineBuilder.setPipelineLayout(trianglePipelineLayout);
     pipelineBuilder.setShaders(triangleVertexShader, triangleFragShader);
     pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
     pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
@@ -620,15 +667,14 @@ void Renderer::initTrianglePipeline() {
     pipelineBuilder.setColorAttachmentFormat(_drawImage.format);
     pipelineBuilder.setDepthFormat(VK_FORMAT_UNDEFINED);
 
-    _trianglePipeline = pipelineBuilder.build(_device.getDevice());
+    VkPipeline trianglePipeline = pipelineBuilder.build(_device.getDevice());
 
     vkDestroyShaderModule(_device.getDevice(), triangleFragShader, nullptr);
     vkDestroyShaderModule(_device.getDevice(), triangleVertexShader, nullptr);
 
-    _mainDeletionQueue.push([this]() {
-        vkDestroyPipelineLayout(_device.getDevice(), _trianglePipelineLayout, nullptr);
-        vkDestroyPipeline(_device.getDevice(), _trianglePipeline, nullptr);
-    });
+    _trianglePipeline.init(trianglePipeline, trianglePipelineLayout);
+
+    _mainDeletionQueue.push([this]() { _trianglePipeline.cleanup(_device); });
 }
 
 void Renderer::drawGeometry(VkCommandBuffer cmd) {
@@ -657,7 +703,7 @@ void Renderer::drawGeometry(VkCommandBuffer cmd) {
 
     vkCmdBeginRendering(cmd, &renderInfo);
 
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _trianglePipeline);
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _trianglePipeline.getPipeline());
 
     VkViewport viewport{.x = 0.0F,
                         .y = 0.0F,
