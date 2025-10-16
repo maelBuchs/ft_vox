@@ -2,10 +2,12 @@
 
 #include <cmath>
 #include <iostream>
+#include <memory>
 
 #include <vulkan/vulkan.h>
 
 #include "../Core/Window.hpp"
+#include "Pipeline.hpp"
 #include "VulkanDevice.hpp"
 #include "VulkanSwapchain.hpp"
 
@@ -72,6 +74,36 @@ Renderer::Renderer(Window& window, VulkanDevice& device)
 
     createFrameCommandPools();
     createFrameSyncStructures();
+
+    std::vector<DescriptorAllocator::PoolSizeRatio> sizes = {
+        {.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .ratio = 1}};
+
+    _globalDescriptorAllocator = std::make_unique<DescriptorAllocator>(_device, 10, sizes);
+    _mainDeletionQueue.push([&]() {
+        vkDestroyDescriptorPool(_device.getDevice(), _globalDescriptorAllocator->getPool(),
+                                nullptr);
+    });
+
+    _gradientPipeline = std::make_unique<Pipeline>(_device, "shaders/gradient.comp.spv");
+
+    VkDescriptorSetLayout layout = _gradientPipeline->getDescriptorSetLayout();
+    _drawImageDescriptorSet = _globalDescriptorAllocator->allocate(_device, layout);
+
+    VkDescriptorImageInfo imgInfo{};
+    imgInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    imgInfo.imageView = _drawImage.imageView;
+
+    VkWriteDescriptorSet write{};
+    write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write.pNext = nullptr;
+
+    write.dstBinding = 0;
+    write.dstSet = _drawImageDescriptorSet;
+    write.descriptorCount = 1;
+    write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    write.pImageInfo = &imgInfo;
+
+    vkUpdateDescriptorSets(_device.getDevice(), 1, &write, 0, nullptr);
 }
 
 Renderer::~Renderer() {
@@ -89,6 +121,9 @@ void Renderer::draw() {
 
     ret = vkResetFences(_device.getDevice(), 1, &getCurrentFrame()._renderFence);
     checkVkResult(ret, "Failed to reset fence");
+
+    _drawExtent.width = _drawImage.extent.width;
+    _drawExtent.height = _drawImage.extent.height;
 
     // Acquire swapchain image
     uint32_t swapchainImageIndex = 0;
@@ -115,17 +150,27 @@ void Renderer::draw() {
                     VK_IMAGE_LAYOUT_GENERAL);
 
     // Clear the swapchain image with an animated color
-    float flash = std::abs(std::sin(static_cast<float>(_frameNumber) / 120.0F));
-    VkClearValue clearValue{.color = {{0.0F, 0.0F, flash, 1.0F}}};
+    // float flash = std::abs(std::sin(static_cast<float>(_frameNumber) / 120.0F));
+    // VkClearValue clearValue{.color = {{0.0F, 0.0F, flash, 1.0F}}};
 
-    VkImageSubresourceRange clearRange{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                                       .baseMipLevel = 0,
-                                       .levelCount = VK_REMAINING_MIP_LEVELS,
-                                       .baseArrayLayer = 0,
-                                       .layerCount = VK_REMAINING_ARRAY_LAYERS};
+    // VkImageSubresourceRange clearRange{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+    //                                    .baseMipLevel = 0,
+    //                                    .levelCount = VK_REMAINING_MIP_LEVELS,
+    //                                    .baseArrayLayer = 0,
+    //                                    .layerCount = VK_REMAINING_ARRAY_LAYERS};
 
-    vkCmdClearColorImage(commandBuffer, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL,
-                         &clearValue.color, 1, &clearRange);
+    // vkCmdClearColorImage(commandBuffer, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL,
+    //                      &clearValue.color, 1, &clearRange);
+
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+                      _gradientPipeline->getPipeline());
+
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+                            _gradientPipeline->getLayout(), 0, 1, &_drawImageDescriptorSet, 0,
+                            nullptr);
+
+    vkCmdDispatch(commandBuffer, static_cast<uint32_t>(std::ceil(_drawExtent.width / 16.0)),
+                  static_cast<uint32_t>(std::ceil(_drawExtent.height / 16.0)), 1);
 
     // Transition swapchain image to PRESENT_SRC layout
     transitionImage(commandBuffer, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL,

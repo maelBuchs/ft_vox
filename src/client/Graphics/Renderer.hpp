@@ -7,10 +7,12 @@
 #include <vulkan/vulkan.h>
 
 #include "DeletionQueue.hpp"
+#include "DescriptorAllocator.hpp"
 
 class VulkanDevice;
 class VulkanSwapchain;
 class Window;
+class Pipeline;
 
 class Renderer {
   public:
@@ -60,9 +62,12 @@ class Renderer {
     Window& _window;
     VulkanDevice& _device;
     std::unique_ptr<VulkanSwapchain> _swapchain;
+    std::unique_ptr<Pipeline> _gradientPipeline;
+    std::unique_ptr<DescriptorAllocator> _globalDescriptorAllocator;
     uint64_t _frameNumber;
     std::array<FrameData, FRAME_OVERLAP> _frameData;
     AllocatedImage _drawImage;
     VkExtent2D _drawExtent;
     DeletionQueue _mainDeletionQueue;
+    VkDescriptorSet _drawImageDescriptorSet;
 };
