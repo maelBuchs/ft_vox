@@ -9,16 +9,12 @@
 #include <vulkan/vulkan.h>
 
 #include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 
 #include "../Core/Window.hpp"
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_vulkan.h"
 #include "MeshManager.hpp"
-#include "Pipeline.hpp"
-#include "Pipeline/ComputePipelineBuilder.hpp"
-#include "Pipeline/GraphicsPipelineBuilder.hpp"
 #include "VulkanBuffer.hpp"
 #include "VulkanDevice.hpp"
 #include "VulkanSwapchain.hpp"
@@ -38,6 +34,9 @@ Renderer::Renderer(Window& window, VulkanDevice& device)
     VkExtent2D swapchainExtent = _swapchain->getSwapchainExtent();
     createDrawImages(swapchainExtent);
 
+    // Set draw extent to match swapchain
+    _drawExtent = swapchainExtent;
+
     // Register draw and depth images cleanup in main deletion queue
     _mainDeletionQueue.push([this]() { destroyDrawImages(); });
 
@@ -50,63 +49,6 @@ Renderer::Renderer(Window& window, VulkanDevice& device)
     _globalDescriptorAllocator.init(_device.getDevice(), 10, sizes);
     _mainDeletionQueue.push(
         [this]() { _globalDescriptorAllocator.destroyPools(_device.getDevice()); });
-
-    // Create compute descriptor set layout using DescriptorLayoutBuilder
-    DescriptorLayoutBuilder layoutBuilder;
-    layoutBuilder.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-    VkDescriptorSetLayout computeDescriptorSetLayout =
-        layoutBuilder.build(_device.getDevice(), VK_SHADER_STAGE_COMPUTE_BIT);
-
-    _mainDeletionQueue.push([this, computeDescriptorSetLayout]() {
-        vkDestroyDescriptorSetLayout(_device.getDevice(), computeDescriptorSetLayout, nullptr);
-    });
-
-    // Create gradient effect
-    ComputeEffect gradient;
-    gradient.name = "gradient";
-    gradient.data.data1 = glm::vec4(1.0F, 0.0F, 0.0F, 1.0F);
-    gradient.data.data2 = glm::vec4(0.0F, 0.0F, 1.0F, 1.0F);
-
-    ComputePipelineBuilder gradientBuilder;
-    gradientBuilder.setShader("shaders/gradient.comp.spv");
-    gradientBuilder.setDescriptorSetLayout(computeDescriptorSetLayout);
-    gradientBuilder.setPushConstantRange(
-        VkPushConstantRange{.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-                            .offset = 0,
-                            .size = sizeof(ComputePushConstants)});
-    auto gradientResult = gradientBuilder.build(_device);
-    gradient.pipeline.init(gradientResult.pipeline, gradientResult.layout, VK_NULL_HANDLE);
-    _backgroundEffects.push_back(std::move(gradient));
-
-    // Create sky effect
-    ComputeEffect sky;
-    sky.name = "sky";
-    sky.data.data1 = glm::vec4(0.1F, 0.2F, 0.4F, 0.97F); // Sky color + star threshold
-
-    ComputePipelineBuilder skyBuilder;
-    skyBuilder.setShader("shaders/sky.comp.spv");
-    skyBuilder.setDescriptorSetLayout(computeDescriptorSetLayout);
-    skyBuilder.setPushConstantRange(VkPushConstantRange{.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-                                                        .offset = 0,
-                                                        .size = sizeof(ComputePushConstants)});
-    auto skyResult = skyBuilder.build(_device);
-    sky.pipeline.init(skyResult.pipeline, skyResult.layout, VK_NULL_HANDLE);
-    _backgroundEffects.push_back(std::move(sky));
-
-    _mainDeletionQueue.push([this]() {
-        for (auto& effect : _backgroundEffects) {
-            effect.pipeline.cleanup(_device);
-        }
-    });
-
-    VkDescriptorSetLayout layout = computeDescriptorSetLayout;
-    _drawImageDescriptorSet = _globalDescriptorAllocator.allocate(_device.getDevice(), layout);
-
-    // Use DescriptorWriter to update the descriptor set
-    DescriptorWriter writer;
-    writer.writeImage(0, _drawImage.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL,
-                      VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-    writer.updateSet(_device.getDevice(), _drawImageDescriptorSet);
 
     // Initialize per-frame descriptor allocators
     for (size_t i = 0; i < FRAME_OVERLAP; i++) {
@@ -159,15 +101,6 @@ Renderer::Renderer(Window& window, VulkanDevice& device)
         vkDestroyCommandPool(_device.getDevice(), _immCommandPool, nullptr);
     });
 
-    // Initialize triangle pipeline
-    initTrianglePipeline();
-
-    // Initialize mesh pipeline
-    initMeshPipeline();
-
-    // Initialize default mesh data
-    initDefaultData();
-
     // Initialize ImGui - must be last after all Vulkan resources are ready
     initImGui();
 }
@@ -188,16 +121,6 @@ void Renderer::draw() {
 
     ret = vkResetFences(_device.getDevice(), 1, &getCurrentFrame()._renderFence);
     checkVkResult(ret, "Failed to reset fence");
-
-    // Calculate draw extent with render scale
-    _drawExtent.width =
-        static_cast<uint32_t>(static_cast<float>(std::min(_swapchain->getSwapchainExtent().width,
-                                                          _drawImage.extent.width)) *
-                              _renderScale);
-    _drawExtent.height =
-        static_cast<uint32_t>(static_cast<float>(std::min(_swapchain->getSwapchainExtent().height,
-                                                          _drawImage.extent.height)) *
-                              _renderScale);
 
     // Acquire swapchain image
     uint32_t swapchainImageIndex = 0;
@@ -223,35 +146,16 @@ void Renderer::draw() {
     ret = vkBeginCommandBuffer(commandBuffer, &cmdBeginInfo);
     checkVkResult(ret, "Failed to begin command buffer");
 
-    // Transition draw image to GENERAL layout for compute shader
+    // Transition draw image to COLOR_ATTACHMENT_OPTIMAL
     transitionImage(commandBuffer, _drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED,
-                    VK_IMAGE_LAYOUT_GENERAL);
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
     // Transition depth image to DEPTH_ATTACHMENT_OPTIMAL
     transitionImage(commandBuffer, _depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED,
                     VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
-    // Execute compute shader for background
-    ComputeEffect& effect = _backgroundEffects[static_cast<size_t>(_currentBackgroundEffect)];
-
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, effect.pipeline.getPipeline());
-
-    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
-                            effect.pipeline.getLayout(), 0, 1, &_drawImageDescriptorSet, 0,
-                            nullptr);
-
-    vkCmdPushConstants(commandBuffer, effect.pipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0,
-                       sizeof(ComputePushConstants), &effect.data);
-
-    vkCmdDispatch(commandBuffer, static_cast<uint32_t>(std::ceil(_drawExtent.width / 16.0)),
-                  static_cast<uint32_t>(std::ceil(_drawExtent.height / 16.0)), 1);
-
-    // Transition draw image to COLOR_ATTACHMENT_OPTIMAL for triangle rendering
-    transitionImage(commandBuffer, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL,
-                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-
-    // Draw triangle geometry
-    drawGeometry(commandBuffer);
+    // TODO: Render voxel geometry here
+    // For now, we just have a clear color attachment
 
     // Transition draw image to TRANSFER_SRC for copying to swapchain
     transitionImage(commandBuffer, _drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -611,209 +515,6 @@ void Renderer::initImGui() {
     });
 }
 
-void Renderer::initTrianglePipeline() {
-    VkShaderModule triangleFragShader =
-        Pipeline::loadShaderModule(_device, "shaders/colored_triangle.frag.spv");
-    VkShaderModule triangleVertexShader =
-        Pipeline::loadShaderModule(_device, "shaders/colored_triangle.vert.spv");
-
-    VkPipelineLayoutCreateInfo pipelineLayoutInfo{.sType =
-                                                      VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-                                                  .pNext = nullptr,
-                                                  .flags = 0,
-                                                  .setLayoutCount = 0,
-                                                  .pSetLayouts = nullptr,
-                                                  .pushConstantRangeCount = 0,
-                                                  .pPushConstantRanges = nullptr};
-
-    VkPipelineLayout trianglePipelineLayout = VK_NULL_HANDLE;
-    if (vkCreatePipelineLayout(_device.getDevice(), &pipelineLayoutInfo, nullptr,
-                               &trianglePipelineLayout) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create triangle pipeline layout");
-    }
-
-    GraphicsPipelineBuilder pipelineBuilder;
-    pipelineBuilder.setPipelineLayout(trianglePipelineLayout);
-    pipelineBuilder.setShaders(triangleVertexShader, triangleFragShader);
-    pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
-    pipelineBuilder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-    pipelineBuilder.setMultisamplingNone();
-    pipelineBuilder.disableBlending();
-    pipelineBuilder.disableDepthtest();
-    pipelineBuilder.setColorAttachmentFormat(_drawImage.format);
-    pipelineBuilder.setDepthFormat(_depthImage.format);
-
-    VkPipeline trianglePipeline = pipelineBuilder.build(_device.getDevice());
-
-    vkDestroyShaderModule(_device.getDevice(), triangleFragShader, nullptr);
-    vkDestroyShaderModule(_device.getDevice(), triangleVertexShader, nullptr);
-
-    _trianglePipeline.init(trianglePipeline, trianglePipelineLayout);
-
-    _mainDeletionQueue.push([this]() { _trianglePipeline.cleanup(_device); });
-}
-
-void Renderer::drawGeometry(VkCommandBuffer cmd) {
-    VkRenderingAttachmentInfo colorAttachment{.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                                              .pNext = nullptr,
-                                              .imageView = _drawImage.imageView,
-                                              .imageLayout =
-                                                  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                                              .resolveMode = VK_RESOLVE_MODE_NONE,
-                                              .resolveImageView = VK_NULL_HANDLE,
-                                              .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-                                              .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
-                                              .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-                                              .clearValue = {}};
-
-    VkRenderingAttachmentInfo depthAttachment{.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                                              .pNext = nullptr,
-                                              .imageView = _depthImage.imageView,
-                                              .imageLayout =
-                                                  VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-                                              .resolveMode = VK_RESOLVE_MODE_NONE,
-                                              .resolveImageView = VK_NULL_HANDLE,
-                                              .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-                                              .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                                              .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-                                              .clearValue = {.depthStencil = {.depth = 0.0F}}};
-
-    VkRenderingInfo renderInfo{.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-                               .pNext = nullptr,
-                               .flags = 0,
-                               .renderArea = {.offset = {0, 0}, .extent = _drawExtent},
-                               .layerCount = 1,
-                               .viewMask = 0,
-                               .colorAttachmentCount = 1,
-                               .pColorAttachments = &colorAttachment,
-                               .pDepthAttachment = &depthAttachment,
-                               .pStencilAttachment = nullptr};
-
-    vkCmdBeginRendering(cmd, &renderInfo);
-
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _trianglePipeline.getPipeline());
-
-    VkViewport viewport{.x = 0.0F,
-                        .y = 0.0F,
-                        .width = static_cast<float>(_drawExtent.width),
-                        .height = static_cast<float>(_drawExtent.height),
-                        .minDepth = 0.0F,
-                        .maxDepth = 1.0F};
-    vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-    VkRect2D scissor{.offset = {0, 0}, .extent = _drawExtent};
-    vkCmdSetScissor(cmd, 0, 1, &scissor);
-
-    vkCmdDraw(cmd, 3, 1, 0, 0);
-
-    // Draw mesh - set up view/projection matrices
-    glm::mat4 view = glm::translate(glm::mat4(1.0F), glm::vec3{0.0F, 0.0F, -5.0F});
-
-    // Camera projection with reversed Z (far=10000 at depth 0, near=0.1 at depth 1)
-    glm::mat4 projection = glm::perspective(
-        glm::radians(70.0F),
-        static_cast<float>(_drawExtent.width) / static_cast<float>(_drawExtent.height),
-        10000.0F, // "near" in reversed Z (maps to depth 1)
-        0.1F      // "far" in reversed Z (maps to depth 0)
-    );
-
-    // Flip Y to match Vulkan coordinates (Y-down) with GLTF/OpenGL models (Y-up)
-    projection[1][1] *= -1.0F;
-
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline.getPipeline());
-
-    GPUDrawPushConstants pushConstants{};
-    pushConstants.worldMatrix = projection * view;
-    pushConstants.vertexBuffer = _testRectangle.vertexBufferAddress;
-
-    vkCmdPushConstants(cmd, _meshPipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0,
-                       sizeof(GPUDrawPushConstants), &pushConstants);
-    vkCmdBindIndexBuffer(cmd, _testRectangle.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-
-    vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
-
-    vkCmdEndRendering(cmd);
-}
-
-void Renderer::initMeshPipeline() {
-    VkShaderModule triangleFragShader =
-        Pipeline::loadShaderModule(_device, "shaders/colored_triangle.frag.spv");
-    VkShaderModule meshVertexShader =
-        Pipeline::loadShaderModule(_device, "shaders/colored_triangle_mesh.vert.spv");
-
-    VkPushConstantRange bufferRange{.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-                                    .offset = 0,
-                                    .size = sizeof(GPUDrawPushConstants)};
-
-    VkPipelineLayoutCreateInfo pipelineLayoutInfo{.sType =
-                                                      VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-                                                  .pNext = nullptr,
-                                                  .flags = 0,
-                                                  .setLayoutCount = 0,
-                                                  .pSetLayouts = nullptr,
-                                                  .pushConstantRangeCount = 1,
-                                                  .pPushConstantRanges = &bufferRange};
-
-    VkPipelineLayout meshPipelineLayout = VK_NULL_HANDLE;
-    if (vkCreatePipelineLayout(_device.getDevice(), &pipelineLayoutInfo, nullptr,
-                               &meshPipelineLayout) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create mesh pipeline layout");
-    }
-
-    GraphicsPipelineBuilder pipelineBuilder;
-    pipelineBuilder.setPipelineLayout(meshPipelineLayout);
-    pipelineBuilder.setShaders(meshVertexShader, triangleFragShader);
-    pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
-    pipelineBuilder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-    pipelineBuilder.setMultisamplingNone();
-    pipelineBuilder.disableBlending();
-    pipelineBuilder.enableDepthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
-    pipelineBuilder.setColorAttachmentFormat(_drawImage.format);
-    pipelineBuilder.setDepthFormat(_depthImage.format);
-
-    VkPipeline meshPipeline = pipelineBuilder.build(_device.getDevice());
-
-    vkDestroyShaderModule(_device.getDevice(), triangleFragShader, nullptr);
-    vkDestroyShaderModule(_device.getDevice(), meshVertexShader, nullptr);
-
-    _meshPipeline.init(meshPipeline, meshPipelineLayout);
-
-    _mainDeletionQueue.push([this]() { _meshPipeline.cleanup(_device); });
-}
-
-void Renderer::initDefaultData() {
-    std::array<Vertex, 4> rectVertices{};
-
-    rectVertices[0].position = {0.5F, -0.5F, 0.0F};
-    rectVertices[1].position = {0.5F, 0.5F, 0.0F};
-    rectVertices[2].position = {-0.5F, -0.5F, 0.0F};
-    rectVertices[3].position = {-0.5F, 0.5F, 0.0F};
-
-    rectVertices[0].color = {0.0F, 0.0F, 0.0F, 1.0F};
-    rectVertices[1].color = {0.5F, 0.5F, 0.5F, 1.0F};
-    rectVertices[2].color = {1.0F, 0.0F, 0.0F, 1.0F};
-    rectVertices[3].color = {0.0F, 1.0F, 0.0F, 1.0F};
-
-    std::array<uint32_t, 6> rectIndices{};
-
-    rectIndices[0] = 0;
-    rectIndices[1] = 1;
-    rectIndices[2] = 2;
-
-    rectIndices[3] = 2;
-    rectIndices[4] = 1;
-    rectIndices[5] = 3;
-
-    _testRectangle = _meshManager->uploadMesh(
-        rectIndices, rectVertices,
-        [this](std::function<void(VkCommandBuffer)>&& func) { immediateSubmit(std::move(func)); });
-
-    // Delete the rectangle data on engine shutdown
-    _mainDeletionQueue.push([this]() { _meshManager->destroyMesh(_testRectangle); });
-}
-
 void Renderer::createDrawImages(VkExtent2D extent) {
     // Setup draw image
     _drawImage.extent = {.width = extent.width, .height = extent.height, .depth = 1};
@@ -923,12 +624,6 @@ void Renderer::resizeSwapchain() {
     // Recreate draw and depth images with new size
     VkExtent2D newExtent = _swapchain->getSwapchainExtent();
     createDrawImages(newExtent);
-
-    // Update descriptor set with new draw image using DescriptorWriter
-    DescriptorWriter writer;
-    writer.writeImage(0, _drawImage.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL,
-                      VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-    writer.updateSet(_device.getDevice(), _drawImageDescriptorSet);
 
     // Clear the resize flag
     _resizeRequested = false;
