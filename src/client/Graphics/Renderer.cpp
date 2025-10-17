@@ -111,7 +111,7 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
     _cameraFront = glm::normalize(chunkCenter - _cameraPos); // Look at chunk center
     _cameraUp = glm::vec3(0.0F, 1.0F, 0.0F);
 
-    // Initialize voxel pipeline
+    // Initialize voxel pipeline (both filled and wireframe)
     initVoxelPipeline();
 
     // Create test chunk
@@ -143,10 +143,6 @@ void Renderer::draw() {
     ret =
         vkAcquireNextImageKHR(_device.getDevice(), _swapchain->getSwapchain(), VULKAN_TIMEOUT_NS,
                               getCurrentFrame()._swapchainSemaphore, nullptr, &swapchainImageIndex);
-    if (ret == VK_ERROR_OUT_OF_DATE_KHR) {
-        _resizeRequested = true;
-        return;
-    }
     checkVkResult(ret, "Failed to acquire next image");
 
     // Reset and begin command buffer
@@ -265,11 +261,7 @@ void Renderer::draw() {
                                  .pImageIndices = &swapchainImageIndex,
                                  .pResults = nullptr};
     ret = vkQueuePresentKHR(_device.getQueue(), &presentInfo);
-    if (ret == VK_ERROR_OUT_OF_DATE_KHR) {
-        _resizeRequested = true;
-    } else {
-        checkVkResult(ret, "Failed to present swapchain image");
-    }
+    checkVkResult(ret, "Failed to present swapchain image");
 
     _frameNumber++;
 }
@@ -648,8 +640,8 @@ void Renderer::resizeSwapchain() {
     VkExtent2D newExtent = _swapchain->getSwapchainExtent();
     createDrawImages(newExtent);
 
-    // Clear the resize flag
-    _resizeRequested = false;
+    // Update draw extent to match new size
+    _drawExtent = newExtent;
 }
 
 void Renderer::initVoxelPipeline() {
@@ -675,19 +667,6 @@ void Renderer::initVoxelPipeline() {
         throw std::runtime_error("Failed to create voxel pipeline layout");
     }
 
-    GraphicsPipelineBuilder pipelineBuilder;
-    pipelineBuilder.setPipelineLayout(voxelPipelineLayout);
-    pipelineBuilder.setShaders(voxelVertexShader, voxelFragShader);
-    pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
-    pipelineBuilder.setCullMode(VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_CLOCKWISE);
-    pipelineBuilder.setMultisamplingNone();
-    pipelineBuilder.disableBlending();
-    pipelineBuilder.enableDepthtest(true, VK_COMPARE_OP_LESS);
-    pipelineBuilder.setColorAttachmentFormat(_drawImage.format);
-    pipelineBuilder.setDepthFormat(_depthImage.format);
-
-    // Configure vertex input matching VoxelVertex layout
     VkVertexInputBindingDescription binding{
         .binding = 0, .stride = sizeof(VoxelVertex), .inputRate = VK_VERTEX_INPUT_RATE_VERTEX};
 
@@ -713,16 +692,54 @@ void Renderer::initVoxelPipeline() {
          .format = VK_FORMAT_R32G32B32A32_SFLOAT,
          .offset = offsetof(VoxelVertex, color)}};
 
+    // Create FILLED pipeline
+    GraphicsPipelineBuilder pipelineBuilder;
+    pipelineBuilder.setPipelineLayout(voxelPipelineLayout);
+    pipelineBuilder.setShaders(voxelVertexShader, voxelFragShader);
+    pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
+    pipelineBuilder.setCullMode(VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_CLOCKWISE);
+    pipelineBuilder.setMultisamplingNone();
+    pipelineBuilder.disableBlending();
+    pipelineBuilder.enableDepthtest(true, VK_COMPARE_OP_LESS);
+    pipelineBuilder.setColorAttachmentFormat(_drawImage.format);
+    pipelineBuilder.setDepthFormat(_depthImage.format);
     pipelineBuilder.setVertexInputState({binding}, attributes);
 
     VkPipeline voxelPipeline = pipelineBuilder.build(_device.getDevice());
+    _voxelPipeline.init(voxelPipeline, voxelPipelineLayout);
+
+    // Create WIREFRAME pipeline
+    pipelineBuilder.clear();
+    pipelineBuilder.setPipelineLayout(voxelPipelineLayout);
+    pipelineBuilder.setShaders(voxelVertexShader, voxelFragShader);
+    pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_LINE); // WIREFRAME MODE
+    pipelineBuilder.setCullMode(VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_CLOCKWISE);
+    pipelineBuilder.setMultisamplingNone();
+    pipelineBuilder.disableBlending();
+    pipelineBuilder.enableDepthtest(true, VK_COMPARE_OP_LESS);
+    pipelineBuilder.setColorAttachmentFormat(_drawImage.format);
+    pipelineBuilder.setDepthFormat(_depthImage.format);
+
+    pipelineBuilder.setVertexInputState({binding}, attributes);
+
+    VkPipeline voxelWireframePipeline = pipelineBuilder.build(_device.getDevice());
+
+    // Both pipelines share the same layout
+    _voxelWireframePipeline.init(voxelWireframePipeline, voxelPipelineLayout);
 
     vkDestroyShaderModule(_device.getDevice(), voxelFragShader, nullptr);
     vkDestroyShaderModule(_device.getDevice(), voxelVertexShader, nullptr);
 
-    _voxelPipeline.init(voxelPipeline, voxelPipelineLayout);
-
-    _mainDeletionQueue.push([this]() { _voxelPipeline.cleanup(_device); });
+    // Register cleanup for both pipelines
+    _mainDeletionQueue.push([this]() {
+        _voxelPipeline.cleanup(_device);
+        // Only destroy the pipeline object, not the layout (already cleaned up above)
+        if (_voxelWireframePipeline.getPipeline() != VK_NULL_HANDLE) {
+            vkDestroyPipeline(_device.getDevice(), _voxelWireframePipeline.getPipeline(), nullptr);
+        }
+    });
 }
 
 void Renderer::initTestChunk() {
@@ -823,8 +840,10 @@ void Renderer::drawVoxels(VkCommandBuffer cmd) {
     VkRect2D scissor{.offset = {0, 0}, .extent = _drawExtent};
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-    // Bind pipeline
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _voxelPipeline.getPipeline());
+    // Bind pipeline based on wireframe mode
+    VkPipeline activePipeline =
+        _wireframeMode ? _voxelWireframePipeline.getPipeline() : _voxelPipeline.getPipeline();
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, activePipeline);
 
     // Set up view-projection matrix
     glm::mat4 view = glm::lookAt(_cameraPos, _cameraPos + _cameraFront, _cameraUp);
@@ -907,5 +926,17 @@ void Renderer::updateCamera(float deltaTime) {
     }
     if (keystate[SDL_SCANCODE_LSHIFT]) {
         _cameraPos -= _cameraUp * velocity;
+    }
+}
+
+void Renderer::updateFPS(float deltaTime) {
+    _frameTimeAccumulator += deltaTime;
+    _frameCount++;
+
+    // Update FPS every 0.5 seconds
+    if (_frameTimeAccumulator >= 0.5F) {
+        _fps = static_cast<float>(_frameCount) / _frameTimeAccumulator;
+        _frameTimeAccumulator = 0.0F;
+        _frameCount = 0;
     }
 }

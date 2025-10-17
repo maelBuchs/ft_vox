@@ -52,13 +52,16 @@ class Renderer {
     static constexpr uint64_t VULKAN_TIMEOUT_NS = 1000000000; // 1 second
 
     FrameData& getCurrentFrame() { return _frameData.at(_frameNumber % FRAME_OVERLAP); }
-    [[nodiscard]] bool isResizeRequested() const { return _resizeRequested; }
     void draw();
     void resizeSwapchain();
     void processInput(SDL_Event& event);
     void updateCamera(float deltaTime);
+    void updateFPS(float deltaTime);
     void createDrawImages(VkExtent2D extent);
     void destroyDrawImages();
+    void setWireframeMode(bool enabled) { _wireframeMode = enabled; }
+    [[nodiscard]] bool isWireframeMode() const { return _wireframeMode; }
+    [[nodiscard]] float getFPS() const { return _fps; }
 
   private:
     static void checkVkResult(VkResult result, const char* errorMessage);
@@ -94,6 +97,7 @@ class Renderer {
     std::unique_ptr<VulkanBuffer> _bufferManager;
     std::unique_ptr<MeshManager> _meshManager;
     Pipeline _voxelPipeline;
+    Pipeline _voxelWireframePipeline;
     GPUMeshBuffers _testChunkMesh;
     std::unique_ptr<Chunk> _testChunk;
     glm::vec3 _cameraPos;
@@ -105,8 +109,12 @@ class Renderer {
     float _cameraSensitivity = 0.050f;
     float _cameraYaw = -90.0f;
     float _cameraPitch = 0.0f;
-    bool _firstMouse = true;
-    float _lastMouseX = 400.0f;
-    float _lastMouseY = 300.0f;
-    bool _resizeRequested = false;
+
+    // Wireframe mode
+    bool _wireframeMode = false;
+
+    // FPS tracking
+    float _fps = 0.0f;
+    float _frameTimeAccumulator = 0.0f;
+    int _frameCount = 0;
 };

@@ -40,9 +40,14 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
         .descriptorIndexing = VK_TRUE,
         .bufferDeviceAddress = VK_TRUE};
 
+    // Enable wireframe support
+    VkPhysicalDeviceFeatures deviceFeatures{};
+    deviceFeatures.fillModeNonSolid = VK_TRUE;
+
     vkb::PhysicalDeviceSelector selector{vkbInstance, _surface};
 
     auto physicalDeviceRet = selector.set_minimum_version(1, 3)
+                                 .set_required_features(deviceFeatures)
                                  .set_required_features_12(features12)
                                  .set_required_features_13(features13)
                                  .select();
