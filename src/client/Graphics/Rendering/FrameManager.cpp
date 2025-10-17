@@ -2,7 +2,7 @@
 
 #include <stdexcept>
 
-#include "VulkanDevice.hpp"
+#include "../Core/VulkanDevice.hpp"
 
 FrameManager::FrameManager(VulkanDevice& device) : _device(device), _frameNumber(0) {
     createFrameCommandPools();

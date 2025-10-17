@@ -2,8 +2,9 @@
 
 #include <stdexcept>
 
-#include "../Pipeline.hpp"
-#include "../VulkanDevice.hpp"
+#include "../Core/VulkanDevice.hpp"
+#include "Pipeline.hpp"
+
 
 ComputePipelineBuilder::ComputePipelineBuilder() {
     clear();

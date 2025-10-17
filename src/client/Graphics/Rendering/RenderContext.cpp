@@ -2,7 +2,7 @@
 
 #include <stdexcept>
 
-#include "VulkanDevice.hpp"
+#include "../Core/VulkanDevice.hpp"
 
 RenderContext::RenderContext(VulkanDevice& device) : _device(device), _drawExtent{} {
     createImmediateSubmitStructures();

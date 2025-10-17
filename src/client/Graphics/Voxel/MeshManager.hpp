@@ -5,8 +5,9 @@
 
 #include <vulkan/vulkan.h>
 
+#include "../Core/VulkanTypes.hpp"
 #include "common/Types/RenderTypes.hpp"
-#include "VulkanTypes.hpp"
+
 
 class VulkanDevice;
 class VulkanBuffer;

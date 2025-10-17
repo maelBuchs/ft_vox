@@ -4,8 +4,8 @@
 
 #include <vulkan/vulkan.h>
 
-#include "DeletionQueue.hpp"
-#include "DescriptorAllocator.hpp"
+#include "../Core/DeletionQueue.hpp"
+#include "../Memory/DescriptorAllocator.hpp"
 
 class VulkanDevice;
 

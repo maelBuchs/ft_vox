@@ -8,17 +8,18 @@
 
 #include "../Core/Window.hpp"
 #include "../Game/Camera.hpp"
-#include "CommandExecutor.hpp"
-#include "FrameManager.hpp"
+#include "Core/VulkanBuffer.hpp"
+#include "Core/VulkanDevice.hpp"
+#include "Core/VulkanSwapchain.hpp"
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_vulkan.h"
-#include "MeshManager.hpp"
-#include "RenderContext.hpp"
-#include "VoxelRenderer.hpp"
-#include "VulkanBuffer.hpp"
-#include "VulkanDevice.hpp"
-#include "VulkanSwapchain.hpp"
+#include "Rendering/CommandExecutor.hpp"
+#include "Rendering/FrameManager.hpp"
+#include "Rendering/RenderContext.hpp"
+#include "Voxel/MeshManager.hpp"
+#include "Voxel/VoxelRenderer.hpp"
+
 
 Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry)
     : _window(window), _device(device), _blockRegistry(registry) {

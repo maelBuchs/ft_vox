@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <vector>
 
-#include "VulkanDevice.hpp"
+#include "../Core/VulkanDevice.hpp"
 
 void Pipeline::init(VkPipeline pipeline, VkPipelineLayout layout,
                     VkDescriptorSetLayout descriptorSetLayout) {

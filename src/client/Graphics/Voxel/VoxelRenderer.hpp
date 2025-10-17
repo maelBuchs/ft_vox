@@ -4,8 +4,9 @@
 
 #include <vulkan/vulkan.h>
 
-#include "Pipeline.hpp"
-#include "VulkanTypes.hpp"
+#include "../Core/VulkanTypes.hpp"
+#include "../Pipeline/Pipeline.hpp"
+
 
 class VulkanDevice;
 class MeshManager;

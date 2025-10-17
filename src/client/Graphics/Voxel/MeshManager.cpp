@@ -2,8 +2,8 @@
 
 #include <cstring>
 
-#include "VulkanBuffer.hpp"
-#include "VulkanDevice.hpp"
+#include "../Core/VulkanBuffer.hpp"
+#include "../Core/VulkanDevice.hpp"
 
 MeshManager::MeshManager(VulkanDevice& device, VulkanBuffer& bufferManager)
     : _device(device), _bufferManager(bufferManager) {}

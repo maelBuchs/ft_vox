@@ -4,7 +4,7 @@
 
 #include <vulkan/vulkan.h>
 
-#include "DeletionQueue.hpp"
+#include "../Core/DeletionQueue.hpp"
 
 class VulkanDevice;
 

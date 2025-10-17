@@ -7,8 +7,8 @@
 #include <SDL3/SDL_events.h>
 
 #include "client/Game/Camera.hpp"
+#include "client/Graphics/Core/VulkanDevice.hpp"
 #include "client/Graphics/Renderer.hpp"
-#include "client/Graphics/VulkanDevice.hpp"
 #include "common/World/BlockRegistry.hpp"
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"

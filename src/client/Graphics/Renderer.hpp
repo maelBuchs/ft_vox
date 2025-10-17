@@ -8,10 +8,10 @@
 #include <vulkan/vulkan.h>
 
 #include "common/Types/RenderTypes.hpp"
-#include "DeletionQueue.hpp"
-#include "DescriptorAllocator.hpp"
-#include "Pipeline.hpp"
-#include "VulkanTypes.hpp"
+#include "Core/DeletionQueue.hpp"
+#include "Core/VulkanTypes.hpp"
+#include "Memory/DescriptorAllocator.hpp"
+#include "Pipeline/Pipeline.hpp"
 
 class VulkanDevice;
 class VulkanSwapchain;

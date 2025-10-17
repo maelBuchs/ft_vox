@@ -5,14 +5,15 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include "../Game/Camera.hpp"
-#include "CommandExecutor.hpp"
+#include "../../Game/Camera.hpp"
+#include "../Core/VulkanDevice.hpp"
+#include "../Pipeline/GraphicsPipelineBuilder.hpp"
+#include "../Rendering/CommandExecutor.hpp"
+#include "../Rendering/RenderContext.hpp"
 #include "common/World/Chunk.hpp"
 #include "common/World/ChunkMesh.hpp"
 #include "MeshManager.hpp"
-#include "Pipeline/GraphicsPipelineBuilder.hpp"
-#include "RenderContext.hpp"
-#include "VulkanDevice.hpp"
+
 
 VoxelRenderer::VoxelRenderer(VulkanDevice& device, MeshManager& meshManager,
                              BlockRegistry& registry, RenderContext& context,
