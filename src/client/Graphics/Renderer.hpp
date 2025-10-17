@@ -86,6 +86,7 @@ class Renderer {
     uint64_t _frameNumber;
     std::array<FrameData, FRAME_OVERLAP> _frameData;
     AllocatedImage _drawImage;
+    AllocatedImage _depthImage;
     VkExtent2D _drawExtent;
     DeletionQueue _mainDeletionQueue;
     VkDescriptorSet _drawImageDescriptorSet;

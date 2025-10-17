@@ -7,6 +7,9 @@
 
 #include <vulkan/vulkan.h>
 
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
 #include "../Core/Window.hpp"
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
@@ -18,7 +21,6 @@
 #include "VulkanBuffer.hpp"
 #include "VulkanDevice.hpp"
 #include "VulkanSwapchain.hpp"
-
 
 Renderer::Renderer(Window& window, VulkanDevice& device)
     : _window(window), _device(device), _frameNumber(0) {
@@ -76,11 +78,55 @@ Renderer::Renderer(Window& window, VulkanDevice& device)
     ret = vkCreateImageView(_device.getDevice(), &rview_info, nullptr, &_drawImage.imageView);
     checkVkResult(ret, "Failed to create draw image view");
 
-    // Register draw image cleanup in main deletion queue
+    // Create depth image
+    _depthImage.format = VK_FORMAT_D32_SFLOAT;
+    _depthImage.extent = _drawImage.extent;
+
+    VkImageUsageFlags depthImageUsages = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+
+    VkImageCreateInfo dimg_info{.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                                .pNext = nullptr,
+                                .flags = 0,
+                                .imageType = VK_IMAGE_TYPE_2D,
+                                .format = _depthImage.format,
+                                .extent = _depthImage.extent,
+                                .mipLevels = 1,
+                                .arrayLayers = 1,
+                                .samples = VK_SAMPLE_COUNT_1_BIT,
+                                .tiling = VK_IMAGE_TILING_OPTIMAL,
+                                .usage = depthImageUsages};
+
+    ret = vmaCreateImage(_device.getAllocator(), &dimg_info, &rimg_allocinfo, &_depthImage.image,
+                         &_depthImage.allocation, nullptr);
+    checkVkResult(ret, "Failed to create depth image");
+
+    VkImageViewCreateInfo dview_info{.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                                     .pNext = nullptr,
+                                     .flags = 0,
+                                     .image = _depthImage.image,
+                                     .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                                     .format = _depthImage.format,
+                                     .subresourceRange = {
+                                         .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                                         .baseMipLevel = 0,
+                                         .levelCount = 1,
+                                         .baseArrayLayer = 0,
+                                         .layerCount = 1,
+                                     }};
+
+    ret = vkCreateImageView(_device.getDevice(), &dview_info, nullptr, &_depthImage.imageView);
+    checkVkResult(ret, "Failed to create depth image view");
+
+    // Register draw and depth image cleanup in main deletion queue
     _mainDeletionQueue.push(
         [this]() { vkDestroyImageView(_device.getDevice(), _drawImage.imageView, nullptr); });
     _mainDeletionQueue.push([this]() {
         vmaDestroyImage(_device.getAllocator(), _drawImage.image, _drawImage.allocation);
+    });
+    _mainDeletionQueue.push(
+        [this]() { vkDestroyImageView(_device.getDevice(), _depthImage.imageView, nullptr); });
+    _mainDeletionQueue.push([this]() {
+        vmaDestroyImage(_device.getAllocator(), _depthImage.image, _depthImage.allocation);
     });
 
     createFrameCommandPools();
@@ -268,6 +314,10 @@ void Renderer::draw() {
     // Transition draw image to GENERAL layout for compute shader
     transitionImage(commandBuffer, _drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED,
                     VK_IMAGE_LAYOUT_GENERAL);
+
+    // Transition depth image to DEPTH_ATTACHMENT_OPTIMAL
+    transitionImage(commandBuffer, _depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED,
+                    VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
     // Execute compute shader for background
     ComputeEffect& effect = _backgroundEffects[static_cast<size_t>(_currentBackgroundEffect)];
@@ -676,7 +726,7 @@ void Renderer::initTrianglePipeline() {
     pipelineBuilder.disableBlending();
     pipelineBuilder.disableDepthtest();
     pipelineBuilder.setColorAttachmentFormat(_drawImage.format);
-    pipelineBuilder.setDepthFormat(VK_FORMAT_UNDEFINED);
+    pipelineBuilder.setDepthFormat(_depthImage.format);
 
     VkPipeline trianglePipeline = pipelineBuilder.build(_device.getDevice());
 
@@ -701,6 +751,18 @@ void Renderer::drawGeometry(VkCommandBuffer cmd) {
                                               .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
                                               .clearValue = {}};
 
+    VkRenderingAttachmentInfo depthAttachment{.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                                              .pNext = nullptr,
+                                              .imageView = _depthImage.imageView,
+                                              .imageLayout =
+                                                  VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                                              .resolveMode = VK_RESOLVE_MODE_NONE,
+                                              .resolveImageView = VK_NULL_HANDLE,
+                                              .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                                              .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                                              .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                                              .clearValue = {.depthStencil = {.depth = 0.0F}}};
+
     VkRenderingInfo renderInfo{.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
                                .pNext = nullptr,
                                .flags = 0,
@@ -709,7 +771,7 @@ void Renderer::drawGeometry(VkCommandBuffer cmd) {
                                .viewMask = 0,
                                .colorAttachmentCount = 1,
                                .pColorAttachments = &colorAttachment,
-                               .pDepthAttachment = nullptr,
+                               .pDepthAttachment = &depthAttachment,
                                .pStencilAttachment = nullptr};
 
     vkCmdBeginRendering(cmd, &renderInfo);
@@ -729,11 +791,24 @@ void Renderer::drawGeometry(VkCommandBuffer cmd) {
 
     vkCmdDraw(cmd, 3, 1, 0, 0);
 
-    // Draw mesh
+    // Draw mesh - set up view/projection matrices
+    glm::mat4 view = glm::translate(glm::mat4(1.0F), glm::vec3{0.0F, 0.0F, -5.0F});
+
+    // Camera projection with reversed Z (far=10000 at depth 0, near=0.1 at depth 1)
+    glm::mat4 projection = glm::perspective(
+        glm::radians(70.0F),
+        static_cast<float>(_drawExtent.width) / static_cast<float>(_drawExtent.height),
+        10000.0F, // "near" in reversed Z (maps to depth 1)
+        0.1F      // "far" in reversed Z (maps to depth 0)
+    );
+
+    // Flip Y to match Vulkan coordinates (Y-down) with GLTF/OpenGL models (Y-up)
+    projection[1][1] *= -1.0F;
+
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline.getPipeline());
 
     GPUDrawPushConstants pushConstants{};
-    pushConstants.worldMatrix = glm::mat4{1.0F};
+    pushConstants.worldMatrix = projection * view;
     pushConstants.vertexBuffer = _testRectangle.vertexBufferAddress;
 
     vkCmdPushConstants(cmd, _meshPipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0,
@@ -778,9 +853,9 @@ void Renderer::initMeshPipeline() {
     pipelineBuilder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
     pipelineBuilder.setMultisamplingNone();
     pipelineBuilder.disableBlending();
-    pipelineBuilder.disableDepthtest();
+    pipelineBuilder.enableDepthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
     pipelineBuilder.setColorAttachmentFormat(_drawImage.format);
-    pipelineBuilder.setDepthFormat(VK_FORMAT_UNDEFINED);
+    pipelineBuilder.setDepthFormat(_depthImage.format);
 
     VkPipeline meshPipeline = pipelineBuilder.build(_device.getDevice());
 

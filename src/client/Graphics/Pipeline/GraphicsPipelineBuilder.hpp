@@ -23,6 +23,9 @@ class GraphicsPipelineBuilder {
     void setColorAttachmentFormat(VkFormat format);
     void setDepthFormat(VkFormat format);
     void disableDepthtest();
+    void enableDepthtest(bool depthWriteEnable, VkCompareOp compareOp);
+    void enableBlendingAdditive();
+    void enableBlendingAlphablend();
     void setPipelineLayout(VkPipelineLayout layout);
 
     VkPipeline build(VkDevice device);
