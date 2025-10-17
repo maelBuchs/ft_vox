@@ -5,19 +5,16 @@
 #include <iostream>
 #include <memory>
 
+#include <SDL3/SDL.h>
 #include <vulkan/vulkan.h>
 
 #include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 
 #include "../Core/Window.hpp"
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_vulkan.h"
 #include "MeshManager.hpp"
-#include "Pipeline.hpp"
-#include "Pipeline/ComputePipelineBuilder.hpp"
-#include "Pipeline/GraphicsPipelineBuilder.hpp"
 #include "VulkanBuffer.hpp"
 #include "VulkanDevice.hpp"
 #include "VulkanSwapchain.hpp"
@@ -32,196 +29,41 @@ Renderer::Renderer(Window& window, VulkanDevice& device)
         std::cerr << "Failed to create VulkanSwapchain: " << e.what() << "\n";
         throw;
     }
+
+    // Create draw and depth images
     VkExtent2D swapchainExtent = _swapchain->getSwapchainExtent();
-    _drawImage.extent = {
-        .width = swapchainExtent.width, .height = swapchainExtent.height, .depth = 1};
-    _drawImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+    createDrawImages(swapchainExtent);
 
-    VkImageUsageFlags drawImageUsages{VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-                                      VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
-                                      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT};
+    // Set draw extent to match swapchain
+    _drawExtent = swapchainExtent;
 
-    VkImageCreateInfo rimg_info{.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-                                .pNext = nullptr,
-                                .flags = 0,
-                                .imageType = VK_IMAGE_TYPE_2D,
-                                .format = _drawImage.format,
-                                .extent = _drawImage.extent,
-                                .mipLevels = 1,
-                                .arrayLayers = 1,
-                                .samples = VK_SAMPLE_COUNT_1_BIT,
-                                .tiling = VK_IMAGE_TILING_OPTIMAL,
-                                .usage = drawImageUsages};
-
-    VmaAllocationCreateInfo rimg_allocinfo{
-        .usage = VMA_MEMORY_USAGE_GPU_ONLY,
-        .requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)};
-
-    VkResult ret = vmaCreateImage(_device.getAllocator(), &rimg_info, &rimg_allocinfo,
-                                  &_drawImage.image, &_drawImage.allocation, nullptr);
-    checkVkResult(ret, "Failed to create draw image");
-
-    VkImageViewCreateInfo rview_info{.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-                                     .pNext = nullptr,
-                                     .flags = 0,
-                                     .image = _drawImage.image,
-                                     .viewType = VK_IMAGE_VIEW_TYPE_2D,
-                                     .format = _drawImage.format,
-                                     .subresourceRange = {
-                                         .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                                         .baseMipLevel = 0,
-                                         .levelCount = 1,
-                                         .baseArrayLayer = 0,
-                                         .layerCount = 1,
-                                     }};
-
-    ret = vkCreateImageView(_device.getDevice(), &rview_info, nullptr, &_drawImage.imageView);
-    checkVkResult(ret, "Failed to create draw image view");
-
-    // Create depth image
-    _depthImage.format = VK_FORMAT_D32_SFLOAT;
-    _depthImage.extent = _drawImage.extent;
-
-    VkImageUsageFlags depthImageUsages = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-
-    VkImageCreateInfo dimg_info{.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-                                .pNext = nullptr,
-                                .flags = 0,
-                                .imageType = VK_IMAGE_TYPE_2D,
-                                .format = _depthImage.format,
-                                .extent = _depthImage.extent,
-                                .mipLevels = 1,
-                                .arrayLayers = 1,
-                                .samples = VK_SAMPLE_COUNT_1_BIT,
-                                .tiling = VK_IMAGE_TILING_OPTIMAL,
-                                .usage = depthImageUsages};
-
-    ret = vmaCreateImage(_device.getAllocator(), &dimg_info, &rimg_allocinfo, &_depthImage.image,
-                         &_depthImage.allocation, nullptr);
-    checkVkResult(ret, "Failed to create depth image");
-
-    VkImageViewCreateInfo dview_info{.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-                                     .pNext = nullptr,
-                                     .flags = 0,
-                                     .image = _depthImage.image,
-                                     .viewType = VK_IMAGE_VIEW_TYPE_2D,
-                                     .format = _depthImage.format,
-                                     .subresourceRange = {
-                                         .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-                                         .baseMipLevel = 0,
-                                         .levelCount = 1,
-                                         .baseArrayLayer = 0,
-                                         .layerCount = 1,
-                                     }};
-
-    ret = vkCreateImageView(_device.getDevice(), &dview_info, nullptr, &_depthImage.imageView);
-    checkVkResult(ret, "Failed to create depth image view");
-
-    // Register draw and depth image cleanup in main deletion queue
-    _mainDeletionQueue.push(
-        [this]() { vkDestroyImageView(_device.getDevice(), _drawImage.imageView, nullptr); });
-    _mainDeletionQueue.push([this]() {
-        vmaDestroyImage(_device.getAllocator(), _drawImage.image, _drawImage.allocation);
-    });
-    _mainDeletionQueue.push(
-        [this]() { vkDestroyImageView(_device.getDevice(), _depthImage.imageView, nullptr); });
-    _mainDeletionQueue.push([this]() {
-        vmaDestroyImage(_device.getAllocator(), _depthImage.image, _depthImage.allocation);
-    });
+    // Register draw and depth images cleanup in main deletion queue
+    _mainDeletionQueue.push([this]() { destroyDrawImages(); });
 
     createFrameCommandPools();
     createFrameSyncStructures();
 
-    std::vector<DescriptorAllocator::PoolSizeRatio> sizes = {
-        {.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .ratio = 1}};
+    std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes = {
+        {.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .ratio = 1.0F}};
 
-    _globalDescriptorAllocator = std::make_unique<DescriptorAllocator>(_device, 10, sizes);
-    _mainDeletionQueue.push([&]() {
-        vkDestroyDescriptorPool(_device.getDevice(), _globalDescriptorAllocator->getPool(),
-                                nullptr);
-    });
+    _globalDescriptorAllocator.init(_device.getDevice(), 10, sizes);
+    _mainDeletionQueue.push(
+        [this]() { _globalDescriptorAllocator.destroyPools(_device.getDevice()); });
 
-    VkDescriptorSetLayoutBinding storageImageBinding{.binding = 0,
-                                                     .descriptorType =
-                                                         VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-                                                     .descriptorCount = 1,
-                                                     .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-                                                     .pImmutableSamplers = nullptr};
+    // Initialize per-frame descriptor allocators
+    for (size_t i = 0; i < FRAME_OVERLAP; i++) {
+        std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> frameSizes = {
+            {.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .ratio = 3.0F},
+            {.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .ratio = 3.0F},
+            {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .ratio = 3.0F},
+            {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .ratio = 4.0F},
+        };
 
-    VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .pNext = nullptr,
-        .flags = 0,
-        .bindingCount = 1,
-        .pBindings = &storageImageBinding,
-    };
+        _frameData[i]._frameDescriptors.init(_device.getDevice(), 1000, frameSizes);
 
-    VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE;
-    if (vkCreateDescriptorSetLayout(_device.getDevice(), &descriptorSetLayoutCreateInfo, nullptr,
-                                    &computeDescriptorSetLayout) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create compute descriptor set layout");
+        _mainDeletionQueue.push(
+            [this, i]() { _frameData[i]._frameDescriptors.destroyPools(_device.getDevice()); });
     }
-
-    _mainDeletionQueue.push([this, computeDescriptorSetLayout]() {
-        vkDestroyDescriptorSetLayout(_device.getDevice(), computeDescriptorSetLayout, nullptr);
-    });
-
-    // Create gradient effect
-    ComputeEffect gradient;
-    gradient.name = "gradient";
-    gradient.data.data1 = glm::vec4(1.0F, 0.0F, 0.0F, 1.0F);
-    gradient.data.data2 = glm::vec4(0.0F, 0.0F, 1.0F, 1.0F);
-
-    ComputePipelineBuilder gradientBuilder;
-    gradientBuilder.setShader("shaders/gradient.comp.spv");
-    gradientBuilder.setDescriptorSetLayout(computeDescriptorSetLayout);
-    gradientBuilder.setPushConstantRange(
-        VkPushConstantRange{.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-                            .offset = 0,
-                            .size = sizeof(ComputePushConstants)});
-    auto gradientResult = gradientBuilder.build(_device);
-    gradient.pipeline.init(gradientResult.pipeline, gradientResult.layout, VK_NULL_HANDLE);
-    _backgroundEffects.push_back(std::move(gradient));
-
-    // Create sky effect
-    ComputeEffect sky;
-    sky.name = "sky";
-    sky.data.data1 = glm::vec4(0.1F, 0.2F, 0.4F, 0.97F); // Sky color + star threshold
-
-    ComputePipelineBuilder skyBuilder;
-    skyBuilder.setShader("shaders/sky.comp.spv");
-    skyBuilder.setDescriptorSetLayout(computeDescriptorSetLayout);
-    skyBuilder.setPushConstantRange(VkPushConstantRange{.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-                                                        .offset = 0,
-                                                        .size = sizeof(ComputePushConstants)});
-    auto skyResult = skyBuilder.build(_device);
-    sky.pipeline.init(skyResult.pipeline, skyResult.layout, VK_NULL_HANDLE);
-    _backgroundEffects.push_back(std::move(sky));
-
-    _mainDeletionQueue.push([this]() {
-        for (auto& effect : _backgroundEffects) {
-            effect.pipeline.cleanup(_device);
-        }
-    });
-
-    VkDescriptorSetLayout layout = computeDescriptorSetLayout;
-    _drawImageDescriptorSet = _globalDescriptorAllocator->allocate(_device, layout);
-
-    VkDescriptorImageInfo imgInfo{};
-    imgInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-    imgInfo.imageView = _drawImage.imageView;
-
-    VkWriteDescriptorSet write{};
-    write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    write.pNext = nullptr;
-
-    write.dstBinding = 0;
-    write.dstSet = _drawImageDescriptorSet;
-    write.descriptorCount = 1;
-    write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    write.pImageInfo = &imgInfo;
-
-    vkUpdateDescriptorSets(_device.getDevice(), 1, &write, 0, nullptr);
 
     VkCommandPoolCreateInfo immCommandPoolInfo{
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -259,15 +101,6 @@ Renderer::Renderer(Window& window, VulkanDevice& device)
         vkDestroyCommandPool(_device.getDevice(), _immCommandPool, nullptr);
     });
 
-    // Initialize triangle pipeline
-    initTrianglePipeline();
-
-    // Initialize mesh pipeline
-    initMeshPipeline();
-
-    // Initialize default mesh data
-    initDefaultData();
-
     // Initialize ImGui - must be last after all Vulkan resources are ready
     initImGui();
 }
@@ -284,18 +117,20 @@ void Renderer::draw() {
     checkVkResult(ret, "Failed to wait for fence");
 
     getCurrentFrame()._deletionQueue.flush();
+    getCurrentFrame()._frameDescriptors.clearPools(_device.getDevice());
 
     ret = vkResetFences(_device.getDevice(), 1, &getCurrentFrame()._renderFence);
     checkVkResult(ret, "Failed to reset fence");
-
-    _drawExtent.width = _drawImage.extent.width;
-    _drawExtent.height = _drawImage.extent.height;
 
     // Acquire swapchain image
     uint32_t swapchainImageIndex = 0;
     ret =
         vkAcquireNextImageKHR(_device.getDevice(), _swapchain->getSwapchain(), VULKAN_TIMEOUT_NS,
                               getCurrentFrame()._swapchainSemaphore, nullptr, &swapchainImageIndex);
+    if (ret == VK_ERROR_OUT_OF_DATE_KHR) {
+        _resizeRequested = true;
+        return;
+    }
     checkVkResult(ret, "Failed to acquire next image");
 
     // Reset and begin command buffer
@@ -311,35 +146,16 @@ void Renderer::draw() {
     ret = vkBeginCommandBuffer(commandBuffer, &cmdBeginInfo);
     checkVkResult(ret, "Failed to begin command buffer");
 
-    // Transition draw image to GENERAL layout for compute shader
+    // Transition draw image to COLOR_ATTACHMENT_OPTIMAL
     transitionImage(commandBuffer, _drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED,
-                    VK_IMAGE_LAYOUT_GENERAL);
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
     // Transition depth image to DEPTH_ATTACHMENT_OPTIMAL
     transitionImage(commandBuffer, _depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED,
                     VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
-    // Execute compute shader for background
-    ComputeEffect& effect = _backgroundEffects[static_cast<size_t>(_currentBackgroundEffect)];
-
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, effect.pipeline.getPipeline());
-
-    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
-                            effect.pipeline.getLayout(), 0, 1, &_drawImageDescriptorSet, 0,
-                            nullptr);
-
-    vkCmdPushConstants(commandBuffer, effect.pipeline.getLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0,
-                       sizeof(ComputePushConstants), &effect.data);
-
-    vkCmdDispatch(commandBuffer, static_cast<uint32_t>(std::ceil(_drawExtent.width / 16.0)),
-                  static_cast<uint32_t>(std::ceil(_drawExtent.height / 16.0)), 1);
-
-    // Transition draw image to COLOR_ATTACHMENT_OPTIMAL for triangle rendering
-    transitionImage(commandBuffer, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL,
-                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-
-    // Draw triangle geometry
-    drawGeometry(commandBuffer);
+    // TODO: Render voxel geometry here
+    // For now, we just have a clear color attachment
 
     // Transition draw image to TRANSFER_SRC for copying to swapchain
     transitionImage(commandBuffer, _drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -426,7 +242,11 @@ void Renderer::draw() {
                                  .pImageIndices = &swapchainImageIndex,
                                  .pResults = nullptr};
     ret = vkQueuePresentKHR(_device.getQueue(), &presentInfo);
-    checkVkResult(ret, "Failed to present swapchain image");
+    if (ret == VK_ERROR_OUT_OF_DATE_KHR) {
+        _resizeRequested = true;
+    } else {
+        checkVkResult(ret, "Failed to present swapchain image");
+    }
 
     _frameNumber++;
 }
@@ -695,205 +515,116 @@ void Renderer::initImGui() {
     });
 }
 
-void Renderer::initTrianglePipeline() {
-    VkShaderModule triangleFragShader =
-        Pipeline::loadShaderModule(_device, "shaders/colored_triangle.frag.spv");
-    VkShaderModule triangleVertexShader =
-        Pipeline::loadShaderModule(_device, "shaders/colored_triangle.vert.spv");
+void Renderer::createDrawImages(VkExtent2D extent) {
+    // Setup draw image
+    _drawImage.extent = {.width = extent.width, .height = extent.height, .depth = 1};
+    _drawImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
 
-    VkPipelineLayoutCreateInfo pipelineLayoutInfo{.sType =
-                                                      VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-                                                  .pNext = nullptr,
-                                                  .flags = 0,
-                                                  .setLayoutCount = 0,
-                                                  .pSetLayouts = nullptr,
-                                                  .pushConstantRangeCount = 0,
-                                                  .pPushConstantRanges = nullptr};
+    VkImageUsageFlags drawImageUsages{VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                                      VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
+                                      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT};
 
-    VkPipelineLayout trianglePipelineLayout = VK_NULL_HANDLE;
-    if (vkCreatePipelineLayout(_device.getDevice(), &pipelineLayoutInfo, nullptr,
-                               &trianglePipelineLayout) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create triangle pipeline layout");
-    }
+    VkImageCreateInfo rimg_info{.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                                .pNext = nullptr,
+                                .flags = 0,
+                                .imageType = VK_IMAGE_TYPE_2D,
+                                .format = _drawImage.format,
+                                .extent = _drawImage.extent,
+                                .mipLevels = 1,
+                                .arrayLayers = 1,
+                                .samples = VK_SAMPLE_COUNT_1_BIT,
+                                .tiling = VK_IMAGE_TILING_OPTIMAL,
+                                .usage = drawImageUsages};
 
-    GraphicsPipelineBuilder pipelineBuilder;
-    pipelineBuilder.setPipelineLayout(trianglePipelineLayout);
-    pipelineBuilder.setShaders(triangleVertexShader, triangleFragShader);
-    pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
-    pipelineBuilder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-    pipelineBuilder.setMultisamplingNone();
-    pipelineBuilder.disableBlending();
-    pipelineBuilder.disableDepthtest();
-    pipelineBuilder.setColorAttachmentFormat(_drawImage.format);
-    pipelineBuilder.setDepthFormat(_depthImage.format);
+    VmaAllocationCreateInfo rimg_allocinfo{
+        .usage = VMA_MEMORY_USAGE_GPU_ONLY,
+        .requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)};
 
-    VkPipeline trianglePipeline = pipelineBuilder.build(_device.getDevice());
+    VkResult ret = vmaCreateImage(_device.getAllocator(), &rimg_info, &rimg_allocinfo,
+                                  &_drawImage.image, &_drawImage.allocation, nullptr);
+    checkVkResult(ret, "Failed to create draw image");
 
-    vkDestroyShaderModule(_device.getDevice(), triangleFragShader, nullptr);
-    vkDestroyShaderModule(_device.getDevice(), triangleVertexShader, nullptr);
+    VkImageViewCreateInfo rview_info{.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                                     .pNext = nullptr,
+                                     .flags = 0,
+                                     .image = _drawImage.image,
+                                     .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                                     .format = _drawImage.format,
+                                     .subresourceRange = {
+                                         .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                                         .baseMipLevel = 0,
+                                         .levelCount = 1,
+                                         .baseArrayLayer = 0,
+                                         .layerCount = 1,
+                                     }};
 
-    _trianglePipeline.init(trianglePipeline, trianglePipelineLayout);
+    ret = vkCreateImageView(_device.getDevice(), &rview_info, nullptr, &_drawImage.imageView);
+    checkVkResult(ret, "Failed to create draw image view");
 
-    _mainDeletionQueue.push([this]() { _trianglePipeline.cleanup(_device); });
+    // Setup depth image
+    _depthImage.format = VK_FORMAT_D32_SFLOAT;
+    _depthImage.extent = _drawImage.extent;
+
+    VkImageUsageFlags depthImageUsages = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+
+    VkImageCreateInfo dimg_info{.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                                .pNext = nullptr,
+                                .flags = 0,
+                                .imageType = VK_IMAGE_TYPE_2D,
+                                .format = _depthImage.format,
+                                .extent = _depthImage.extent,
+                                .mipLevels = 1,
+                                .arrayLayers = 1,
+                                .samples = VK_SAMPLE_COUNT_1_BIT,
+                                .tiling = VK_IMAGE_TILING_OPTIMAL,
+                                .usage = depthImageUsages};
+
+    ret = vmaCreateImage(_device.getAllocator(), &dimg_info, &rimg_allocinfo, &_depthImage.image,
+                         &_depthImage.allocation, nullptr);
+    checkVkResult(ret, "Failed to create depth image");
+
+    VkImageViewCreateInfo dview_info{.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                                     .pNext = nullptr,
+                                     .flags = 0,
+                                     .image = _depthImage.image,
+                                     .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                                     .format = _depthImage.format,
+                                     .subresourceRange = {
+                                         .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                                         .baseMipLevel = 0,
+                                         .levelCount = 1,
+                                         .baseArrayLayer = 0,
+                                         .layerCount = 1,
+                                     }};
+
+    ret = vkCreateImageView(_device.getDevice(), &dview_info, nullptr, &_depthImage.imageView);
+    checkVkResult(ret, "Failed to create depth image view");
 }
 
-void Renderer::drawGeometry(VkCommandBuffer cmd) {
-    VkRenderingAttachmentInfo colorAttachment{.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                                              .pNext = nullptr,
-                                              .imageView = _drawImage.imageView,
-                                              .imageLayout =
-                                                  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                                              .resolveMode = VK_RESOLVE_MODE_NONE,
-                                              .resolveImageView = VK_NULL_HANDLE,
-                                              .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-                                              .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
-                                              .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-                                              .clearValue = {}};
-
-    VkRenderingAttachmentInfo depthAttachment{.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                                              .pNext = nullptr,
-                                              .imageView = _depthImage.imageView,
-                                              .imageLayout =
-                                                  VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-                                              .resolveMode = VK_RESOLVE_MODE_NONE,
-                                              .resolveImageView = VK_NULL_HANDLE,
-                                              .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-                                              .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                                              .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-                                              .clearValue = {.depthStencil = {.depth = 0.0F}}};
-
-    VkRenderingInfo renderInfo{.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-                               .pNext = nullptr,
-                               .flags = 0,
-                               .renderArea = {.offset = {0, 0}, .extent = _drawExtent},
-                               .layerCount = 1,
-                               .viewMask = 0,
-                               .colorAttachmentCount = 1,
-                               .pColorAttachments = &colorAttachment,
-                               .pDepthAttachment = &depthAttachment,
-                               .pStencilAttachment = nullptr};
-
-    vkCmdBeginRendering(cmd, &renderInfo);
-
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _trianglePipeline.getPipeline());
-
-    VkViewport viewport{.x = 0.0F,
-                        .y = 0.0F,
-                        .width = static_cast<float>(_drawExtent.width),
-                        .height = static_cast<float>(_drawExtent.height),
-                        .minDepth = 0.0F,
-                        .maxDepth = 1.0F};
-    vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-    VkRect2D scissor{.offset = {0, 0}, .extent = _drawExtent};
-    vkCmdSetScissor(cmd, 0, 1, &scissor);
-
-    vkCmdDraw(cmd, 3, 1, 0, 0);
-
-    // Draw mesh - set up view/projection matrices
-    glm::mat4 view = glm::translate(glm::mat4(1.0F), glm::vec3{0.0F, 0.0F, -5.0F});
-
-    // Camera projection with reversed Z (far=10000 at depth 0, near=0.1 at depth 1)
-    glm::mat4 projection = glm::perspective(
-        glm::radians(70.0F),
-        static_cast<float>(_drawExtent.width) / static_cast<float>(_drawExtent.height),
-        10000.0F, // "near" in reversed Z (maps to depth 1)
-        0.1F      // "far" in reversed Z (maps to depth 0)
-    );
-
-    // Flip Y to match Vulkan coordinates (Y-down) with GLTF/OpenGL models (Y-up)
-    projection[1][1] *= -1.0F;
-
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline.getPipeline());
-
-    GPUDrawPushConstants pushConstants{};
-    pushConstants.worldMatrix = projection * view;
-    pushConstants.vertexBuffer = _testRectangle.vertexBufferAddress;
-
-    vkCmdPushConstants(cmd, _meshPipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0,
-                       sizeof(GPUDrawPushConstants), &pushConstants);
-    vkCmdBindIndexBuffer(cmd, _testRectangle.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-
-    vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
-
-    vkCmdEndRendering(cmd);
+void Renderer::destroyDrawImages() {
+    vkDestroyImageView(_device.getDevice(), _drawImage.imageView, nullptr);
+    vmaDestroyImage(_device.getAllocator(), _drawImage.image, _drawImage.allocation);
+    vkDestroyImageView(_device.getDevice(), _depthImage.imageView, nullptr);
+    vmaDestroyImage(_device.getAllocator(), _depthImage.image, _depthImage.allocation);
 }
 
-void Renderer::initMeshPipeline() {
-    VkShaderModule triangleFragShader =
-        Pipeline::loadShaderModule(_device, "shaders/colored_triangle.frag.spv");
-    VkShaderModule meshVertexShader =
-        Pipeline::loadShaderModule(_device, "shaders/colored_triangle_mesh.vert.spv");
+void Renderer::resizeSwapchain() {
+    // Wait for all GPU operations to complete
+    vkDeviceWaitIdle(_device.getDevice());
 
-    VkPushConstantRange bufferRange{.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-                                    .offset = 0,
-                                    .size = sizeof(GPUDrawPushConstants)};
+    // Destroy old images
+    destroyDrawImages();
 
-    VkPipelineLayoutCreateInfo pipelineLayoutInfo{.sType =
-                                                      VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-                                                  .pNext = nullptr,
-                                                  .flags = 0,
-                                                  .setLayoutCount = 0,
-                                                  .pSetLayouts = nullptr,
-                                                  .pushConstantRangeCount = 1,
-                                                  .pPushConstantRanges = &bufferRange};
+    // Destroy old swapchain
+    _swapchain.reset();
 
-    VkPipelineLayout meshPipelineLayout = VK_NULL_HANDLE;
-    if (vkCreatePipelineLayout(_device.getDevice(), &pipelineLayoutInfo, nullptr,
-                               &meshPipelineLayout) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create mesh pipeline layout");
-    }
+    // Recreate swapchain with new size
+    _swapchain = std::make_unique<VulkanSwapchain>(_window, _device);
 
-    GraphicsPipelineBuilder pipelineBuilder;
-    pipelineBuilder.setPipelineLayout(meshPipelineLayout);
-    pipelineBuilder.setShaders(meshVertexShader, triangleFragShader);
-    pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
-    pipelineBuilder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-    pipelineBuilder.setMultisamplingNone();
-    pipelineBuilder.disableBlending();
-    pipelineBuilder.enableDepthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
-    pipelineBuilder.setColorAttachmentFormat(_drawImage.format);
-    pipelineBuilder.setDepthFormat(_depthImage.format);
+    // Recreate draw and depth images with new size
+    VkExtent2D newExtent = _swapchain->getSwapchainExtent();
+    createDrawImages(newExtent);
 
-    VkPipeline meshPipeline = pipelineBuilder.build(_device.getDevice());
-
-    vkDestroyShaderModule(_device.getDevice(), triangleFragShader, nullptr);
-    vkDestroyShaderModule(_device.getDevice(), meshVertexShader, nullptr);
-
-    _meshPipeline.init(meshPipeline, meshPipelineLayout);
-
-    _mainDeletionQueue.push([this]() { _meshPipeline.cleanup(_device); });
-}
-
-void Renderer::initDefaultData() {
-    std::array<Vertex, 4> rectVertices{};
-
-    rectVertices[0].position = {0.5F, -0.5F, 0.0F};
-    rectVertices[1].position = {0.5F, 0.5F, 0.0F};
-    rectVertices[2].position = {-0.5F, -0.5F, 0.0F};
-    rectVertices[3].position = {-0.5F, 0.5F, 0.0F};
-
-    rectVertices[0].color = {0.0F, 0.0F, 0.0F, 1.0F};
-    rectVertices[1].color = {0.5F, 0.5F, 0.5F, 1.0F};
-    rectVertices[2].color = {1.0F, 0.0F, 0.0F, 1.0F};
-    rectVertices[3].color = {0.0F, 1.0F, 0.0F, 1.0F};
-
-    std::array<uint32_t, 6> rectIndices{};
-
-    rectIndices[0] = 0;
-    rectIndices[1] = 1;
-    rectIndices[2] = 2;
-
-    rectIndices[3] = 2;
-    rectIndices[4] = 1;
-    rectIndices[5] = 3;
-
-    _testRectangle = _meshManager->uploadMesh(
-        rectIndices, rectVertices,
-        [this](std::function<void(VkCommandBuffer)>&& func) { immediateSubmit(std::move(func)); });
-
-    // Delete the rectangle data on engine shutdown
-    _mainDeletionQueue.push([this]() { _meshManager->destroyMesh(_testRectangle); });
+    // Clear the resize flag
+    _resizeRequested = false;
 }

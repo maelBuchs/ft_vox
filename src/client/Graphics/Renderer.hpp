@@ -2,15 +2,12 @@
 
 #include <array>
 #include <memory>
-#include <string>
 #include <vk_mem_alloc.h>
 
 #include <vulkan/vulkan.h>
 
 #include "DeletionQueue.hpp"
 #include "DescriptorAllocator.hpp"
-#include "Pipeline.hpp"
-#include "VulkanTypes.hpp"
 
 class VulkanDevice;
 class VulkanSwapchain;
@@ -35,6 +32,7 @@ class Renderer {
         VkSemaphore _swapchainSemaphore{};
         VkSemaphore _renderSemaphore{};
         DeletionQueue _deletionQueue;
+        DescriptorAllocatorGrowable _frameDescriptors;
     };
 
     struct AllocatedImage {
@@ -45,19 +43,13 @@ class Renderer {
         VkFormat format;
     };
 
-    struct ComputeEffect {
-        std::string name;
-        Pipeline pipeline;
-        ComputePushConstants data;
-    };
-
     static constexpr unsigned int FRAME_OVERLAP = 2;
     static constexpr uint64_t VULKAN_TIMEOUT_NS = 1000000000; // 1 second
 
     FrameData& getCurrentFrame() { return _frameData.at(_frameNumber % FRAME_OVERLAP); }
-    [[nodiscard]] std::vector<ComputeEffect>& getBackgroundEffects() { return _backgroundEffects; }
-    [[nodiscard]] int& getCurrentBackgroundEffect() { return _currentBackgroundEffect; }
+    [[nodiscard]] bool isResizeRequested() const { return _resizeRequested; }
     void draw();
+    void resizeSwapchain();
 
   private:
     static void checkVkResult(VkResult result, const char* errorMessage);
@@ -72,30 +64,23 @@ class Renderer {
                              VkExtent2D srcSize, VkExtent2D dstSize);
     void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
     void initImGui();
-    void initTrianglePipeline();
-    void initMeshPipeline();
-    void initDefaultData();
-    void drawGeometry(VkCommandBuffer cmd);
+    void createDrawImages(VkExtent2D extent);
+    void destroyDrawImages();
 
     Window& _window;
     VulkanDevice& _device;
     std::unique_ptr<VulkanSwapchain> _swapchain;
-    std::vector<ComputeEffect> _backgroundEffects;
-    int _currentBackgroundEffect = 0;
-    std::unique_ptr<DescriptorAllocator> _globalDescriptorAllocator;
+    DescriptorAllocatorGrowable _globalDescriptorAllocator;
     uint64_t _frameNumber;
     std::array<FrameData, FRAME_OVERLAP> _frameData;
     AllocatedImage _drawImage;
     AllocatedImage _depthImage;
     VkExtent2D _drawExtent;
     DeletionQueue _mainDeletionQueue;
-    VkDescriptorSet _drawImageDescriptorSet;
     VkFence _immFence;
     VkCommandPool _immCommandPool;
     VkCommandBuffer _immCommandBuffer;
-    Pipeline _trianglePipeline;
-    Pipeline _meshPipeline;
     std::unique_ptr<VulkanBuffer> _bufferManager;
     std::unique_ptr<MeshManager> _meshManager;
-    GPUMeshBuffers _testRectangle;
+    bool _resizeRequested = false;
 };
