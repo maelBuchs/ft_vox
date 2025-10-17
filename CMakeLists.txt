@@ -199,7 +199,7 @@ target_link_libraries(ft_vox PRIVATE imgui)
 target_link_libraries(ft_vox PRIVATE nlohmann_json::nlohmann_json)
 
 # Link libraries to server
-target_link_libraries(ft_vox_server PRIVATE glm::glm)
+target_link_libraries(ft_vox_server PRIVATE glm::glm nlohmann_json::nlohmann_json)
 
 # --- Compilation Flags ---
 

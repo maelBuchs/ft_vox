@@ -32,3 +32,10 @@ struct GPUDrawPushConstants {
     glm::mat4 worldMatrix;
     VkDeviceAddress vertexBuffer;
 };
+
+// push constants for chunk/voxel rendering
+struct ChunkPushConstants {
+    glm::mat4 viewProjection;
+    glm::vec3 chunkWorldPos;
+    float padding; // Align to 16 bytes
+};

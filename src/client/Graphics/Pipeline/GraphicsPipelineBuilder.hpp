@@ -27,11 +27,15 @@ class GraphicsPipelineBuilder {
     void enableBlendingAdditive();
     void enableBlendingAlphablend();
     void setPipelineLayout(VkPipelineLayout layout);
+    void setVertexInputState(const std::vector<VkVertexInputBindingDescription>& bindings,
+                             const std::vector<VkVertexInputAttributeDescription>& attributes);
 
     VkPipeline build(VkDevice device);
 
   private:
     std::vector<VkPipelineShaderStageCreateInfo> _shaderStages;
+    std::vector<VkVertexInputBindingDescription> _vertexBindings;
+    std::vector<VkVertexInputAttributeDescription> _vertexAttributes;
 
     VkPipelineInputAssemblyStateCreateInfo _inputAssembly;
     VkPipelineRasterizationStateCreateInfo _rasterizer;

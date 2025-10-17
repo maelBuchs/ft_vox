@@ -153,6 +153,13 @@ void GraphicsPipelineBuilder::setPipelineLayout(VkPipelineLayout layout) {
     _pipelineLayout = layout;
 }
 
+void GraphicsPipelineBuilder::setVertexInputState(
+    const std::vector<VkVertexInputBindingDescription>& bindings,
+    const std::vector<VkVertexInputAttributeDescription>& attributes) {
+    _vertexBindings = bindings;
+    _vertexAttributes = attributes;
+}
+
 VkPipeline GraphicsPipelineBuilder::build(VkDevice device) {
 
     VkPipelineViewportStateCreateInfo viewportState = {
@@ -172,7 +179,13 @@ VkPipeline GraphicsPipelineBuilder::build(VkDevice device) {
     };
 
     VkPipelineVertexInputStateCreateInfo _vertexInputInfo = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .vertexBindingDescriptionCount = static_cast<uint32_t>(_vertexBindings.size()),
+        .pVertexBindingDescriptions = _vertexBindings.empty() ? nullptr : _vertexBindings.data(),
+        .vertexAttributeDescriptionCount = static_cast<uint32_t>(_vertexAttributes.size()),
+        .pVertexAttributeDescriptions =
+            _vertexAttributes.empty() ? nullptr : _vertexAttributes.data()};
 
     VkGraphicsPipelineCreateInfo pipelineInfo = {
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,

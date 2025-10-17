@@ -66,12 +66,12 @@ class BlockRegistry {
     BlockRegistry(BlockRegistry&&) = delete;
     BlockRegistry& operator=(BlockRegistry&&) = delete;
 
-    std::string getName(int id) { return _blocks_data[id].name; }
-    bool isDisplayable(int id) { return _blocks_data[id].isDisplayable; }
-    bool isSolid(int id) { return _blocks_data[id].isSolid; }
-    bool isTransparent(int id) { return _blocks_data[id].isTransparent; }
-    bool isFluid(int id) { return _blocks_data[id].isFluid; }
-    bool isFlammable(int id) { return _blocks_data[id].isFlammable; }
+    std::string getName(int id) const { return _blocks_data[id].name; }
+    bool isDisplayable(int id) const { return _blocks_data[id].isDisplayable; }
+    bool isSolid(int id) const { return _blocks_data[id].isSolid; }
+    bool isTransparent(int id) const { return _blocks_data[id].isTransparent; }
+    bool isFluid(int id) const { return _blocks_data[id].isFluid; }
+    bool isFlammable(int id) const { return _blocks_data[id].isFlammable; }
 
   private:
     std::vector<BlockData> _blocks_data{MAX_BLOCKS};

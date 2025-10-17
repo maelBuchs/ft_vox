@@ -9,18 +9,22 @@
 #include <vulkan/vulkan.h>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include "../Core/Window.hpp"
+#include "common/World/Chunk.hpp"
+#include "common/World/ChunkMesh.hpp"
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_vulkan.h"
 #include "MeshManager.hpp"
+#include "Pipeline/GraphicsPipelineBuilder.hpp"
 #include "VulkanBuffer.hpp"
 #include "VulkanDevice.hpp"
 #include "VulkanSwapchain.hpp"
 
-Renderer::Renderer(Window& window, VulkanDevice& device)
-    : _window(window), _device(device), _frameNumber(0) {
+Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry)
+    : _window(window), _device(device), _blockRegistry(registry), _frameNumber(0) {
     try {
         _swapchain = std::make_unique<VulkanSwapchain>(window, device);
         _bufferManager = std::make_unique<VulkanBuffer>(device);
@@ -101,6 +105,18 @@ Renderer::Renderer(Window& window, VulkanDevice& device)
         vkDestroyCommandPool(_device.getDevice(), _immCommandPool, nullptr);
     });
 
+    // Initialize camera - angled view to see 3D perspective (corner view)
+    _cameraPos = glm::vec3(30.0F, 20.0F, 30.0F);             // Positioned at an angle
+    glm::vec3 chunkCenter = glm::vec3(8.0F, 8.0F, 8.0F);     // Center of 16x16x16 chunk
+    _cameraFront = glm::normalize(chunkCenter - _cameraPos); // Look at chunk center
+    _cameraUp = glm::vec3(0.0F, 1.0F, 0.0F);
+
+    // Initialize voxel pipeline
+    initVoxelPipeline();
+
+    // Create test chunk
+    initTestChunk();
+
     // Initialize ImGui - must be last after all Vulkan resources are ready
     initImGui();
 }
@@ -151,11 +167,18 @@ void Renderer::draw() {
                     VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
     // Transition depth image to DEPTH_ATTACHMENT_OPTIMAL
-    transitionImage(commandBuffer, _depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED,
-                    VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+    // Note: Only transition from UNDEFINED on first use, afterwards it stays in
+    // DEPTH_ATTACHMENT_OPTIMAL
+    static bool firstFrame = true;
+    if (firstFrame) {
+        transitionImage(commandBuffer, _depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED,
+                        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+        firstFrame = false;
+    }
+    // Depth image stays in DEPTH_ATTACHMENT_OPTIMAL between frames
 
-    // TODO: Render voxel geometry here
-    // For now, we just have a clear color attachment
+    // Render voxel geometry
+    drawVoxels(commandBuffer);
 
     // Transition draw image to TRANSFER_SRC for copying to swapchain
     transitionImage(commandBuffer, _drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -627,4 +650,262 @@ void Renderer::resizeSwapchain() {
 
     // Clear the resize flag
     _resizeRequested = false;
+}
+
+void Renderer::initVoxelPipeline() {
+    VkShaderModule voxelFragShader = Pipeline::loadShaderModule(_device, "shaders/voxel.frag.spv");
+    VkShaderModule voxelVertexShader =
+        Pipeline::loadShaderModule(_device, "shaders/voxel.vert.spv");
+
+    VkPushConstantRange pushConstantRange{
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT, .offset = 0, .size = sizeof(ChunkPushConstants)};
+
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{.sType =
+                                                      VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                                                  .pNext = nullptr,
+                                                  .flags = 0,
+                                                  .setLayoutCount = 0,
+                                                  .pSetLayouts = nullptr,
+                                                  .pushConstantRangeCount = 1,
+                                                  .pPushConstantRanges = &pushConstantRange};
+
+    VkPipelineLayout voxelPipelineLayout = VK_NULL_HANDLE;
+    if (vkCreatePipelineLayout(_device.getDevice(), &pipelineLayoutInfo, nullptr,
+                               &voxelPipelineLayout) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create voxel pipeline layout");
+    }
+
+    GraphicsPipelineBuilder pipelineBuilder;
+    pipelineBuilder.setPipelineLayout(voxelPipelineLayout);
+    pipelineBuilder.setShaders(voxelVertexShader, voxelFragShader);
+    pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
+    pipelineBuilder.setCullMode(VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_CLOCKWISE);
+    pipelineBuilder.setMultisamplingNone();
+    pipelineBuilder.disableBlending();
+    pipelineBuilder.enableDepthtest(true, VK_COMPARE_OP_LESS);
+    pipelineBuilder.setColorAttachmentFormat(_drawImage.format);
+    pipelineBuilder.setDepthFormat(_depthImage.format);
+
+    // Configure vertex input matching VoxelVertex layout
+    VkVertexInputBindingDescription binding{
+        .binding = 0, .stride = sizeof(VoxelVertex), .inputRate = VK_VERTEX_INPUT_RATE_VERTEX};
+
+    std::vector<VkVertexInputAttributeDescription> attributes{
+        {.location = 0,
+         .binding = 0,
+         .format = VK_FORMAT_R32G32B32_SFLOAT,
+         .offset = offsetof(VoxelVertex, position)},
+        {.location = 1,
+         .binding = 0,
+         .format = VK_FORMAT_R32_SFLOAT,
+         .offset = offsetof(VoxelVertex, uv_x)},
+        {.location = 2,
+         .binding = 0,
+         .format = VK_FORMAT_R32G32B32_SFLOAT,
+         .offset = offsetof(VoxelVertex, normal)},
+        {.location = 3,
+         .binding = 0,
+         .format = VK_FORMAT_R32_SFLOAT,
+         .offset = offsetof(VoxelVertex, uv_y)},
+        {.location = 4,
+         .binding = 0,
+         .format = VK_FORMAT_R32G32B32A32_SFLOAT,
+         .offset = offsetof(VoxelVertex, color)}};
+
+    pipelineBuilder.setVertexInputState({binding}, attributes);
+
+    VkPipeline voxelPipeline = pipelineBuilder.build(_device.getDevice());
+
+    vkDestroyShaderModule(_device.getDevice(), voxelFragShader, nullptr);
+    vkDestroyShaderModule(_device.getDevice(), voxelVertexShader, nullptr);
+
+    _voxelPipeline.init(voxelPipeline, voxelPipelineLayout);
+
+    _mainDeletionQueue.push([this]() { _voxelPipeline.cleanup(_device); });
+}
+
+void Renderer::initTestChunk() {
+    _testChunk = std::make_unique<Chunk>();
+
+    // Create a flat terrain with some variation with stone : 1, grass_block : 2, oak_wood : 3 ,
+    // water : 4
+    for (int x = 0; x < Chunk::CHUNK_SIZE; x++) {
+        for (int z = 0; z < Chunk::CHUNK_SIZE; z++) {
+            int height = 4 + (std::rand() % 5); // Random height between 4 and 8
+            for (int y = 0; y < Chunk::CHUNK_SIZE; y++) {
+                if (y < height - 1) {
+                    _testChunk->setBlock(x, y, z, 1); // stone
+                } else if (y == height - 1) {
+                    _testChunk->setBlock(x, y, z, 2); // grass_block
+                } else if (y < 4) {
+                    _testChunk->setBlock(x, y, z, 4); // water
+                } else if (y == height && (x + z) % 5 == 0) {
+                    _testChunk->setBlock(x, y, z, 3); // oak_wood (some trees)
+                } else {
+                    _testChunk->setBlock(x, y, z, 0); // air
+                }
+            }
+        }
+    }
+
+    // Generate mesh
+    std::vector<VoxelVertex> vertices;
+    std::vector<uint32_t> indices;
+    ChunkMesh::generateMesh(*_testChunk, _blockRegistry, vertices, indices);
+    std::cout << "[RENDERER] Chunk mesh: " << vertices.size() << " vertices, " << indices.size()
+              << " indices\n";
+
+    // Upload to GPU - cast VoxelVertex to Vertex span
+    std::vector<Vertex> convertedVertices;
+    convertedVertices.reserve(vertices.size());
+    for (const auto& vv : vertices) {
+        convertedVertices.push_back(Vertex{.position = vv.position,
+                                           .uv_x = vv.uv_x,
+                                           .normal = vv.normal,
+                                           .uv_y = vv.uv_y,
+                                           .color = vv.color});
+    }
+    _testChunkMesh = _meshManager->uploadMesh(
+        indices, convertedVertices,
+        [this](std::function<void(VkCommandBuffer)>&& func) { immediateSubmit(std::move(func)); });
+
+    _mainDeletionQueue.push([this]() { _meshManager->destroyMesh(_testChunkMesh); });
+}
+
+void Renderer::drawVoxels(VkCommandBuffer cmd) {
+    VkRenderingAttachmentInfo colorAttachment{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = nullptr,
+        .imageView = _drawImage.imageView,
+        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .resolveMode = VK_RESOLVE_MODE_NONE,
+        .resolveImageView = VK_NULL_HANDLE,
+        .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue = {.color = {.float32 = {0.1F, 0.2F, 0.3F, 1.0F}}}};
+
+    VkRenderingAttachmentInfo depthAttachment{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = nullptr,
+        .imageView = _depthImage.imageView,
+        .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        .resolveMode = VK_RESOLVE_MODE_NONE,
+        .resolveImageView = VK_NULL_HANDLE,
+        .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue = {.depthStencil = {.depth = 1.0F, .stencil = 0}}};
+
+    VkRenderingInfo renderInfo{.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                               .pNext = nullptr,
+                               .flags = 0,
+                               .renderArea = {.offset = {0, 0}, .extent = _drawExtent},
+                               .layerCount = 1,
+                               .viewMask = 0,
+                               .colorAttachmentCount = 1,
+                               .pColorAttachments = &colorAttachment,
+                               .pDepthAttachment = &depthAttachment,
+                               .pStencilAttachment = nullptr};
+
+    vkCmdBeginRendering(cmd, &renderInfo);
+
+    // Set viewport and scissor
+    VkViewport viewport{.x = 0.0F,
+                        .y = 0.0F,
+                        .width = static_cast<float>(_drawExtent.width),
+                        .height = static_cast<float>(_drawExtent.height),
+                        .minDepth = 0.0F,
+                        .maxDepth = 1.0F};
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+    VkRect2D scissor{.offset = {0, 0}, .extent = _drawExtent};
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+    // Bind pipeline
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _voxelPipeline.getPipeline());
+
+    // Set up view-projection matrix
+    glm::mat4 view = glm::lookAt(_cameraPos, _cameraPos + _cameraFront, _cameraUp);
+
+    // Standard perspective projection for Vulkan
+    glm::mat4 projection = glm::perspective(
+        glm::radians(80.0F),
+        static_cast<float>(_drawExtent.width) / static_cast<float>(_drawExtent.height),
+        0.1F,    // near plane
+        10000.0F // far plane
+    );
+    projection[1][1] *= -1.0F; // Flip Y for Vulkan coordinate system
+
+    glm::mat4 viewProjection = projection * view;
+
+    // Set push constants
+    ChunkPushConstants pushConstants{};
+    pushConstants.viewProjection = viewProjection;
+    pushConstants.chunkWorldPos = glm::vec3(0.0F, 0.0F, 0.0F);
+
+    vkCmdPushConstants(cmd, _voxelPipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0,
+                       sizeof(ChunkPushConstants), &pushConstants);
+
+    // Bind vertex and index buffers
+    VkBuffer vertexBuffers[] = {_testChunkMesh.vertexBuffer.buffer};
+    VkDeviceSize offsets[] = {0};
+    vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
+    vkCmdBindIndexBuffer(cmd, _testChunkMesh.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+    // Get index count from buffer size
+    uint32_t indexCount =
+        static_cast<uint32_t>(_testChunkMesh.indexBuffer.info.size / sizeof(uint32_t));
+
+    vkCmdDrawIndexed(cmd, indexCount, 1, 0, 0, 0);
+
+    vkCmdEndRendering(cmd);
+}
+
+void Renderer::processInput(SDL_Event& event) {
+    if (event.type == SDL_EVENT_MOUSE_MOTION) {
+        float xoffset = static_cast<float>(event.motion.xrel) * _cameraSensitivity;
+        float yoffset = -static_cast<float>(event.motion.yrel) * _cameraSensitivity;
+
+        _cameraYaw += xoffset;
+        _cameraPitch += yoffset;
+
+        // Constrain pitch
+        if (_cameraPitch > 89.0F)
+            _cameraPitch = 89.0F;
+        if (_cameraPitch < -89.0F)
+            _cameraPitch = -89.0F;
+
+        // Update camera front vector
+        glm::vec3 front;
+        front.x = cos(glm::radians(_cameraYaw)) * cos(glm::radians(_cameraPitch));
+        front.y = sin(glm::radians(_cameraPitch));
+        front.z = sin(glm::radians(_cameraYaw)) * cos(glm::radians(_cameraPitch));
+        _cameraFront = glm::normalize(front);
+    }
+}
+
+void Renderer::updateCamera(float deltaTime) {
+    const bool* keystate = SDL_GetKeyboardState(nullptr);
+    float velocity = _cameraSpeed * deltaTime * 60.0F; // Normalize for 60fps
+
+    if (keystate[SDL_SCANCODE_W]) {
+        _cameraPos += _cameraFront * velocity;
+    }
+    if (keystate[SDL_SCANCODE_S]) {
+        _cameraPos -= _cameraFront * velocity;
+    }
+    if (keystate[SDL_SCANCODE_A]) {
+        _cameraPos -= glm::normalize(glm::cross(_cameraFront, _cameraUp)) * velocity;
+    }
+    if (keystate[SDL_SCANCODE_D]) {
+        _cameraPos += glm::normalize(glm::cross(_cameraFront, _cameraUp)) * velocity;
+    }
+    if (keystate[SDL_SCANCODE_SPACE]) {
+        _cameraPos += _cameraUp * velocity;
+    }
+    if (keystate[SDL_SCANCODE_LSHIFT]) {
+        _cameraPos -= _cameraUp * velocity;
+    }
 }

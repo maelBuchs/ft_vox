@@ -4,20 +4,25 @@
 #include <memory>
 #include <vk_mem_alloc.h>
 
+#include <SDL3/SDL_events.h>
 #include <vulkan/vulkan.h>
 
 #include "DeletionQueue.hpp"
 #include "DescriptorAllocator.hpp"
+#include "Pipeline.hpp"
+#include "VulkanTypes.hpp"
 
 class VulkanDevice;
 class VulkanSwapchain;
 class Window;
 class VulkanBuffer;
 class MeshManager;
+class Chunk;
+class BlockRegistry;
 
 class Renderer {
   public:
-    Renderer(Window& window, VulkanDevice& device);
+    Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry);
     ~Renderer();
 
     Renderer(const Renderer&) = delete;
@@ -50,6 +55,10 @@ class Renderer {
     [[nodiscard]] bool isResizeRequested() const { return _resizeRequested; }
     void draw();
     void resizeSwapchain();
+    void processInput(SDL_Event& event);
+    void updateCamera(float deltaTime);
+    void createDrawImages(VkExtent2D extent);
+    void destroyDrawImages();
 
   private:
     static void checkVkResult(VkResult result, const char* errorMessage);
@@ -64,11 +73,13 @@ class Renderer {
                              VkExtent2D srcSize, VkExtent2D dstSize);
     void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
     void initImGui();
-    void createDrawImages(VkExtent2D extent);
-    void destroyDrawImages();
+    void initVoxelPipeline();
+    void initTestChunk();
+    void drawVoxels(VkCommandBuffer cmd);
 
     Window& _window;
     VulkanDevice& _device;
+    BlockRegistry& _blockRegistry;
     std::unique_ptr<VulkanSwapchain> _swapchain;
     DescriptorAllocatorGrowable _globalDescriptorAllocator;
     uint64_t _frameNumber;
@@ -82,5 +93,20 @@ class Renderer {
     VkCommandBuffer _immCommandBuffer;
     std::unique_ptr<VulkanBuffer> _bufferManager;
     std::unique_ptr<MeshManager> _meshManager;
+    Pipeline _voxelPipeline;
+    GPUMeshBuffers _testChunkMesh;
+    std::unique_ptr<Chunk> _testChunk;
+    glm::vec3 _cameraPos;
+    glm::vec3 _cameraFront;
+    glm::vec3 _cameraUp;
+
+    // Camera control
+    float _cameraSpeed = 0.1f;
+    float _cameraSensitivity = 0.050f;
+    float _cameraYaw = -90.0f;
+    float _cameraPitch = 0.0f;
+    bool _firstMouse = true;
+    float _lastMouseX = 400.0f;
+    float _lastMouseY = 300.0f;
     bool _resizeRequested = false;
 };
