@@ -42,6 +42,10 @@ void App::run() {
             ImGui_ImplSDL3_ProcessEvent(&event);
         }
 
+        if (_renderer->isResizeRequested()) {
+            _renderer->resizeSwapchain();
+        }
+
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();

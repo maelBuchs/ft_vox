@@ -57,7 +57,10 @@ class Renderer {
     FrameData& getCurrentFrame() { return _frameData.at(_frameNumber % FRAME_OVERLAP); }
     [[nodiscard]] std::vector<ComputeEffect>& getBackgroundEffects() { return _backgroundEffects; }
     [[nodiscard]] int& getCurrentBackgroundEffect() { return _currentBackgroundEffect; }
+    [[nodiscard]] float& getRenderScale() { return _renderScale; }
+    [[nodiscard]] bool isResizeRequested() const { return _resizeRequested; }
     void draw();
+    void resizeSwapchain();
 
   private:
     static void checkVkResult(VkResult result, const char* errorMessage);
@@ -76,6 +79,8 @@ class Renderer {
     void initMeshPipeline();
     void initDefaultData();
     void drawGeometry(VkCommandBuffer cmd);
+    void createDrawImages(VkExtent2D extent);
+    void destroyDrawImages();
 
     Window& _window;
     VulkanDevice& _device;
@@ -98,4 +103,6 @@ class Renderer {
     std::unique_ptr<VulkanBuffer> _bufferManager;
     std::unique_ptr<MeshManager> _meshManager;
     GPUMeshBuffers _testRectangle;
+    bool _resizeRequested = false;
+    float _renderScale = 1.0F;
 };

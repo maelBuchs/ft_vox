@@ -5,6 +5,7 @@
 #include <iostream>
 #include <memory>
 
+#include <SDL3/SDL.h>
 #include <vulkan/vulkan.h>
 
 #include <glm/glm.hpp>
@@ -32,102 +33,13 @@ Renderer::Renderer(Window& window, VulkanDevice& device)
         std::cerr << "Failed to create VulkanSwapchain: " << e.what() << "\n";
         throw;
     }
+
+    // Create draw and depth images
     VkExtent2D swapchainExtent = _swapchain->getSwapchainExtent();
-    _drawImage.extent = {
-        .width = swapchainExtent.width, .height = swapchainExtent.height, .depth = 1};
-    _drawImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+    createDrawImages(swapchainExtent);
 
-    VkImageUsageFlags drawImageUsages{VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-                                      VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
-                                      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT};
-
-    VkImageCreateInfo rimg_info{.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-                                .pNext = nullptr,
-                                .flags = 0,
-                                .imageType = VK_IMAGE_TYPE_2D,
-                                .format = _drawImage.format,
-                                .extent = _drawImage.extent,
-                                .mipLevels = 1,
-                                .arrayLayers = 1,
-                                .samples = VK_SAMPLE_COUNT_1_BIT,
-                                .tiling = VK_IMAGE_TILING_OPTIMAL,
-                                .usage = drawImageUsages};
-
-    VmaAllocationCreateInfo rimg_allocinfo{
-        .usage = VMA_MEMORY_USAGE_GPU_ONLY,
-        .requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)};
-
-    VkResult ret = vmaCreateImage(_device.getAllocator(), &rimg_info, &rimg_allocinfo,
-                                  &_drawImage.image, &_drawImage.allocation, nullptr);
-    checkVkResult(ret, "Failed to create draw image");
-
-    VkImageViewCreateInfo rview_info{.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-                                     .pNext = nullptr,
-                                     .flags = 0,
-                                     .image = _drawImage.image,
-                                     .viewType = VK_IMAGE_VIEW_TYPE_2D,
-                                     .format = _drawImage.format,
-                                     .subresourceRange = {
-                                         .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                                         .baseMipLevel = 0,
-                                         .levelCount = 1,
-                                         .baseArrayLayer = 0,
-                                         .layerCount = 1,
-                                     }};
-
-    ret = vkCreateImageView(_device.getDevice(), &rview_info, nullptr, &_drawImage.imageView);
-    checkVkResult(ret, "Failed to create draw image view");
-
-    // Create depth image
-    _depthImage.format = VK_FORMAT_D32_SFLOAT;
-    _depthImage.extent = _drawImage.extent;
-
-    VkImageUsageFlags depthImageUsages = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-
-    VkImageCreateInfo dimg_info{.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-                                .pNext = nullptr,
-                                .flags = 0,
-                                .imageType = VK_IMAGE_TYPE_2D,
-                                .format = _depthImage.format,
-                                .extent = _depthImage.extent,
-                                .mipLevels = 1,
-                                .arrayLayers = 1,
-                                .samples = VK_SAMPLE_COUNT_1_BIT,
-                                .tiling = VK_IMAGE_TILING_OPTIMAL,
-                                .usage = depthImageUsages};
-
-    ret = vmaCreateImage(_device.getAllocator(), &dimg_info, &rimg_allocinfo, &_depthImage.image,
-                         &_depthImage.allocation, nullptr);
-    checkVkResult(ret, "Failed to create depth image");
-
-    VkImageViewCreateInfo dview_info{.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-                                     .pNext = nullptr,
-                                     .flags = 0,
-                                     .image = _depthImage.image,
-                                     .viewType = VK_IMAGE_VIEW_TYPE_2D,
-                                     .format = _depthImage.format,
-                                     .subresourceRange = {
-                                         .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-                                         .baseMipLevel = 0,
-                                         .levelCount = 1,
-                                         .baseArrayLayer = 0,
-                                         .layerCount = 1,
-                                     }};
-
-    ret = vkCreateImageView(_device.getDevice(), &dview_info, nullptr, &_depthImage.imageView);
-    checkVkResult(ret, "Failed to create depth image view");
-
-    // Register draw and depth image cleanup in main deletion queue
-    _mainDeletionQueue.push(
-        [this]() { vkDestroyImageView(_device.getDevice(), _drawImage.imageView, nullptr); });
-    _mainDeletionQueue.push([this]() {
-        vmaDestroyImage(_device.getAllocator(), _drawImage.image, _drawImage.allocation);
-    });
-    _mainDeletionQueue.push(
-        [this]() { vkDestroyImageView(_device.getDevice(), _depthImage.imageView, nullptr); });
-    _mainDeletionQueue.push([this]() {
-        vmaDestroyImage(_device.getAllocator(), _depthImage.image, _depthImage.allocation);
-    });
+    // Register draw and depth images cleanup in main deletion queue
+    _mainDeletionQueue.push([this]() { destroyDrawImages(); });
 
     createFrameCommandPools();
     createFrameSyncStructures();
@@ -288,14 +200,25 @@ void Renderer::draw() {
     ret = vkResetFences(_device.getDevice(), 1, &getCurrentFrame()._renderFence);
     checkVkResult(ret, "Failed to reset fence");
 
-    _drawExtent.width = _drawImage.extent.width;
-    _drawExtent.height = _drawImage.extent.height;
+    // Calculate draw extent with render scale
+    _drawExtent.width =
+        static_cast<uint32_t>(static_cast<float>(std::min(_swapchain->getSwapchainExtent().width,
+                                                          _drawImage.extent.width)) *
+                              _renderScale);
+    _drawExtent.height =
+        static_cast<uint32_t>(static_cast<float>(std::min(_swapchain->getSwapchainExtent().height,
+                                                          _drawImage.extent.height)) *
+                              _renderScale);
 
     // Acquire swapchain image
     uint32_t swapchainImageIndex = 0;
     ret =
         vkAcquireNextImageKHR(_device.getDevice(), _swapchain->getSwapchain(), VULKAN_TIMEOUT_NS,
                               getCurrentFrame()._swapchainSemaphore, nullptr, &swapchainImageIndex);
+    if (ret == VK_ERROR_OUT_OF_DATE_KHR) {
+        _resizeRequested = true;
+        return;
+    }
     checkVkResult(ret, "Failed to acquire next image");
 
     // Reset and begin command buffer
@@ -426,7 +349,11 @@ void Renderer::draw() {
                                  .pImageIndices = &swapchainImageIndex,
                                  .pResults = nullptr};
     ret = vkQueuePresentKHR(_device.getQueue(), &presentInfo);
-    checkVkResult(ret, "Failed to present swapchain image");
+    if (ret == VK_ERROR_OUT_OF_DATE_KHR) {
+        _resizeRequested = true;
+    } else {
+        checkVkResult(ret, "Failed to present swapchain image");
+    }
 
     _frameNumber++;
 }
@@ -896,4 +823,134 @@ void Renderer::initDefaultData() {
 
     // Delete the rectangle data on engine shutdown
     _mainDeletionQueue.push([this]() { _meshManager->destroyMesh(_testRectangle); });
+}
+
+void Renderer::createDrawImages(VkExtent2D extent) {
+    // Setup draw image
+    _drawImage.extent = {.width = extent.width, .height = extent.height, .depth = 1};
+    _drawImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+
+    VkImageUsageFlags drawImageUsages{VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                                      VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
+                                      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT};
+
+    VkImageCreateInfo rimg_info{.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                                .pNext = nullptr,
+                                .flags = 0,
+                                .imageType = VK_IMAGE_TYPE_2D,
+                                .format = _drawImage.format,
+                                .extent = _drawImage.extent,
+                                .mipLevels = 1,
+                                .arrayLayers = 1,
+                                .samples = VK_SAMPLE_COUNT_1_BIT,
+                                .tiling = VK_IMAGE_TILING_OPTIMAL,
+                                .usage = drawImageUsages};
+
+    VmaAllocationCreateInfo rimg_allocinfo{
+        .usage = VMA_MEMORY_USAGE_GPU_ONLY,
+        .requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)};
+
+    VkResult ret = vmaCreateImage(_device.getAllocator(), &rimg_info, &rimg_allocinfo,
+                                  &_drawImage.image, &_drawImage.allocation, nullptr);
+    checkVkResult(ret, "Failed to create draw image");
+
+    VkImageViewCreateInfo rview_info{.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                                     .pNext = nullptr,
+                                     .flags = 0,
+                                     .image = _drawImage.image,
+                                     .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                                     .format = _drawImage.format,
+                                     .subresourceRange = {
+                                         .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                                         .baseMipLevel = 0,
+                                         .levelCount = 1,
+                                         .baseArrayLayer = 0,
+                                         .layerCount = 1,
+                                     }};
+
+    ret = vkCreateImageView(_device.getDevice(), &rview_info, nullptr, &_drawImage.imageView);
+    checkVkResult(ret, "Failed to create draw image view");
+
+    // Setup depth image
+    _depthImage.format = VK_FORMAT_D32_SFLOAT;
+    _depthImage.extent = _drawImage.extent;
+
+    VkImageUsageFlags depthImageUsages = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+
+    VkImageCreateInfo dimg_info{.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                                .pNext = nullptr,
+                                .flags = 0,
+                                .imageType = VK_IMAGE_TYPE_2D,
+                                .format = _depthImage.format,
+                                .extent = _depthImage.extent,
+                                .mipLevels = 1,
+                                .arrayLayers = 1,
+                                .samples = VK_SAMPLE_COUNT_1_BIT,
+                                .tiling = VK_IMAGE_TILING_OPTIMAL,
+                                .usage = depthImageUsages};
+
+    ret = vmaCreateImage(_device.getAllocator(), &dimg_info, &rimg_allocinfo, &_depthImage.image,
+                         &_depthImage.allocation, nullptr);
+    checkVkResult(ret, "Failed to create depth image");
+
+    VkImageViewCreateInfo dview_info{.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                                     .pNext = nullptr,
+                                     .flags = 0,
+                                     .image = _depthImage.image,
+                                     .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                                     .format = _depthImage.format,
+                                     .subresourceRange = {
+                                         .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                                         .baseMipLevel = 0,
+                                         .levelCount = 1,
+                                         .baseArrayLayer = 0,
+                                         .layerCount = 1,
+                                     }};
+
+    ret = vkCreateImageView(_device.getDevice(), &dview_info, nullptr, &_depthImage.imageView);
+    checkVkResult(ret, "Failed to create depth image view");
+}
+
+void Renderer::destroyDrawImages() {
+    vkDestroyImageView(_device.getDevice(), _drawImage.imageView, nullptr);
+    vmaDestroyImage(_device.getAllocator(), _drawImage.image, _drawImage.allocation);
+    vkDestroyImageView(_device.getDevice(), _depthImage.imageView, nullptr);
+    vmaDestroyImage(_device.getAllocator(), _depthImage.image, _depthImage.allocation);
+}
+
+void Renderer::resizeSwapchain() {
+    // Wait for all GPU operations to complete
+    vkDeviceWaitIdle(_device.getDevice());
+
+    // Destroy old images
+    destroyDrawImages();
+
+    // Destroy old swapchain
+    _swapchain.reset();
+
+    // Recreate swapchain with new size
+    _swapchain = std::make_unique<VulkanSwapchain>(_window, _device);
+
+    // Recreate draw and depth images with new size
+    VkExtent2D newExtent = _swapchain->getSwapchainExtent();
+    createDrawImages(newExtent);
+
+    // Update descriptor set with new draw image
+    VkDescriptorImageInfo imgInfo{};
+    imgInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    imgInfo.imageView = _drawImage.imageView;
+
+    VkWriteDescriptorSet write{};
+    write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write.pNext = nullptr;
+    write.dstBinding = 0;
+    write.dstSet = _drawImageDescriptorSet;
+    write.descriptorCount = 1;
+    write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    write.pImageInfo = &imgInfo;
+
+    vkUpdateDescriptorSets(_device.getDevice(), 1, &write, 0, nullptr);
+
+    // Clear the resize flag
+    _resizeRequested = false;
 }
