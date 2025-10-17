@@ -47,6 +47,30 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
     createFrameCommandPools();
     createFrameSyncStructures();
 
+    // Create semaphores for each swapchain image
+    size_t swapchainImageCount = _swapchain->getSwapchainImages().size();
+    _swapchainSemaphores.resize(swapchainImageCount);
+    _renderSemaphores.resize(swapchainImageCount);
+
+    VkSemaphoreCreateInfo semaphoreCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, .pNext = nullptr, .flags = 0};
+
+    for (size_t i = 0; i < swapchainImageCount; i++) {
+        if (vkCreateSemaphore(_device.getDevice(), &semaphoreCreateInfo, nullptr,
+                              &_swapchainSemaphores[i]) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create swapchain semaphore");
+        }
+        if (vkCreateSemaphore(_device.getDevice(), &semaphoreCreateInfo, nullptr,
+                              &_renderSemaphores[i]) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create render semaphore");
+        }
+
+        _mainDeletionQueue.push([this, i]() {
+            vkDestroySemaphore(_device.getDevice(), _swapchainSemaphores[i], nullptr);
+            vkDestroySemaphore(_device.getDevice(), _renderSemaphores[i], nullptr);
+        });
+    }
+
     std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes = {
         {.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .ratio = 1.0F}};
 
@@ -140,9 +164,10 @@ void Renderer::draw() {
 
     // Acquire swapchain image
     uint32_t swapchainImageIndex = 0;
+    auto semaphoreIndex = static_cast<uint32_t>(_frameNumber % _swapchainSemaphores.size());
     ret =
         vkAcquireNextImageKHR(_device.getDevice(), _swapchain->getSwapchain(), VULKAN_TIMEOUT_NS,
-                              getCurrentFrame()._swapchainSemaphore, nullptr, &swapchainImageIndex);
+                              _swapchainSemaphores[semaphoreIndex], nullptr, &swapchainImageIndex);
     checkVkResult(ret, "Failed to acquire next image");
 
     // Reset and begin command buffer
@@ -226,13 +251,13 @@ void Renderer::draw() {
 
     VkSemaphoreSubmitInfo waitInfo{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
                                    .pNext = nullptr,
-                                   .semaphore = getCurrentFrame()._swapchainSemaphore,
+                                   .semaphore = _swapchainSemaphores[semaphoreIndex],
                                    .value = 1,
                                    .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR,
                                    .deviceIndex = 0};
     VkSemaphoreSubmitInfo signalInfo{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
                                      .pNext = nullptr,
-                                     .semaphore = getCurrentFrame()._renderSemaphore,
+                                     .semaphore = _renderSemaphores[semaphoreIndex],
                                      .value = 1,
                                      .stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
                                      .deviceIndex = 0};
@@ -255,7 +280,7 @@ void Renderer::draw() {
     VkPresentInfoKHR presentInfo{.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
                                  .pNext = nullptr,
                                  .waitSemaphoreCount = 1,
-                                 .pWaitSemaphores = &getCurrentFrame()._renderSemaphore,
+                                 .pWaitSemaphores = &_renderSemaphores[semaphoreIndex],
                                  .swapchainCount = 1,
                                  .pSwapchains = &retSwapchain,
                                  .pImageIndices = &swapchainImageIndex,
@@ -307,9 +332,6 @@ void Renderer::createFrameSyncStructures() {
                                       .pNext = nullptr,
                                       .flags = VK_FENCE_CREATE_SIGNALED_BIT};
 
-    VkSemaphoreCreateInfo semaphoreCreateInfo{
-        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, .pNext = nullptr, .flags = 0};
-
     for (uint64_t i = 0; i < FRAME_OVERLAP; i++) {
         VkResult fenceRes = vkCreateFence(_device.getDevice(), &fenceCreateInfo, nullptr,
                                           &_frameData.at(i)._renderFence);
@@ -318,25 +340,6 @@ void Renderer::createFrameSyncStructures() {
         // Register fence cleanup in main deletion queue
         _mainDeletionQueue.push([this, i]() {
             vkDestroyFence(_device.getDevice(), _frameData.at(i)._renderFence, nullptr);
-        });
-
-        VkResult swapchainSemRes =
-            vkCreateSemaphore(_device.getDevice(), &semaphoreCreateInfo, nullptr,
-                              &_frameData.at(i)._swapchainSemaphore);
-        checkVkResult(swapchainSemRes, "Failed to create swapchain semaphore");
-
-        // Register swapchain semaphore cleanup in main deletion queue
-        _mainDeletionQueue.push([this, i]() {
-            vkDestroySemaphore(_device.getDevice(), _frameData.at(i)._swapchainSemaphore, nullptr);
-        });
-
-        VkResult renderSemRes = vkCreateSemaphore(_device.getDevice(), &semaphoreCreateInfo,
-                                                  nullptr, &_frameData.at(i)._renderSemaphore);
-        checkVkResult(renderSemRes, "Failed to create render semaphore");
-
-        // Register render semaphore cleanup in main deletion queue
-        _mainDeletionQueue.push([this, i]() {
-            vkDestroySemaphore(_device.getDevice(), _frameData.at(i)._renderSemaphore, nullptr);
         });
     }
 }

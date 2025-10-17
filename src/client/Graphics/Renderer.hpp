@@ -34,8 +34,6 @@ class Renderer {
         VkCommandPool _commandPool{};
         VkCommandBuffer _mainCommandBuffer{};
         VkFence _renderFence{};
-        VkSemaphore _swapchainSemaphore{};
-        VkSemaphore _renderSemaphore{};
         DeletionQueue _deletionQueue;
         DescriptorAllocatorGrowable _frameDescriptors;
     };
@@ -87,6 +85,8 @@ class Renderer {
     DescriptorAllocatorGrowable _globalDescriptorAllocator;
     uint64_t _frameNumber;
     std::array<FrameData, FRAME_OVERLAP> _frameData;
+    std::vector<VkSemaphore> _swapchainSemaphores;
+    std::vector<VkSemaphore> _renderSemaphores;
     AllocatedImage _drawImage;
     AllocatedImage _depthImage;
     VkExtent2D _drawExtent;
