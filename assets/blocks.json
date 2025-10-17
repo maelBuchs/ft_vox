@@ -1,8 +1,8 @@
 [
   {
-    "blocks.json sample": 0,
     "id": 0,
     "name": "air",
+    "texture_path": "",
     "tags": {
       "transparent": true
     }
@@ -10,6 +10,7 @@
   {
     "id": 1,
     "name": "stone",
+    "texture_path": "",
     "tags": {
       "displayable": true,
       "solid": true
@@ -18,6 +19,7 @@
   {
     "id": 2,
     "name": "grass_block",
+    "texture_path": "",
     "tags": {
       "displayable": true,
       "solid": true
@@ -26,10 +28,11 @@
   {
     "id": 3,
     "name": "oak_wood",
+    "texture_path": "",
     "tags": {
       "displayable": true,
-      "solid": true,
-      "flammable": true
+      "flammable": true,
+      "solid": true
     }
   },
   {
@@ -42,25 +45,3 @@
     }
   }
 ]
-
-
-// region.x.y.json
-{
-  
-  "height": 1],         
-  "chunks": [
-    {
-      "biome":  1
-      "position": [0,0],    / relatif à la region
-      "blocks": [1,1,2,...], // tableau[1] 
-      "states": [0,18,0,...], // int avec bitmask pour variantes
-    },
-     {
-      "biome":  1
-      "position": [0,0],    / relatif à la region
-      "blocks": [1,1,2,...], // tableau[1] 
-      "states": [0,18,0,...], // int avec bitmask pour variantes
-    },
-  etc jusqua 
-  ]
-}
