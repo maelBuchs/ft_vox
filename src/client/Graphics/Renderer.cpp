@@ -44,35 +44,18 @@ Renderer::Renderer(Window& window, VulkanDevice& device)
     createFrameCommandPools();
     createFrameSyncStructures();
 
-    std::vector<DescriptorAllocator::PoolSizeRatio> sizes = {
-        {.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .ratio = 1}};
+    std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes = {
+        {.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .ratio = 1.0F}};
 
-    _globalDescriptorAllocator = std::make_unique<DescriptorAllocator>(_device, 10, sizes);
-    _mainDeletionQueue.push([&]() {
-        vkDestroyDescriptorPool(_device.getDevice(), _globalDescriptorAllocator->getPool(),
-                                nullptr);
-    });
+    _globalDescriptorAllocator.init(_device.getDevice(), 10, sizes);
+    _mainDeletionQueue.push(
+        [this]() { _globalDescriptorAllocator.destroyPools(_device.getDevice()); });
 
-    VkDescriptorSetLayoutBinding storageImageBinding{.binding = 0,
-                                                     .descriptorType =
-                                                         VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-                                                     .descriptorCount = 1,
-                                                     .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-                                                     .pImmutableSamplers = nullptr};
-
-    VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .pNext = nullptr,
-        .flags = 0,
-        .bindingCount = 1,
-        .pBindings = &storageImageBinding,
-    };
-
-    VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE;
-    if (vkCreateDescriptorSetLayout(_device.getDevice(), &descriptorSetLayoutCreateInfo, nullptr,
-                                    &computeDescriptorSetLayout) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create compute descriptor set layout");
-    }
+    // Create compute descriptor set layout using DescriptorLayoutBuilder
+    DescriptorLayoutBuilder layoutBuilder;
+    layoutBuilder.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+    VkDescriptorSetLayout computeDescriptorSetLayout =
+        layoutBuilder.build(_device.getDevice(), VK_SHADER_STAGE_COMPUTE_BIT);
 
     _mainDeletionQueue.push([this, computeDescriptorSetLayout]() {
         vkDestroyDescriptorSetLayout(_device.getDevice(), computeDescriptorSetLayout, nullptr);
@@ -117,23 +100,28 @@ Renderer::Renderer(Window& window, VulkanDevice& device)
     });
 
     VkDescriptorSetLayout layout = computeDescriptorSetLayout;
-    _drawImageDescriptorSet = _globalDescriptorAllocator->allocate(_device, layout);
+    _drawImageDescriptorSet = _globalDescriptorAllocator.allocate(_device.getDevice(), layout);
 
-    VkDescriptorImageInfo imgInfo{};
-    imgInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-    imgInfo.imageView = _drawImage.imageView;
+    // Use DescriptorWriter to update the descriptor set
+    DescriptorWriter writer;
+    writer.writeImage(0, _drawImage.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL,
+                      VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+    writer.updateSet(_device.getDevice(), _drawImageDescriptorSet);
 
-    VkWriteDescriptorSet write{};
-    write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    write.pNext = nullptr;
+    // Initialize per-frame descriptor allocators
+    for (size_t i = 0; i < FRAME_OVERLAP; i++) {
+        std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> frameSizes = {
+            {.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .ratio = 3.0F},
+            {.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .ratio = 3.0F},
+            {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .ratio = 3.0F},
+            {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .ratio = 4.0F},
+        };
 
-    write.dstBinding = 0;
-    write.dstSet = _drawImageDescriptorSet;
-    write.descriptorCount = 1;
-    write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    write.pImageInfo = &imgInfo;
+        _frameData[i]._frameDescriptors.init(_device.getDevice(), 1000, frameSizes);
 
-    vkUpdateDescriptorSets(_device.getDevice(), 1, &write, 0, nullptr);
+        _mainDeletionQueue.push(
+            [this, i]() { _frameData[i]._frameDescriptors.destroyPools(_device.getDevice()); });
+    }
 
     VkCommandPoolCreateInfo immCommandPoolInfo{
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -196,6 +184,7 @@ void Renderer::draw() {
     checkVkResult(ret, "Failed to wait for fence");
 
     getCurrentFrame()._deletionQueue.flush();
+    getCurrentFrame()._frameDescriptors.clearPools(_device.getDevice());
 
     ret = vkResetFences(_device.getDevice(), 1, &getCurrentFrame()._renderFence);
     checkVkResult(ret, "Failed to reset fence");
@@ -935,21 +924,11 @@ void Renderer::resizeSwapchain() {
     VkExtent2D newExtent = _swapchain->getSwapchainExtent();
     createDrawImages(newExtent);
 
-    // Update descriptor set with new draw image
-    VkDescriptorImageInfo imgInfo{};
-    imgInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-    imgInfo.imageView = _drawImage.imageView;
-
-    VkWriteDescriptorSet write{};
-    write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    write.pNext = nullptr;
-    write.dstBinding = 0;
-    write.dstSet = _drawImageDescriptorSet;
-    write.descriptorCount = 1;
-    write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    write.pImageInfo = &imgInfo;
-
-    vkUpdateDescriptorSets(_device.getDevice(), 1, &write, 0, nullptr);
+    // Update descriptor set with new draw image using DescriptorWriter
+    DescriptorWriter writer;
+    writer.writeImage(0, _drawImage.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL,
+                      VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+    writer.updateSet(_device.getDevice(), _drawImageDescriptorSet);
 
     // Clear the resize flag
     _resizeRequested = false;

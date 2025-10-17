@@ -35,6 +35,7 @@ class Renderer {
         VkSemaphore _swapchainSemaphore{};
         VkSemaphore _renderSemaphore{};
         DeletionQueue _deletionQueue;
+        DescriptorAllocatorGrowable _frameDescriptors;
     };
 
     struct AllocatedImage {
@@ -87,7 +88,7 @@ class Renderer {
     std::unique_ptr<VulkanSwapchain> _swapchain;
     std::vector<ComputeEffect> _backgroundEffects;
     int _currentBackgroundEffect = 0;
-    std::unique_ptr<DescriptorAllocator> _globalDescriptorAllocator;
+    DescriptorAllocatorGrowable _globalDescriptorAllocator;
     uint64_t _frameNumber;
     std::array<FrameData, FRAME_OVERLAP> _frameData;
     AllocatedImage _drawImage;
