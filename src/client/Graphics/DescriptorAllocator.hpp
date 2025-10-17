@@ -67,7 +67,7 @@ class DescriptorWriter {
 
     DescriptorWriter(const DescriptorWriter&) = delete;
     DescriptorWriter& operator=(const DescriptorWriter&) = delete;
-    DescriptorWriter(DescriptorWriter&&) = default;
+    DescriptorWriter(DescriptorWriter&&) noexcept = default;
     DescriptorWriter& operator=(DescriptorWriter&&) = default;
 
     void writeImage(int binding, VkImageView image, VkSampler sampler, VkImageLayout layout,

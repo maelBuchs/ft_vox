@@ -7,6 +7,7 @@
 #include <SDL3/SDL_events.h>
 #include <vulkan/vulkan.h>
 
+#include "common/Types/RenderTypes.hpp"
 #include "DeletionQueue.hpp"
 #include "DescriptorAllocator.hpp"
 #include "Pipeline.hpp"
@@ -19,6 +20,7 @@ class VulkanBuffer;
 class MeshManager;
 class Chunk;
 class BlockRegistry;
+class Camera;
 
 class Renderer {
   public:
@@ -52,14 +54,13 @@ class Renderer {
     FrameData& getCurrentFrame() { return _frameData.at(_frameNumber % FRAME_OVERLAP); }
     void draw();
     void resizeSwapchain();
-    void processInput(SDL_Event& event);
-    void updateCamera(float deltaTime);
     void updateFPS(float deltaTime);
     void createDrawImages(VkExtent2D extent);
     void destroyDrawImages();
     void setWireframeMode(bool enabled) { _wireframeMode = enabled; }
     [[nodiscard]] bool isWireframeMode() const { return _wireframeMode; }
     [[nodiscard]] float getFPS() const { return _fps; }
+    [[nodiscard]] Camera& getCamera() { return *_camera; }
 
   private:
     static void checkVkResult(VkResult result, const char* errorMessage);
@@ -96,19 +97,11 @@ class Renderer {
     VkCommandBuffer _immCommandBuffer;
     std::unique_ptr<VulkanBuffer> _bufferManager;
     std::unique_ptr<MeshManager> _meshManager;
+    std::unique_ptr<Camera> _camera;
     Pipeline _voxelPipeline;
     Pipeline _voxelWireframePipeline;
     GPUMeshBuffers _testChunkMesh;
     std::unique_ptr<Chunk> _testChunk;
-    glm::vec3 _cameraPos;
-    glm::vec3 _cameraFront;
-    glm::vec3 _cameraUp;
-
-    // Camera control
-    float _cameraSpeed = 0.1f;
-    float _cameraSensitivity = 0.050f;
-    float _cameraYaw = -90.0f;
-    float _cameraPitch = 0.0f;
 
     // Wireframe mode
     bool _wireframeMode = false;

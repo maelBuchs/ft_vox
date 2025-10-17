@@ -5,6 +5,7 @@
 
 #include <vulkan/vulkan.h>
 
+#include "common/Types/RenderTypes.hpp"
 #include "VulkanTypes.hpp"
 
 class VulkanDevice;

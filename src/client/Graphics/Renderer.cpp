@@ -12,6 +12,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "../Core/Window.hpp"
+#include "../Game/Camera.hpp"
 #include "common/World/Chunk.hpp"
 #include "common/World/ChunkMesh.hpp"
 #include "imgui.h"
@@ -130,10 +131,7 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
     });
 
     // Initialize camera - angled view to see 3D perspective (corner view)
-    _cameraPos = glm::vec3(30.0F, 20.0F, 30.0F);             // Positioned at an angle
-    glm::vec3 chunkCenter = glm::vec3(8.0F, 8.0F, 8.0F);     // Center of 16x16x16 chunk
-    _cameraFront = glm::normalize(chunkCenter - _cameraPos); // Look at chunk center
-    _cameraUp = glm::vec3(0.0F, 1.0F, 0.0F);
+    _camera = std::make_unique<Camera>(glm::vec3(30.0F, 20.0F, 30.0F), -135.0F, -20.0F);
 
     // Initialize voxel pipeline (both filled and wireframe)
     initVoxelPipeline();
@@ -849,7 +847,7 @@ void Renderer::drawVoxels(VkCommandBuffer cmd) {
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, activePipeline);
 
     // Set up view-projection matrix
-    glm::mat4 view = glm::lookAt(_cameraPos, _cameraPos + _cameraFront, _cameraUp);
+    glm::mat4 view = _camera->getViewMatrix();
 
     // Standard perspective projection for Vulkan
     glm::mat4 projection = glm::perspective(
@@ -883,53 +881,6 @@ void Renderer::drawVoxels(VkCommandBuffer cmd) {
     vkCmdDrawIndexed(cmd, indexCount, 1, 0, 0, 0);
 
     vkCmdEndRendering(cmd);
-}
-
-void Renderer::processInput(SDL_Event& event) {
-    if (event.type == SDL_EVENT_MOUSE_MOTION) {
-        float xoffset = static_cast<float>(event.motion.xrel) * _cameraSensitivity;
-        float yoffset = -static_cast<float>(event.motion.yrel) * _cameraSensitivity;
-
-        _cameraYaw += xoffset;
-        _cameraPitch += yoffset;
-
-        // Constrain pitch
-        if (_cameraPitch > 89.0F)
-            _cameraPitch = 89.0F;
-        if (_cameraPitch < -89.0F)
-            _cameraPitch = -89.0F;
-
-        // Update camera front vector
-        glm::vec3 front;
-        front.x = cos(glm::radians(_cameraYaw)) * cos(glm::radians(_cameraPitch));
-        front.y = sin(glm::radians(_cameraPitch));
-        front.z = sin(glm::radians(_cameraYaw)) * cos(glm::radians(_cameraPitch));
-        _cameraFront = glm::normalize(front);
-    }
-}
-
-void Renderer::updateCamera(float deltaTime) {
-    const bool* keystate = SDL_GetKeyboardState(nullptr);
-    float velocity = _cameraSpeed * deltaTime * 60.0F; // Normalize for 60fps
-
-    if (keystate[SDL_SCANCODE_W]) {
-        _cameraPos += _cameraFront * velocity;
-    }
-    if (keystate[SDL_SCANCODE_S]) {
-        _cameraPos -= _cameraFront * velocity;
-    }
-    if (keystate[SDL_SCANCODE_A]) {
-        _cameraPos -= glm::normalize(glm::cross(_cameraFront, _cameraUp)) * velocity;
-    }
-    if (keystate[SDL_SCANCODE_D]) {
-        _cameraPos += glm::normalize(glm::cross(_cameraFront, _cameraUp)) * velocity;
-    }
-    if (keystate[SDL_SCANCODE_SPACE]) {
-        _cameraPos += _cameraUp * velocity;
-    }
-    if (keystate[SDL_SCANCODE_LSHIFT]) {
-        _cameraPos -= _cameraUp * velocity;
-    }
 }
 
 void Renderer::updateFPS(float deltaTime) {

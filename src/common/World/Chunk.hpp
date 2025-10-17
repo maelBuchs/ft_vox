@@ -3,16 +3,6 @@
 #include <array>
 #include <cstdint>
 
-#include <glm/glm.hpp>
-
-struct VoxelVertex {
-    glm::vec3 position; // Local chunk position
-    float uv_x;
-    glm::vec3 normal; // Face normal
-    float uv_y;
-    glm::vec4 color; // Block color (temp, will use texture ID later)
-};
-
 class Chunk {
   public:
     static constexpr int CHUNK_SIZE = 32;

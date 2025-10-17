@@ -1,7 +1,7 @@
 #include <iostream>
 
 #include "client/Core/App.hpp"
-#include "common/World/BlockRegistry.hpp"
+
 int main() {
     try {
         App app;

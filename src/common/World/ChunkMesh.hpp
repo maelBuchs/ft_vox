@@ -6,6 +6,7 @@
 
 #include "BlockRegistry.hpp"
 #include "Chunk.hpp"
+#include "common/Types/RenderTypes.hpp"
 
 // Forward declarations
 struct VoxelVertex;
