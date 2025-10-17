@@ -64,6 +64,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(imgui)
 
+# 7. nlohmann/json (JSON parsing)
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG        v3.12.0
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
 # ImGui requires manual setup - create library with backends
 add_library(imgui STATIC
   ${imgui_SOURCE_DIR}/imgui.cpp
@@ -186,6 +194,9 @@ target_link_libraries(ft_vox PRIVATE VulkanMemoryAllocator)
 
 # 6. ImGui
 target_link_libraries(ft_vox PRIVATE imgui)
+
+# 7. nlohmann/json
+target_link_libraries(ft_vox PRIVATE nlohmann_json::nlohmann_json)
 
 # Link libraries to server
 target_link_libraries(ft_vox_server PRIVATE glm::glm)
