@@ -2,13 +2,32 @@
 
 #include <cmath>
 
+#include <glm/glm.hpp>
+#define RENDER_DISTANCE 32
+
 Chunk::Chunk(int x, int y, int z) : _blocks{} {
     _blocks.fill(AIR_BLOCK_ID);
 
-    for (int x = 0; x < CHUNK_SIZE; x++) {
-        for (int y = 0; y < 3; y++) {
-            for (int z = 0; z < CHUNK_SIZE; z++) {
-                setBlock(x, y, z, 1);
+    // All chunks are at y=0 for this test
+    std::tuple<int, int, int> pos = {x, 0, z};
+
+    // Create a new chunk and generate its block data
+    // Fill with some blocks for testing (staircase-like pattern)
+    for (int bx = 0; bx < 32; bx++) {
+        for (int bz = 0; bz < 32; bz++) {
+            int height = (bx + bz) / 2;
+            for (int by = 0; by < height && by < 32; by++) {
+                if (by < height - 5) {
+                    setBlock(bx, by, bz, 1); // stone
+                } else if (by < height - 1) {
+                    setBlock(bx, by, bz, 2); // grass_block
+                } else if (by < height && (bx % 3 == 0) && (bz % 3 == 0)) {
+                    setBlock(bx, by, bz, 4); // water
+                } else if (by < height) {
+                    setBlock(bx, by, bz, 3); // oak_wood (some trees)
+                } else {
+                    setBlock(bx, by, bz, 0); // air
+                }
             }
         }
     }
@@ -47,10 +66,11 @@ int Chunk::getIndex(int x, int y, int z) const {
 }
 
 void ChunkInstanciator::loadChunkAt(int x, int y, int z) {
-    if (_loadedChunks.find(std::make_tuple(x, y, z)) != _loadedChunks.end()) {
+    decltype(_loadedChunks)::key_type key = decltype(_loadedChunks)::key_type(x, y, z);
+    if (_loadedChunks.contains(key)) {
         return; // Chunk already loaded
     }
-    _loadedChunks[std::make_tuple(x, y, z)] = std::make_unique<Chunk>(x, y, z);
+    _loadedChunks[key] = std::make_unique<Chunk>(x, y, z);
 }
 // void ChunkInstanciator::unloadChunkAt(int x, int y, int z) {}
 

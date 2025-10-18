@@ -8,6 +8,7 @@
 
 #include "../Core/Window.hpp"
 #include "../Game/Camera.hpp"
+#include "common/World/Chunk.hpp"
 #include "Core/VulkanBuffer.hpp"
 #include "Core/VulkanDevice.hpp"
 #include "Core/VulkanSwapchain.hpp"
@@ -19,6 +20,10 @@
 #include "Rendering/RenderContext.hpp"
 #include "Voxel/MeshManager.hpp"
 #include "Voxel/VoxelRenderer.hpp"
+
+// tmp ChunkInstanciator
+
+ChunkInstanciator* chunkInstanciator = nullptr;
 
 Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry)
     : _window(window), _device(device), _blockRegistry(registry) {
@@ -76,7 +81,7 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
         [this]() { _globalDescriptorAllocator.destroyPools(_device.getDevice()); });
 
     // Initialize camera - angled view to see 3D perspective (corner view)
-    _camera = std::make_unique<Camera>(glm::vec3(30.0F, 20.0F, 30.0F), -135.0F, -20.0F);
+    _camera = std::make_unique<Camera>(glm::vec3(30.0F, 70.0F, 30.0F), -135.0F, -20.0F);
 
     // Initialize voxel renderer
     _voxelRenderer = std::make_unique<VoxelRenderer>(device, *_meshManager, registry,
@@ -84,6 +89,7 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
                                                      *_bufferManager, _globalDescriptorAllocator);
     _voxelRenderer->initPipelines();
     _voxelRenderer->initTestChunk();
+    chunkInstanciator = new ChunkInstanciator();
 
     // Initialize ImGui - must be last after all Vulkan resources are ready
     initImGui();
@@ -104,6 +110,7 @@ Renderer::~Renderer() {
 }
 
 void Renderer::draw() {
+
     // Get current frame from FrameManager
     auto& currentFrame = _frameManager->getCurrentFrame();
 
@@ -156,6 +163,10 @@ void Renderer::draw() {
                                           VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
         firstFrame = false;
     }
+    // ici
+
+    chunkInstanciator->updateChunksAroundPlayer(_camera->getPosition().x, _camera->getPosition().y,
+                                                _camera->getPosition().z, 12);
 
     // Render voxel geometry using VoxelRenderer
     _voxelRenderer->drawVoxels(commandBuffer, *_camera, _wireframeMode);
