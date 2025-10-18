@@ -6,38 +6,63 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "../../Game/Camera.hpp"
+#include "../Core/VulkanBuffer.hpp"
 #include "../Core/VulkanDevice.hpp"
+#include "../Memory/DescriptorAllocator.hpp"
 #include "../Pipeline/GraphicsPipelineBuilder.hpp"
 #include "../Rendering/CommandExecutor.hpp"
 #include "../Rendering/RenderContext.hpp"
 #include "common/World/Chunk.hpp"
 #include "common/World/ChunkMesh.hpp"
+#include "MeshBufferPool.hpp"
 #include "MeshManager.hpp"
 
 VoxelRenderer::VoxelRenderer(VulkanDevice& device, MeshManager& meshManager,
                              BlockRegistry& registry, RenderContext& context,
-                             CommandExecutor& executor)
+                             CommandExecutor& executor, VulkanBuffer& bufferManager,
+                             DescriptorAllocatorGrowable& descriptorAllocator)
     : _device(device), _meshManager(meshManager), _blockRegistry(registry), _context(context),
-      _executor(executor) {}
+      _executor(executor), _bufferManager(bufferManager),
+      _descriptorAllocator(descriptorAllocator) {
+    // Initialize mesh buffer pool
+    _meshPool = std::make_unique<MeshBufferPool>(_device, _bufferManager);
+}
 
-VoxelRenderer::~VoxelRenderer() = default;
+VoxelRenderer::~VoxelRenderer() {
+    // Clean up descriptor set layout
+    if (_chunkSetLayout != VK_NULL_HANDLE) {
+        vkDestroyDescriptorSetLayout(_device.getDevice(), _chunkSetLayout, nullptr);
+    }
+
+    // Clean up MDI buffers
+    if (_indirectBuffer.buffer != VK_NULL_HANDLE) {
+        _bufferManager.destroyBuffer(_indirectBuffer);
+    }
+    if (_chunkDataBuffer.buffer != VK_NULL_HANDLE) {
+        _bufferManager.destroyBuffer(_chunkDataBuffer);
+    }
+}
 
 void VoxelRenderer::initPipelines() {
+    // First initialize MDI resources and descriptor set layout
+    initMDI();
+
     VkShaderModule voxelFragShader = Pipeline::loadShaderModule(_device, "shaders/voxel.frag.spv");
     VkShaderModule voxelVertexShader =
         Pipeline::loadShaderModule(_device, "shaders/voxel.vert.spv");
 
     VkPushConstantRange pushConstantRange{
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT, .offset = 0, .size = sizeof(ChunkPushConstants)};
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT, .offset = 0, .size = sizeof(glm::mat4)};
 
-    VkPipelineLayoutCreateInfo pipelineLayoutInfo{.sType =
-                                                      VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-                                                  .pNext = nullptr,
-                                                  .flags = 0,
-                                                  .setLayoutCount = 0,
-                                                  .pSetLayouts = nullptr,
-                                                  .pushConstantRangeCount = 1,
-                                                  .pPushConstantRanges = &pushConstantRange};
+    // Update pipeline layout to include descriptor set for chunk data SSBO
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .setLayoutCount = 1,
+        .pSetLayouts = &_chunkSetLayout, // Include descriptor set for SSBO
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &pushConstantRange};
 
     VkPipelineLayout voxelPipelineLayout = VK_NULL_HANDLE;
     if (vkCreatePipelineLayout(_device.getDevice(), &pipelineLayoutInfo, nullptr,
@@ -95,6 +120,37 @@ void VoxelRenderer::initPipelines() {
     vkDestroyShaderModule(_device.getDevice(), voxelVertexShader, nullptr);
 }
 
+void VoxelRenderer::initMDI() {
+    // Create descriptor set layout for chunk data SSBO
+    DescriptorLayoutBuilder layoutBuilder;
+    layoutBuilder.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    _chunkSetLayout = layoutBuilder.build(_device.getDevice(), VK_SHADER_STAGE_VERTEX_BIT);
+
+    // Create buffers for indirect draw commands
+    // Size for max 10000 chunks
+    constexpr uint32_t MAX_CHUNKS = 10000;
+    _indirectBuffer = _bufferManager.createBuffer(sizeof(VkDrawIndexedIndirectCommand) * MAX_CHUNKS,
+                                                  VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+                                                      VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                                  VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+    // Create buffer for per-chunk data (SSBO)
+    _chunkDataBuffer = _bufferManager.createBuffer(sizeof(GPUChunkData) * MAX_CHUNKS,
+                                                   VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                                                       VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                                   VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+    // Allocate descriptor set for chunk data SSBO
+    _chunkDescriptorSet =
+        _descriptorAllocator.allocate(_device.getDevice(), _chunkSetLayout, nullptr);
+
+    // Write descriptor set to bind the chunk data buffer
+    DescriptorWriter writer;
+    writer.writeBuffer(0, _chunkDataBuffer.buffer, sizeof(GPUChunkData) * MAX_CHUNKS, 0,
+                       VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    writer.updateSet(_device.getDevice(), _chunkDescriptorSet);
+}
+
 void VoxelRenderer::initTestChunk() {
     _testChunk = std::make_unique<Chunk>();
 
@@ -128,12 +184,26 @@ void VoxelRenderer::initTestChunk() {
         throw std::runtime_error("Failed to generate chunk mesh: no vertices or indices");
     }
 
-    // Upload mesh to GPU using immediate submit
-    // VoxelVertex is now uint32_t, so we can pass directly
-    _testChunkMesh = _meshManager.uploadMesh(indices, vertices,
-                                             [this](std::function<void(VkCommandBuffer)>&& func) {
-                                                 _executor.immediateSubmit(std::move(func));
-                                             });
+    // Upload the single mesh to the pool and get its allocation handle
+    // This mesh will be our "stamp" - shared by all chunk instances
+    _sharedChunkMeshAllocation = _meshPool->uploadMesh(
+        indices, vertices, [this](std::function<void(VkCommandBuffer)>&& func) {
+            _executor.immediateSubmit(std::move(func));
+        });
+
+    // Create a grid of chunk positions to test MDI
+    _chunkPositions.clear();
+    const int renderDistance = 32; // Create a 16x16 grid of chunks
+    for (int x = -renderDistance; x < renderDistance; ++x) {
+        for (int z = -renderDistance; z < renderDistance; ++z) {
+            // Calculate the world position for this chunk instance
+            glm::vec3 position = glm::vec3(x * Chunk::CHUNK_SIZE, 0.0F, z * Chunk::CHUNK_SIZE);
+            _chunkPositions.push_back(position);
+        }
+    }
+    // We now have 16*16 = 256 chunk positions
+
+    // MAEL ICI TU FAIT T'ES CHUNK en gros tu cree un chunk en haut la tu l'as deja fait je suppose
 }
 
 void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wireframeMode) {
@@ -141,6 +211,44 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
     const RenderContext::AllocatedImage& depthImage = _context.getDepthImage();
     VkExtent2D drawExtent = _context.getDrawExtent();
 
+    // --- PREPARE MDI DATA ON CPU ---
+    _indirectCommands.clear();
+    _chunkDrawData.clear();
+
+    _indirectCommands.reserve(_chunkPositions.size());
+    _chunkDrawData.reserve(_chunkPositions.size());
+
+    // Iterate over all chunk positions and build the command list
+    // All chunks share the same mesh geometry, but render at different positions
+    for (size_t i = 0; i < _chunkPositions.size(); ++i) {
+        // Create the indirect command. The geometry data is the same for all.
+        VkDrawIndexedIndirectCommand indirectCmd{};
+        indirectCmd.indexCount = _sharedChunkMeshAllocation.indexCount;
+        indirectCmd.instanceCount = 1; // Always 1 instance per draw command in MDI
+        indirectCmd.firstIndex = _sharedChunkMeshAllocation.firstIndex;
+        indirectCmd.vertexOffset = _sharedChunkMeshAllocation.vertexOffset;
+        indirectCmd.firstInstance = 0; // Set to 0 because we use gl_DrawID in the shader
+        _indirectCommands.push_back(indirectCmd);
+
+        // Create the per-chunk data (its world position)
+        GPUChunkData chunkData{};
+        chunkData.chunkWorldPos = _chunkPositions[i];
+        chunkData.padding = 0.0F;
+        _chunkDrawData.push_back(chunkData);
+    }
+
+    // Early exit if nothing to draw
+    if (_indirectCommands.empty()) {
+        return;
+    }
+
+    // Upload data to GPU buffers
+    _bufferManager.uploadToBuffer(_indirectBuffer, _indirectCommands.data(),
+                                  _indirectCommands.size() * sizeof(VkDrawIndexedIndirectCommand));
+    _bufferManager.uploadToBuffer(_chunkDataBuffer, _chunkDrawData.data(),
+                                  _chunkDrawData.size() * sizeof(GPUChunkData));
+
+    // --- BEGIN RENDERING ---
     VkRenderingAttachmentInfo colorAttachment{
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .pNext = nullptr,
@@ -195,6 +303,10 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
         wireframeMode ? _voxelWireframePipeline.getPipeline() : _voxelPipeline.getPipeline();
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, activePipeline);
 
+    // Bind descriptor set for chunk data SSBO
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _voxelPipeline.getLayout(), 0, 1,
+                            &_chunkDescriptorSet, 0, nullptr);
+
     // Set up view-projection matrix
     glm::mat4 view = camera.getViewMatrix();
 
@@ -209,25 +321,21 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
 
     glm::mat4 viewProjection = projection * view;
 
-    // Set push constants
-    ChunkPushConstants pushConstants{};
-    pushConstants.viewProjection = viewProjection;
-    pushConstants.chunkWorldPos = glm::vec3(0.0F, 0.0F, 0.0F);
-
+    // Push constants now only contain GLOBAL data (view-projection matrix)
     vkCmdPushConstants(cmd, _voxelPipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0,
-                       sizeof(ChunkPushConstants), &pushConstants);
+                       sizeof(glm::mat4), &viewProjection);
 
-    // Bind vertex and index buffers
-    VkBuffer vertexBuffers[] = {_testChunkMesh.vertexBuffer.buffer};
-    VkDeviceSize offsets[] = {0};
-    vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
-    vkCmdBindIndexBuffer(cmd, _testChunkMesh.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+    // These contain ALL chunk mesh data, indexed by the indirect commands
+    VkBuffer vertexBuffer = _meshPool->getVertexBuffer();
+    VkBuffer indexBuffer = _meshPool->getIndexBuffer();
+    VkDeviceSize offset = 0;
+    vkCmdBindVertexBuffers(cmd, 0, 1, &vertexBuffer, &offset);
+    vkCmdBindIndexBuffer(cmd, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
-    // Get index count from buffer size
-    auto indexCount =
-        static_cast<uint32_t>(_testChunkMesh.indexBuffer.info.size / sizeof(uint32_t));
-
-    vkCmdDrawIndexed(cmd, indexCount, 1, 0, 0, 0);
+    // Multi-Draw Indirect
+    vkCmdDrawIndexedIndirect(cmd, _indirectBuffer.buffer, 0,
+                             static_cast<uint32_t>(_indirectCommands.size()),
+                             sizeof(VkDrawIndexedIndirectCommand));
 
     vkCmdEndRendering(cmd);
 }

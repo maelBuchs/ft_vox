@@ -46,6 +46,9 @@ class Renderer {
     [[nodiscard]] bool isWireframeMode() const { return _wireframeMode; }
     [[nodiscard]] float getFPS() const { return _fps; }
     [[nodiscard]] Camera& getCamera() { return *_camera; }
+    [[nodiscard]] DescriptorAllocatorGrowable& getGlobalDescriptorAllocator() {
+        return _globalDescriptorAllocator;
+    }
 
   private:
     static void checkVkResult(VkResult result, const char* errorMessage);

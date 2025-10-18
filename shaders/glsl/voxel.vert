@@ -1,15 +1,27 @@
-#version 450
+#version 460
+#extension GL_ARB_shader_draw_parameters : require
 
 // --- PACKED VERTEX INPUT ---
 // We now receive a single uint as vertex input
 layout(location = 0) in uint inVertexData;
 
+// GLOBAL data - same for all draws in this batch
 layout(push_constant) uniform constants {
     mat4 viewProjection;
-    vec3 chunkWorldPos;
-    float padding;
 }
 PushConstants;
+
+// PER-CHUNK data - indexed by the draw call
+struct GPUChunkData {
+    vec3 chunkWorldPos;
+    float padding;
+};
+
+// SSBO containing per-chunk data
+layout(set = 0, binding = 0) readonly buffer ChunkDataBuffer {
+    GPUChunkData chunks[];
+}
+chunkBuffer;
 
 layout(location = 0) out vec3 outNormal;
 layout(location = 1) out vec4 outColor;
@@ -47,7 +59,12 @@ void main() {
     vec2 uv = UVS[uvId];
     // --- END UNPACKING LOGIC ---
 
-    vec3 worldPos = inPosition + PushConstants.chunkWorldPos;
+    // --- Get per-chunk data from SSBO ---
+    // In Vulkan multi-draw indirect, we use gl_InstanceIndex
+    // We set firstInstance in the indirect command to identify each chunk
+    GPUChunkData chunkData = chunkBuffer.chunks[gl_DrawID];
+    vec3 worldPos = inPosition + chunkData.chunkWorldPos;
+
     gl_Position = PushConstants.viewProjection * vec4(worldPos, 1.0);
 
     outNormal = normal;

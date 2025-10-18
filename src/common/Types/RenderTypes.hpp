@@ -23,3 +23,10 @@ struct ChunkPushConstants {
     glm::vec3 chunkWorldPos;
     float padding; // Align to 16 bytes
 };
+
+// GPU data for Multi-Draw Indirect rendering
+// This will be stored in an SSBO and indexed by gl_DrawID
+struct GPUChunkData {
+    glm::vec3 chunkWorldPos;
+    float padding; // Align to 16 bytes
+};

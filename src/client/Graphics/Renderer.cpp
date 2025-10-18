@@ -20,7 +20,6 @@
 #include "Voxel/MeshManager.hpp"
 #include "Voxel/VoxelRenderer.hpp"
 
-
 Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry)
     : _window(window), _device(device), _blockRegistry(registry) {
     try {
@@ -69,7 +68,8 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
     }
 
     std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes = {
-        {.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .ratio = 1.0F}};
+        {.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .ratio = 1.0F},
+        {.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .ratio = 1.0F}};
 
     _globalDescriptorAllocator.init(_device.getDevice(), 10, sizes);
     _mainDeletionQueue.push(
@@ -80,7 +80,8 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
 
     // Initialize voxel renderer
     _voxelRenderer = std::make_unique<VoxelRenderer>(device, *_meshManager, registry,
-                                                     *_renderContext, *_commandExecutor);
+                                                     *_renderContext, *_commandExecutor,
+                                                     *_bufferManager, _globalDescriptorAllocator);
     _voxelRenderer->initPipelines();
     _voxelRenderer->initTestChunk();
 
