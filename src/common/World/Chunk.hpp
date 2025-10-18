@@ -2,6 +2,13 @@
 
 #include <array>
 #include <cstdint>
+#include <map>
+#include <memory>
+#include <utility>
+
+#include "glm/fwd.hpp"
+
+#define RENDER_DISTANCE_IN_CHUNKS 4
 
 class Chunk {
   public:
@@ -9,7 +16,7 @@ class Chunk {
     static constexpr int VOLUME = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
     static constexpr uint8_t AIR_BLOCK_ID = 0;
 
-    Chunk();
+    Chunk(int x, int y, int z);
     ~Chunk() = default;
 
     Chunk(const Chunk&) = delete;
@@ -29,8 +36,29 @@ class Chunk {
     // Chunk state
     [[nodiscard]] bool isEmpty() const { return _isEmpty; }
     void setEmpty(bool empty) { _isEmpty = empty; }
+    std::tuple<int, int, int> getPosition() const { return position; }
 
   private:
+    std::tuple<int, int, int> position;
     std::array<uint8_t, VOLUME> _blocks;
     bool _isEmpty = true;
+};
+
+class ChunkInstanciator {
+  public:
+    ChunkInstanciator() = default;
+    ~ChunkInstanciator() = default;
+    ChunkInstanciator(const ChunkInstanciator&) = delete;
+    ChunkInstanciator& operator=(const ChunkInstanciator&) = delete;
+    ChunkInstanciator(ChunkInstanciator&&) = default;
+    ChunkInstanciator& operator=(ChunkInstanciator&&) = default;
+    // hecks which chunks need to be loaded/unloaded based on player position
+
+    void updateChunksAroundPlayer(float playerX, float playerY, float playerZ, float viewDistance);
+
+  private:
+    void loadChunkAt(int x, int y, int z);
+    void unloadChunkAt(int x, int y, int z);
+    // some data structures to hold loaded chunks
+    std::map<std::tuple<int, int, int>, std::unique_ptr<Chunk>> _loadedChunks;
 };
