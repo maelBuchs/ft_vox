@@ -14,7 +14,6 @@
 #include "common/World/ChunkMesh.hpp"
 #include "MeshManager.hpp"
 
-
 VoxelRenderer::VoxelRenderer(VulkanDevice& device, MeshManager& meshManager,
                              BlockRegistry& registry, RenderContext& context,
                              CommandExecutor& executor)
@@ -46,30 +45,14 @@ void VoxelRenderer::initPipelines() {
         throw std::runtime_error("Failed to create voxel pipeline layout");
     }
 
+    // --- PACKED VERTEX FORMAT ---
+    // A single binding for our packed uint32_t vertex data
     VkVertexInputBindingDescription binding{
-        .binding = 0, .stride = sizeof(VoxelVertex), .inputRate = VK_VERTEX_INPUT_RATE_VERTEX};
+        .binding = 0, .stride = sizeof(uint32_t), .inputRate = VK_VERTEX_INPUT_RATE_VERTEX};
 
+    // A single attribute: the packed uint32_t itself
     std::vector<VkVertexInputAttributeDescription> attributes{
-        {.location = 0,
-         .binding = 0,
-         .format = VK_FORMAT_R32G32B32_SFLOAT,
-         .offset = offsetof(VoxelVertex, position)},
-        {.location = 1,
-         .binding = 0,
-         .format = VK_FORMAT_R32_SFLOAT,
-         .offset = offsetof(VoxelVertex, uv_x)},
-        {.location = 2,
-         .binding = 0,
-         .format = VK_FORMAT_R32G32B32_SFLOAT,
-         .offset = offsetof(VoxelVertex, normal)},
-        {.location = 3,
-         .binding = 0,
-         .format = VK_FORMAT_R32_SFLOAT,
-         .offset = offsetof(VoxelVertex, uv_y)},
-        {.location = 4,
-         .binding = 0,
-         .format = VK_FORMAT_R32G32B32A32_SFLOAT,
-         .offset = offsetof(VoxelVertex, color)}};
+        {.location = 0, .binding = 0, .format = VK_FORMAT_R32_UINT, .offset = 0}};
 
     const RenderContext::AllocatedImage& drawImage = _context.getDrawImage();
     const RenderContext::AllocatedImage& depthImage = _context.getDepthImage();
@@ -146,9 +129,8 @@ void VoxelRenderer::initTestChunk() {
     }
 
     // Upload mesh to GPU using immediate submit
-    // Note: VoxelVertex has same memory layout as Vertex, so we can safely reinterpret_cast
-    std::span<Vertex> vertexSpan(reinterpret_cast<Vertex*>(vertices.data()), vertices.size());
-    _testChunkMesh = _meshManager.uploadMesh(indices, vertexSpan,
+    // VoxelVertex is now uint32_t, so we can pass directly
+    _testChunkMesh = _meshManager.uploadMesh(indices, vertices,
                                              [this](std::function<void(VkCommandBuffer)>&& func) {
                                                  _executor.immediateSubmit(std::move(func));
                                              });
