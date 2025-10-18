@@ -27,53 +27,79 @@ uint32_t packVertex(uint32_t x, uint32_t y, uint32_t z, uint32_t normalId, uint3
 }
 } // anonymous namespace
 
-void ChunkMesh::generateMesh(const Chunk& chunk, const BlockRegistry& registry,
-                             std::vector<VoxelVertex>& vertices, std::vector<uint32_t>& indices) {
+void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& registry,
+                             std::vector<VoxelVertex>& vertices, std::vector<uint32_t>& indices,
+                             const Chunk* neighborNorth, const Chunk* neighborSouth,
+                             const Chunk* neighborEast, const Chunk* neighborWest,
+                             const Chunk* neighborTop, const Chunk* neighborBottom) {
     vertices.clear();
     indices.clear();
 
-    if (chunk.isEmpty()) {
+    if (mainChunk.isEmpty()) {
         return;
     }
 
     for (int x = 0; x < Chunk::CHUNK_SIZE; x++) {
         for (int y = 0; y < Chunk::CHUNK_SIZE; y++) {
             for (int z = 0; z < Chunk::CHUNK_SIZE; z++) {
-                int blockId = static_cast<int>(chunk.getBlock(x, y, z));
+                int blockId = static_cast<int>(mainChunk.getBlock(x, y, z));
 
                 // Skip air blocks or non-displayable blocks
                 if (blockId == Chunk::AIR_BLOCK_ID || !registry.isDisplayable(blockId)) {
                     continue;
                 }
 
-                // Check each face direction and add face if exposed
-                // North (positive Z)
-                if (!chunk.isBlockSolid(x, y, z + 1)) {
+                // North (+Z)
+                bool isNorthSolid =
+                    (z == Chunk::CHUNK_SIZE - 1)
+                        ? (neighborNorth != nullptr && neighborNorth->isBlockSolid(x, y, 0))
+                        : mainChunk.isBlockSolid(x, y, z + 1);
+                if (!isNorthSolid) {
                     addFace(FaceDirection::North, x, y, z, blockId, vertices, indices);
                 }
 
-                // South (negative Z)
-                if (!chunk.isBlockSolid(x, y, z - 1)) {
+                // South (-Z)
+                bool isSouthSolid = (z == 0)
+                                        ? (neighborSouth != nullptr &&
+                                           neighborSouth->isBlockSolid(x, y, Chunk::CHUNK_SIZE - 1))
+                                        : mainChunk.isBlockSolid(x, y, z - 1);
+                if (!isSouthSolid) {
                     addFace(FaceDirection::South, x, y, z, blockId, vertices, indices);
                 }
 
-                // East (positive X)
-                if (!chunk.isBlockSolid(x + 1, y, z)) {
+                // East (+X)
+                bool isEastSolid =
+                    (x == Chunk::CHUNK_SIZE - 1)
+                        ? (neighborEast != nullptr && neighborEast->isBlockSolid(0, y, z))
+                        : mainChunk.isBlockSolid(x + 1, y, z);
+                if (!isEastSolid) {
                     addFace(FaceDirection::East, x, y, z, blockId, vertices, indices);
                 }
 
-                // West (negative X)
-                if (!chunk.isBlockSolid(x - 1, y, z)) {
+                // West (-X)
+                bool isWestSolid = (x == 0)
+                                       ? (neighborWest != nullptr &&
+                                          neighborWest->isBlockSolid(Chunk::CHUNK_SIZE - 1, y, z))
+                                       : mainChunk.isBlockSolid(x - 1, y, z);
+                if (!isWestSolid) {
                     addFace(FaceDirection::West, x, y, z, blockId, vertices, indices);
                 }
 
-                // Top (positive Y)
-                if (!chunk.isBlockSolid(x, y + 1, z)) {
+                // Top (+Y)
+                bool isTopSolid =
+                    (y == Chunk::CHUNK_SIZE - 1)
+                        ? (neighborTop != nullptr && neighborTop->isBlockSolid(x, 0, z))
+                        : mainChunk.isBlockSolid(x, y + 1, z);
+                if (!isTopSolid) {
                     addFace(FaceDirection::Top, x, y, z, blockId, vertices, indices);
                 }
 
-                // Bottom (negative Y)
-                if (!chunk.isBlockSolid(x, y - 1, z)) {
+                // Bottom (-Y)
+                bool isBottomSolid =
+                    (y == 0) ? (neighborBottom != nullptr &&
+                                neighborBottom->isBlockSolid(x, Chunk::CHUNK_SIZE - 1, z))
+                             : mainChunk.isBlockSolid(x, y - 1, z);
+                if (!isBottomSolid) {
                     addFace(FaceDirection::Bottom, x, y, z, blockId, vertices, indices);
                 }
             }

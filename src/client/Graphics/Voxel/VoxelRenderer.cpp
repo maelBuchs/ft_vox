@@ -1,5 +1,6 @@
 #include "VoxelRenderer.hpp"
 
+#include <map>
 #include <stdexcept>
 
 #include <glm/glm.hpp>
@@ -152,58 +153,100 @@ void VoxelRenderer::initMDI() {
 }
 
 void VoxelRenderer::initTestChunk() {
-    _testChunk = std::make_unique<Chunk>();
-
-    // Fill with some blocks for testing (staircase-like pattern)
-    for (int x = 0; x < 32; x++) {
-        for (int z = 0; z < 32; z++) {
-            int height = (x + z) / 2;
-            for (int y = 0; y < height && y < 32; y++) {
-                if (y < height - 5) {
-                    _testChunk->setBlock(x, y, z, 1); // stone
-                } else if (y < height - 1) {
-                    _testChunk->setBlock(x, y, z, 2); // grass_block
-                } else if (y < height && (x % 3 == 0) && (z % 3 == 0)) {
-                    _testChunk->setBlock(x, y, z, 4); // water
-                } else if (y < height) {
-                    _testChunk->setBlock(x, y, z, 3); // oak_wood (some trees)
-                } else {
-                    _testChunk->setBlock(x, y, z, 0); // air
-                }
+    // Simple struct to use as a key in our chunk map
+    struct ChunkPos {
+        int x, y, z;
+        bool operator<(const ChunkPos& other) const {
+            if (x != other.x) {
+                return x < other.x;
             }
+            if (y != other.y) {
+                return y < other.y;
+            }
+            return z < other.z;
         }
-    }
+    };
 
-    // Generate mesh for the chunk
-    std::vector<VoxelVertex> vertices;
-    std::vector<uint32_t> indices;
+    // --- PART 1: Create all chunk data first ---
+    std::map<ChunkPos, std::unique_ptr<Chunk>> worldChunks;
 
-    ChunkMesh::generateMesh(*_testChunk, _blockRegistry, vertices, indices);
-
-    if (vertices.empty() || indices.empty()) {
-        throw std::runtime_error("Failed to generate chunk mesh: no vertices or indices");
-    }
-
-    // Upload the single mesh to the pool and get its allocation handle
-    // This mesh will be our "stamp" - shared by all chunk instances
-    _sharedChunkMeshAllocation = _meshPool->uploadMesh(
-        indices, vertices, [this](std::function<void(VkCommandBuffer)>&& func) {
-            _executor.immediateSubmit(std::move(func));
-        });
-
-    // Create a grid of chunk positions to test MDI
     _chunkPositions.clear();
-    const int renderDistance = 32; // Create a 16x16 grid of chunks
+    const int renderDistance = 32; // Create a 64x64 grid of chunks
     for (int x = -renderDistance; x < renderDistance; ++x) {
         for (int z = -renderDistance; z < renderDistance; ++z) {
-            // Calculate the world position for this chunk instance
-            glm::vec3 position = glm::vec3(x * Chunk::CHUNK_SIZE, 0.0F, z * Chunk::CHUNK_SIZE);
-            _chunkPositions.push_back(position);
+            // All chunks are at y=0 for this test
+            ChunkPos pos = {x, 0, z};
+            _chunkPositions.push_back(
+                glm::vec3(x * Chunk::CHUNK_SIZE, 0.0F, z * Chunk::CHUNK_SIZE));
+
+            // Create a new chunk and generate its block data
+            auto chunk = std::make_unique<Chunk>();
+
+            // Fill with some blocks for testing (staircase-like pattern)
+            for (int bx = 0; bx < 32; bx++) {
+                for (int bz = 0; bz < 32; bz++) {
+                    int height = (bx + bz) / 2;
+                    for (int by = 0; by < height && by < 32; by++) {
+                        if (by < height - 5) {
+                            chunk->setBlock(bx, by, bz, 1); // stone
+                        } else if (by < height - 1) {
+                            chunk->setBlock(bx, by, bz, 2); // grass_block
+                        } else if (by < height && (bx % 3 == 0) && (bz % 3 == 0)) {
+                            chunk->setBlock(bx, by, bz, 4); // water
+                        } else if (by < height) {
+                            chunk->setBlock(bx, by, bz, 3); // oak_wood (some trees)
+                        } else {
+                            chunk->setBlock(bx, by, bz, 0); // air
+                        }
+                    }
+                }
+            }
+            worldChunks[pos] = std::move(chunk);
         }
     }
-    // We now have 16*16 = 256 chunk positions
 
-    // MAEL ICI TU FAIT T'ES CHUNK en gros tu cree un chunk en haut la tu l'as deja fait je suppose
+    // --- PART 2: Generate meshes for all chunks, now with neighbor data ---
+    _meshPool->reset(); // Reset the pool before generating new meshes
+
+    for (const auto& [pos, chunk] : worldChunks) {
+        // Find the 6 neighbors for the current chunk
+        auto findNeighbor = [&](int dx, int dy, int dz) -> const Chunk* {
+            auto it = worldChunks.find({pos.x + dx, pos.y + dy, pos.z + dz});
+            return (it != worldChunks.end()) ? it->second.get() : nullptr;
+        };
+
+        const Chunk* neighborNorth = findNeighbor(0, 0, 1);
+        const Chunk* neighborSouth = findNeighbor(0, 0, -1);
+        const Chunk* neighborEast = findNeighbor(1, 0, 0);
+        const Chunk* neighborWest = findNeighbor(-1, 0, 0);
+        const Chunk* neighborTop = findNeighbor(0, 1, 0);     // Always null in our test grid
+        const Chunk* neighborBottom = findNeighbor(0, -1, 0); // Always null in our test grid
+
+        // Generate the mesh for this specific chunk with neighbor awareness
+        std::vector<VoxelVertex> vertices;
+        std::vector<uint32_t> indices;
+        ChunkMesh::generateMesh(*chunk, _blockRegistry, vertices, indices, neighborNorth,
+                                neighborSouth, neighborEast, neighborWest, neighborTop,
+                                neighborBottom);
+
+        if (vertices.empty() || indices.empty()) {
+            continue; // Skip empty meshes
+        }
+
+        // Upload this chunk's mesh to the pool
+        // For this test, since all chunks have identical geometry, we only upload once
+        if (_sharedChunkMeshAllocation.indexCount == 0) {
+            _sharedChunkMeshAllocation = _meshPool->uploadMesh(
+                indices, vertices, [this](std::function<void(VkCommandBuffer)>&& func) {
+                    _executor.immediateSubmit(std::move(func));
+                });
+        }
+    }
+
+    // Safety check in case all meshes were empty
+    if (_sharedChunkMeshAllocation.indexCount == 0) {
+        throw std::runtime_error("Failed to generate chunk mesh: no vertices or indices");
+    }
 }
 
 void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wireframeMode) {
