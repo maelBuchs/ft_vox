@@ -40,14 +40,20 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
         .descriptorIndexing = VK_TRUE,
         .bufferDeviceAddress = VK_TRUE};
 
-    // Enable wireframe support
+    VkPhysicalDeviceVulkan11Features features11{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+        .shaderDrawParameters = VK_TRUE};
+
+    // Enable wireframe AND multiDrawIndirect support
     VkPhysicalDeviceFeatures deviceFeatures{};
     deviceFeatures.fillModeNonSolid = VK_TRUE;
+    deviceFeatures.multiDrawIndirect = VK_TRUE;
 
     vkb::PhysicalDeviceSelector selector{vkbInstance, _surface};
 
     auto physicalDeviceRet = selector.set_minimum_version(1, 3)
                                  .set_required_features(deviceFeatures)
+                                 .set_required_features_11(features11)
                                  .set_required_features_12(features12)
                                  .set_required_features_13(features13)
                                  .select();

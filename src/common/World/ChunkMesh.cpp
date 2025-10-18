@@ -1,53 +1,106 @@
 #include "ChunkMesh.hpp"
 
-void ChunkMesh::generateMesh(const Chunk& chunk, const BlockRegistry& registry,
-                             std::vector<VoxelVertex>& vertices, std::vector<uint32_t>& indices) {
+namespace {
+// Helper function to pack a vertex's data into a uint32_t
+// Bit layout: [X:6][Y:6][Z:6][Normal:3][UV:2][Texture:7][Spare:2]
+uint32_t packVertex(uint32_t x, uint32_t y, uint32_t z, uint32_t normalId, uint32_t uvId,
+                    uint32_t textureId) {
+    uint32_t packedData = 0;
+
+    // 6 bits for X, 6 for Y, 6 for Z
+    packedData |= (x & 0x3F);         // X in bits 0-5
+    packedData |= ((y & 0x3F) << 6);  // Y in bits 6-11
+    packedData |= ((z & 0x3F) << 12); // Z in bits 12-17
+
+    // 3 bits for Normal ID
+    packedData |= ((normalId & 0x7) << 18); // Normal ID in bits 18-20
+
+    // 2 bits for UV Corner ID
+    packedData |= ((uvId & 0x3) << 21); // UV ID in bits 21-22
+
+    // 7 bits for Texture ID
+    packedData |= ((textureId & 0x7F) << 23); // Texture ID in bits 23-29
+
+    // The remaining 2 bits (30-31) are spare
+
+    return packedData;
+}
+} // anonymous namespace
+
+void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& registry,
+                             std::vector<VoxelVertex>& vertices, std::vector<uint32_t>& indices,
+                             const Chunk* neighborNorth, const Chunk* neighborSouth,
+                             const Chunk* neighborEast, const Chunk* neighborWest,
+                             const Chunk* neighborTop, const Chunk* neighborBottom) {
     vertices.clear();
     indices.clear();
 
-    if (chunk.isEmpty()) {
+    if (mainChunk.isEmpty()) {
         return;
     }
 
     for (int x = 0; x < Chunk::CHUNK_SIZE; x++) {
         for (int y = 0; y < Chunk::CHUNK_SIZE; y++) {
             for (int z = 0; z < Chunk::CHUNK_SIZE; z++) {
-                int blockId = static_cast<int>(chunk.getBlock(x, y, z));
+                int blockId = static_cast<int>(mainChunk.getBlock(x, y, z));
 
                 // Skip air blocks or non-displayable blocks
                 if (blockId == Chunk::AIR_BLOCK_ID || !registry.isDisplayable(blockId)) {
                     continue;
                 }
 
-                // Check each face direction and add face if exposed
-                // North (positive Z)
-                if (!chunk.isBlockSolid(x, y, z + 1)) {
-                    addFace(FaceDirection::North, x, y, z, blockId, registry, vertices, indices);
+                // North (+Z)
+                bool isNorthSolid =
+                    (z == Chunk::CHUNK_SIZE - 1)
+                        ? (neighborNorth != nullptr && neighborNorth->isBlockSolid(x, y, 0))
+                        : mainChunk.isBlockSolid(x, y, z + 1);
+                if (!isNorthSolid) {
+                    addFace(FaceDirection::North, x, y, z, blockId, vertices, indices);
                 }
 
-                // South (negative Z)
-                if (!chunk.isBlockSolid(x, y, z - 1)) {
-                    addFace(FaceDirection::South, x, y, z, blockId, registry, vertices, indices);
+                // South (-Z)
+                bool isSouthSolid = (z == 0)
+                                        ? (neighborSouth != nullptr &&
+                                           neighborSouth->isBlockSolid(x, y, Chunk::CHUNK_SIZE - 1))
+                                        : mainChunk.isBlockSolid(x, y, z - 1);
+                if (!isSouthSolid) {
+                    addFace(FaceDirection::South, x, y, z, blockId, vertices, indices);
                 }
 
-                // East (positive X)
-                if (!chunk.isBlockSolid(x + 1, y, z)) {
-                    addFace(FaceDirection::East, x, y, z, blockId, registry, vertices, indices);
+                // East (+X)
+                bool isEastSolid =
+                    (x == Chunk::CHUNK_SIZE - 1)
+                        ? (neighborEast != nullptr && neighborEast->isBlockSolid(0, y, z))
+                        : mainChunk.isBlockSolid(x + 1, y, z);
+                if (!isEastSolid) {
+                    addFace(FaceDirection::East, x, y, z, blockId, vertices, indices);
                 }
 
-                // West (negative X)
-                if (!chunk.isBlockSolid(x - 1, y, z)) {
-                    addFace(FaceDirection::West, x, y, z, blockId, registry, vertices, indices);
+                // West (-X)
+                bool isWestSolid = (x == 0)
+                                       ? (neighborWest != nullptr &&
+                                          neighborWest->isBlockSolid(Chunk::CHUNK_SIZE - 1, y, z))
+                                       : mainChunk.isBlockSolid(x - 1, y, z);
+                if (!isWestSolid) {
+                    addFace(FaceDirection::West, x, y, z, blockId, vertices, indices);
                 }
 
-                // Top (positive Y)
-                if (!chunk.isBlockSolid(x, y + 1, z)) {
-                    addFace(FaceDirection::Top, x, y, z, blockId, registry, vertices, indices);
+                // Top (+Y)
+                bool isTopSolid =
+                    (y == Chunk::CHUNK_SIZE - 1)
+                        ? (neighborTop != nullptr && neighborTop->isBlockSolid(x, 0, z))
+                        : mainChunk.isBlockSolid(x, y + 1, z);
+                if (!isTopSolid) {
+                    addFace(FaceDirection::Top, x, y, z, blockId, vertices, indices);
                 }
 
-                // Bottom (negative Y)
-                if (!chunk.isBlockSolid(x, y - 1, z)) {
-                    addFace(FaceDirection::Bottom, x, y, z, blockId, registry, vertices, indices);
+                // Bottom (-Y)
+                bool isBottomSolid =
+                    (y == 0) ? (neighborBottom != nullptr &&
+                                neighborBottom->isBlockSolid(x, Chunk::CHUNK_SIZE - 1, z))
+                             : mainChunk.isBlockSolid(x, y - 1, z);
+                if (!isBottomSolid) {
+                    addFace(FaceDirection::Bottom, x, y, z, blockId, vertices, indices);
                 }
             }
         }
@@ -57,84 +110,75 @@ void ChunkMesh::generateMesh(const Chunk& chunk, const BlockRegistry& registry,
 }
 
 void ChunkMesh::addFace(FaceDirection direction, int x, int y, int z, int blockId,
-                        const BlockRegistry& registry, std::vector<VoxelVertex>& vertices,
-                        std::vector<uint32_t>& indices) {
-    glm::vec4 color = getBlockColor(blockId, registry);
+                        std::vector<VoxelVertex>& vertices, std::vector<uint32_t>& indices) {
+    // For now, use blockId as textureId. Later this will be a lookup.
+    uint32_t textureId = static_cast<uint32_t>(blockId);
+
+    // Get the base index for the new vertices
     auto baseIndex = static_cast<uint32_t>(vertices.size());
 
-    // Create 4 vertices for the face quad
-    VoxelVertex v0{};
-    VoxelVertex v1{};
-    VoxelVertex v2{};
-    VoxelVertex v3{};
-    glm::vec3 normal{};
+    uint32_t px = static_cast<uint32_t>(x);
+    uint32_t py = static_cast<uint32_t>(y);
+    uint32_t pz = static_cast<uint32_t>(z);
 
+    uint32_t normalId = 0;
+    uint32_t v0 = 0;
+    uint32_t v1 = 0;
+    uint32_t v2 = 0;
+    uint32_t v3 = 0;
+
+    // Define the 4 vertices of the quad based on face direction
     // All vertex definitions are consistently Counter-Clockwise when viewed from outside.
     switch (direction) {
     case FaceDirection::East: // +X
-        v0.position = glm::vec3(x + 1, y, z);
-        v1.position = glm::vec3(x + 1, y, z + 1);
-        v2.position = glm::vec3(x + 1, y + 1, z + 1);
-        v3.position = glm::vec3(x + 1, y + 1, z);
-        normal = glm::vec3(1.0F, 0.0F, 0.0F);
+        normalId = 0;
+        v0 = packVertex(px + 1, py, pz, normalId, 0, textureId);         // Bottom-left
+        v1 = packVertex(px + 1, py, pz + 1, normalId, 1, textureId);     // Bottom-right
+        v2 = packVertex(px + 1, py + 1, pz + 1, normalId, 2, textureId); // Top-right
+        v3 = packVertex(px + 1, py + 1, pz, normalId, 3, textureId);     // Top-left
         break;
-
     case FaceDirection::West: // -X
-        v0.position = glm::vec3(x, y, z + 1);
-        v1.position = glm::vec3(x, y, z);
-        v2.position = glm::vec3(x, y + 1, z);
-        v3.position = glm::vec3(x, y + 1, z + 1);
-        normal = glm::vec3(-1.0F, 0.0F, 0.0F);
+        normalId = 1;
+        v0 = packVertex(px, py, pz + 1, normalId, 0, textureId);
+        v1 = packVertex(px, py, pz, normalId, 1, textureId);
+        v2 = packVertex(px, py + 1, pz, normalId, 2, textureId);
+        v3 = packVertex(px, py + 1, pz + 1, normalId, 3, textureId);
         break;
-
     case FaceDirection::Top: // +Y
-        v0.position = glm::vec3(x, y + 1, z);
-        v1.position = glm::vec3(x + 1, y + 1, z);
-        v2.position = glm::vec3(x + 1, y + 1, z + 1);
-        v3.position = glm::vec3(x, y + 1, z + 1);
-        normal = glm::vec3(0.0F, 1.0F, 0.0F);
+        normalId = 2;
+        v0 = packVertex(px, py + 1, pz, normalId, 0, textureId);
+        v1 = packVertex(px + 1, py + 1, pz, normalId, 1, textureId);
+        v2 = packVertex(px + 1, py + 1, pz + 1, normalId, 2, textureId);
+        v3 = packVertex(px, py + 1, pz + 1, normalId, 3, textureId);
         break;
-
     case FaceDirection::Bottom: // -Y
-        v0.position = glm::vec3(x, y, z + 1);
-        v1.position = glm::vec3(x + 1, y, z + 1);
-        v2.position = glm::vec3(x + 1, y, z);
-        v3.position = glm::vec3(x, y, z);
-        normal = glm::vec3(0.0F, -1.0F, 0.0F);
+        normalId = 3;
+        v0 = packVertex(px, py, pz + 1, normalId, 0, textureId);
+        v1 = packVertex(px + 1, py, pz + 1, normalId, 1, textureId);
+        v2 = packVertex(px + 1, py, pz, normalId, 2, textureId);
+        v3 = packVertex(px, py, pz, normalId, 3, textureId);
         break;
-
     case FaceDirection::North: // +Z
-        v0.position = glm::vec3(x + 1, y, z + 1);
-        v1.position = glm::vec3(x, y, z + 1);
-        v2.position = glm::vec3(x, y + 1, z + 1);
-        v3.position = glm::vec3(x + 1, y + 1, z + 1);
-        normal = glm::vec3(0.0F, 0.0F, 1.0F);
+        normalId = 4;
+        v0 = packVertex(px + 1, py, pz + 1, normalId, 0, textureId);
+        v1 = packVertex(px, py, pz + 1, normalId, 1, textureId);
+        v2 = packVertex(px, py + 1, pz + 1, normalId, 2, textureId);
+        v3 = packVertex(px + 1, py + 1, pz + 1, normalId, 3, textureId);
         break;
-
     case FaceDirection::South: // -Z
-        v0.position = glm::vec3(x, y, z);
-        v1.position = glm::vec3(x + 1, y, z);
-        v2.position = glm::vec3(x + 1, y + 1, z);
-        v3.position = glm::vec3(x, y + 1, z);
-        normal = glm::vec3(0.0F, 0.0F, -1.0F);
+        normalId = 5;
+        v0 = packVertex(px, py, pz, normalId, 0, textureId);
+        v1 = packVertex(px + 1, py, pz, normalId, 1, textureId);
+        v2 = packVertex(px + 1, py + 1, pz, normalId, 2, textureId);
+        v3 = packVertex(px, py + 1, pz, normalId, 3, textureId);
         break;
     }
 
-    // Set UVs (standard quad mapping)
-    v0.uv_x = 0.0F;
-    v0.uv_y = 0.0F;
-    v1.uv_x = 1.0F;
-    v1.uv_y = 0.0F;
-    v2.uv_x = 1.0F;
-    v2.uv_y = 1.0F;
-    v3.uv_x = 0.0F;
-    v3.uv_y = 1.0F;
+    // Should never reach here, all enum values are covered
+    if (normalId == 0 && v0 == 0) {
+        return; // Defensive programming
+    }
 
-    // Set normals and colors for all 4 vertices
-    v0.normal = v1.normal = v2.normal = v3.normal = normal;
-    v0.color = v1.color = v2.color = v3.color = color;
-
-    // Add vertices to the buffer
     vertices.push_back(v0);
     vertices.push_back(v1);
     vertices.push_back(v2);
@@ -145,30 +189,8 @@ void ChunkMesh::addFace(FaceDirection direction, int x, int y, int z, int blockI
     indices.push_back(baseIndex + 0);
     indices.push_back(baseIndex + 1);
     indices.push_back(baseIndex + 2);
-
     // Triangle 2: v0, v2, v3
     indices.push_back(baseIndex + 0);
     indices.push_back(baseIndex + 2);
     indices.push_back(baseIndex + 3);
-}
-
-glm::vec4 ChunkMesh::getBlockColor(int blockId, const BlockRegistry& registry) {
-    std::string name = registry.getName(blockId);
-
-    // Map block names to colors - eventually this will use textures
-    if (name == "grass_block") {
-        return glm::vec4(0.4F, 1.0F, 0.3F, 1.0F); // Bright green
-    } else if (name == "dirt") {
-        return glm::vec4(0.8F, 0.5F, 0.3F, 1.0F); // Bright brown
-    } else if (name == "stone") {
-        return glm::vec4(0.7F, 0.7F, 0.7F, 1.0F); // Light gray
-    } else if (name == "sand") {
-        return glm::vec4(1.0F, 0.95F, 0.6F, 1.0F); // Bright yellow
-    } else if (name == "oak_wood") {
-        return glm::vec4(0.6F, 0.4F, 0.2F, 1.0F); // Brown wood
-    } else if (name == "water") {
-        return glm::vec4(0.2F, 0.4F, 1.0F, 0.6F); // Blue water with transparency
-    }
-    // Default fallback
-    return glm::vec4(1.0F, 1.0F, 1.0F, 1.0F); // White
 }

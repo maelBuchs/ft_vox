@@ -8,11 +8,6 @@
 #include "Chunk.hpp"
 #include "common/Types/RenderTypes.hpp"
 
-// Forward declarations
-struct VoxelVertex;
-class Chunk;
-class BlockRegistry;
-
 class ChunkMesh {
   public:
     ChunkMesh() = default;
@@ -23,18 +18,21 @@ class ChunkMesh {
     ChunkMesh(ChunkMesh&&) = default;
     ChunkMesh& operator=(ChunkMesh&&) = default;
 
-    // Generate mesh from chunk data
-    static void generateMesh(const Chunk& chunk, const BlockRegistry& registry,
-                             std::vector<VoxelVertex>& vertices, std::vector<uint32_t>& indices);
+    // Generate mesh from chunk data with neighbor awareness
+    static void generateMesh(const Chunk& mainChunk, const BlockRegistry& registry,
+                             std::vector<VoxelVertex>& vertices, std::vector<uint32_t>& indices,
+                             const Chunk* neighborNorth, // +Z
+                             const Chunk* neighborSouth, // -Z
+                             const Chunk* neighborEast,  // +X
+                             const Chunk* neighborWest,  // -X
+                             const Chunk* neighborTop,   // +Y
+                             const Chunk* neighborBottom // -Y
+    );
 
   private:
     enum class FaceDirection { North, South, East, West, Top, Bottom };
 
     // Add a face to the mesh
     static void addFace(FaceDirection direction, int x, int y, int z, int blockId,
-                        const BlockRegistry& registry, std::vector<VoxelVertex>& vertices,
-                        std::vector<uint32_t>& indices);
-
-    // Get color for block ID from registry
-    static glm::vec4 getBlockColor(int blockId, const BlockRegistry& registry);
+                        std::vector<VoxelVertex>& vertices, std::vector<uint32_t>& indices);
 };
