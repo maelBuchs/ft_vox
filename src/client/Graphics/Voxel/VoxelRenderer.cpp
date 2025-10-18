@@ -30,6 +30,14 @@ VoxelRenderer::VoxelRenderer(VulkanDevice& device, MeshManager& meshManager,
 }
 
 VoxelRenderer::~VoxelRenderer() {
+    _voxelPipeline.cleanup(_device);
+    _voxelWireframePipeline.cleanup(_device);
+    // Clean up owned pipeline layout
+    if (_voxelPipelineLayout != VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(_device.getDevice(), _voxelPipelineLayout, nullptr);
+        _voxelPipelineLayout = VK_NULL_HANDLE;
+    }
+
     // Clean up descriptor set layout
     if (_chunkSetLayout != VK_NULL_HANDLE) {
         vkDestroyDescriptorSetLayout(_device.getDevice(), _chunkSetLayout, nullptr);
@@ -65,9 +73,9 @@ void VoxelRenderer::initPipelines() {
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &pushConstantRange};
 
-    VkPipelineLayout voxelPipelineLayout = VK_NULL_HANDLE;
+    // Create and store the shared pipeline layout
     if (vkCreatePipelineLayout(_device.getDevice(), &pipelineLayoutInfo, nullptr,
-                               &voxelPipelineLayout) != VK_SUCCESS) {
+                               &_voxelPipelineLayout) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create voxel pipeline layout");
     }
 
@@ -85,7 +93,7 @@ void VoxelRenderer::initPipelines() {
 
     // Create FILLED pipeline
     GraphicsPipelineBuilder pipelineBuilder;
-    pipelineBuilder.setPipelineLayout(voxelPipelineLayout);
+    pipelineBuilder.setPipelineLayout(_voxelPipelineLayout);
     pipelineBuilder.setShaders(voxelVertexShader, voxelFragShader);
     pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
     pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
@@ -98,11 +106,11 @@ void VoxelRenderer::initPipelines() {
     pipelineBuilder.setVertexInputState({binding}, attributes);
 
     VkPipeline voxelPipeline = pipelineBuilder.build(_device.getDevice());
-    _voxelPipeline.init(voxelPipeline, voxelPipelineLayout);
+    _voxelPipeline.init(voxelPipeline, _voxelPipelineLayout);
 
     // Create WIREFRAME pipeline
     pipelineBuilder.clear();
-    pipelineBuilder.setPipelineLayout(voxelPipelineLayout);
+    pipelineBuilder.setPipelineLayout(_voxelPipelineLayout);
     pipelineBuilder.setShaders(voxelVertexShader, voxelFragShader);
     pipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
     pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_LINE); // WIREFRAME MODE
@@ -115,7 +123,7 @@ void VoxelRenderer::initPipelines() {
     pipelineBuilder.setVertexInputState({binding}, attributes);
 
     VkPipeline voxelWireframePipeline = pipelineBuilder.build(_device.getDevice());
-    _voxelWireframePipeline.init(voxelWireframePipeline, voxelPipelineLayout);
+    _voxelWireframePipeline.init(voxelWireframePipeline, _voxelPipelineLayout);
 
     vkDestroyShaderModule(_device.getDevice(), voxelFragShader, nullptr);
     vkDestroyShaderModule(_device.getDevice(), voxelVertexShader, nullptr);

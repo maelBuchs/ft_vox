@@ -12,7 +12,6 @@
 #include "common/Types/RenderTypes.hpp"
 #include "MeshBufferPool.hpp"
 
-
 class VulkanDevice;
 class MeshManager;
 class BlockRegistry;
@@ -54,6 +53,8 @@ class VoxelRenderer {
 
     Pipeline _voxelPipeline;
     Pipeline _voxelWireframePipeline;
+
+    VkPipelineLayout _voxelPipelineLayout = VK_NULL_HANDLE;
 
     std::unique_ptr<Chunk> _testChunk;
 

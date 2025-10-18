@@ -19,14 +19,6 @@ void Pipeline::cleanup(VulkanDevice& device) {
         vkDestroyPipeline(device.getDevice(), _pipeline, nullptr);
         _pipeline = VK_NULL_HANDLE;
     }
-    if (_pipelineLayout != VK_NULL_HANDLE) {
-        vkDestroyPipelineLayout(device.getDevice(), _pipelineLayout, nullptr);
-        _pipelineLayout = VK_NULL_HANDLE;
-    }
-    if (_descriptorSetLayout != VK_NULL_HANDLE) {
-        vkDestroyDescriptorSetLayout(device.getDevice(), _descriptorSetLayout, nullptr);
-        _descriptorSetLayout = VK_NULL_HANDLE;
-    }
 }
 
 VkShaderModule Pipeline::loadShaderModule(VulkanDevice& device, std::string_view shaderPath) {

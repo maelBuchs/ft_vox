@@ -98,15 +98,13 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
 Renderer::~Renderer() {
     vkDeviceWaitIdle(_device.getDevice());
 
+    _mainDeletionQueue.flush();
     // Destroy managed objects first (in reverse order of creation)
     // This ensures their internal deletion queues are flushed before the main queue
     _voxelRenderer.reset();
     _commandExecutor.reset();
     _renderContext.reset();
     _frameManager.reset();
-
-    // Now flush the main deletion queue
-    _mainDeletionQueue.flush();
 }
 
 void Renderer::draw() {
