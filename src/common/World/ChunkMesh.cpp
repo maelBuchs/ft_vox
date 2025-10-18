@@ -184,13 +184,13 @@ void ChunkMesh::addFace(FaceDirection direction, int x, int y, int z, int blockI
     vertices.push_back(v2);
     vertices.push_back(v3);
 
-    // Add indices using a consistent CCW triangulation for the quad
-    // Triangle 1: v0, v1, v2
+    // Add indices with reversed winding for CCW from outside
     indices.push_back(baseIndex + 0);
+    indices.push_back(baseIndex + 2);
     indices.push_back(baseIndex + 1);
-    indices.push_back(baseIndex + 2);
-    // Triangle 2: v0, v2, v3
+
+    // Triangle 2: v0, v3, v2
     indices.push_back(baseIndex + 0);
-    indices.push_back(baseIndex + 2);
     indices.push_back(baseIndex + 3);
+    indices.push_back(baseIndex + 2);
 }
