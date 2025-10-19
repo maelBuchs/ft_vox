@@ -9,7 +9,8 @@ Chunk::Chunk(int x, int y, int z) : _blocks{} {
     _blocks.fill(AIR_BLOCK_ID);
 
     // All chunks are at y=0 for this test
-    std::tuple<int, int, int> pos = {x, 0, z};
+    std::tuple<int, int, int> pos = {x, y, z};
+    position = pos;
 
     // Create a new chunk and generate its block data
     // Fill with some blocks for testing (staircase-like pattern)

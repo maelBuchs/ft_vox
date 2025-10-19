@@ -10,6 +10,7 @@
 #include "../Core/VulkanTypes.hpp"
 #include "../Pipeline/Pipeline.hpp"
 #include "common/Types/RenderTypes.hpp"
+#include "common/World/Chunk.hpp"
 #include "MeshBufferPool.hpp"
 
 class VulkanDevice;
@@ -61,11 +62,16 @@ class VoxelRenderer {
     // --- MDI Resources ---
     std::unique_ptr<MeshBufferPool> _meshPool;
 
-    // This mesh data will be shared by all chunk instances
-    MeshAllocation _sharedChunkMeshAllocation;
+    struct ChunkDrawInfo {
+        glm::ivec3 worldPosition{};
+        MeshAllocation mesh{};
+    };
 
-    // A list of world positions for each chunk instance we want to draw
-    std::vector<glm::vec3> _chunkPositions;
+    std::vector<ChunkDrawInfo> _chunkDrawInfos;
+
+    size_t _lastLoadedChunkCount = 0;
+    void rebuildMeshesFromLoadedChunks();
+    // chunkMap _loadedChunks;
 
     AllocatedBuffer _indirectBuffer;
     AllocatedBuffer _chunkDataBuffer;
