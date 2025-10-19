@@ -7,7 +7,7 @@
 #include "VulkanDevice.hpp"
 
 VulkanSwapchain::VulkanSwapchain(Window& window, VulkanDevice& device)
-    : _device(device), _swapchainImageFormat(VK_FORMAT_B8G8R8A8_UNORM) {
+    : _device(device), _swapchainImageFormat(VK_FORMAT_B8G8R8A8_SRGB) {
 
     vkb::SwapchainBuilder swapchainBuilder{_device.getPhysicalDevice(), _device.getDevice(),
                                            _device.getSurface()};

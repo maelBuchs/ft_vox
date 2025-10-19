@@ -26,6 +26,7 @@ chunkBuffer;
 layout(location = 0) out vec3 outNormal;
 layout(location = 1) out vec4 outColor;
 layout(location = 2) out vec2 outUV;
+layout(location = 3) flat out uint outTextureId;
 
 // Lookup table for normals, indexed by Normal ID
 const vec3 NORMALS[6] = vec3[](vec3(1.0, 0.0, 0.0),  // 0: East
@@ -69,7 +70,6 @@ void main() {
 
     outNormal = normal;
     outUV = uv;
-
-    // Use debug color based on normal (since we don't have texture atlas yet)
     outColor = vec4(abs(normal), 1.0);
+    outTextureId = textureId;
 }

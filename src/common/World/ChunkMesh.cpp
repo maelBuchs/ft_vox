@@ -31,7 +31,8 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                              std::vector<VoxelVertex>& vertices, std::vector<uint32_t>& indices,
                              const Chunk* neighborNorth, const Chunk* neighborSouth,
                              const Chunk* neighborEast, const Chunk* neighborWest,
-                             const Chunk* neighborTop, const Chunk* neighborBottom) {
+                             const Chunk* neighborTop, const Chunk* neighborBottom,
+                             const TextureIdResolver& getTextureId) {
     vertices.clear();
     indices.clear();
 
@@ -55,7 +56,8 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                         ? (neighborNorth != nullptr && neighborNorth->isBlockSolid(x, y, 0))
                         : mainChunk.isBlockSolid(x, y, z + 1);
                 if (!isNorthSolid) {
-                    addFace(FaceDirection::North, x, y, z, blockId, vertices, indices);
+                    addFace(FaceDirection::North, x, y, z, blockId, vertices, indices, registry,
+                            getTextureId);
                 }
 
                 // South (-Z)
@@ -64,7 +66,8 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                                            neighborSouth->isBlockSolid(x, y, Chunk::CHUNK_SIZE - 1))
                                         : mainChunk.isBlockSolid(x, y, z - 1);
                 if (!isSouthSolid) {
-                    addFace(FaceDirection::South, x, y, z, blockId, vertices, indices);
+                    addFace(FaceDirection::South, x, y, z, blockId, vertices, indices, registry,
+                            getTextureId);
                 }
 
                 // East (+X)
@@ -73,7 +76,8 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                         ? (neighborEast != nullptr && neighborEast->isBlockSolid(0, y, z))
                         : mainChunk.isBlockSolid(x + 1, y, z);
                 if (!isEastSolid) {
-                    addFace(FaceDirection::East, x, y, z, blockId, vertices, indices);
+                    addFace(FaceDirection::East, x, y, z, blockId, vertices, indices, registry,
+                            getTextureId);
                 }
 
                 // West (-X)
@@ -82,7 +86,8 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                                           neighborWest->isBlockSolid(Chunk::CHUNK_SIZE - 1, y, z))
                                        : mainChunk.isBlockSolid(x - 1, y, z);
                 if (!isWestSolid) {
-                    addFace(FaceDirection::West, x, y, z, blockId, vertices, indices);
+                    addFace(FaceDirection::West, x, y, z, blockId, vertices, indices, registry,
+                            getTextureId);
                 }
 
                 // Top (+Y)
@@ -91,7 +96,8 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                         ? (neighborTop != nullptr && neighborTop->isBlockSolid(x, 0, z))
                         : mainChunk.isBlockSolid(x, y + 1, z);
                 if (!isTopSolid) {
-                    addFace(FaceDirection::Top, x, y, z, blockId, vertices, indices);
+                    addFace(FaceDirection::Top, x, y, z, blockId, vertices, indices, registry,
+                            getTextureId);
                 }
 
                 // Bottom (-Y)
@@ -100,7 +106,8 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                                 neighborBottom->isBlockSolid(x, Chunk::CHUNK_SIZE - 1, z))
                              : mainChunk.isBlockSolid(x, y - 1, z);
                 if (!isBottomSolid) {
-                    addFace(FaceDirection::Bottom, x, y, z, blockId, vertices, indices);
+                    addFace(FaceDirection::Bottom, x, y, z, blockId, vertices, indices, registry,
+                            getTextureId);
                 }
             }
         }
@@ -110,9 +117,23 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
 }
 
 void ChunkMesh::addFace(FaceDirection direction, int x, int y, int z, int blockId,
-                        std::vector<VoxelVertex>& vertices, std::vector<uint32_t>& indices) {
-    // For now, use blockId as textureId. Later this will be a lookup.
-    uint32_t textureId = static_cast<uint32_t>(blockId);
+                        std::vector<VoxelVertex>& vertices, std::vector<uint32_t>& indices,
+                        const BlockRegistry& registry, const TextureIdResolver& getTextureId) {
+    std::string faceName;
+    switch (direction) {
+    case FaceDirection::Top:
+        faceName = "top";
+        break;
+    case FaceDirection::Bottom:
+        faceName = "bottom";
+        break;
+    default:
+        faceName = "side";
+        break;
+    }
+
+    std::string texturePath = registry.getTexturePath(blockId, faceName);
+    uint32_t textureId = getTextureId(texturePath);
 
     // Get the base index for the new vertices
     auto baseIndex = static_cast<uint32_t>(vertices.size());

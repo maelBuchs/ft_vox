@@ -1,13 +1,19 @@
 #include "Renderer.hpp"
 
+#include <cmath>
 #include <iostream>
+#include <map>
 #include <memory>
 
 #include <SDL3/SDL.h>
 #include <vulkan/vulkan.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
 #include "../Core/Window.hpp"
 #include "../Game/Camera.hpp"
+#include "common/World/BlockRegistry.hpp"
 #include "common/World/Chunk.hpp"
 #include "Core/VulkanBuffer.hpp"
 #include "Core/VulkanDevice.hpp"
@@ -20,8 +26,6 @@
 #include "Rendering/RenderContext.hpp"
 #include "Voxel/MeshManager.hpp"
 #include "Voxel/VoxelRenderer.hpp"
-
-// tmp ChunkInstanciator
 
 ChunkInstanciator* chunkInstanciator = nullptr;
 
@@ -36,7 +40,6 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
         throw;
     }
 
-    // Initialize new class compositions (Phase 3 refactor)
     _frameManager = std::make_unique<FrameManager>(device);
     _renderContext = std::make_unique<RenderContext>(device);
     _commandExecutor = std::make_unique<CommandExecutor>(device, *_renderContext);
@@ -74,29 +77,40 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
 
     std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes = {
         {.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .ratio = 1.0F},
-        {.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .ratio = 1.0F}};
+        {.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .ratio = 1.0F},
+        {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .ratio = 1.0F}};
 
     _globalDescriptorAllocator.init(_device.getDevice(), 10, sizes);
     _mainDeletionQueue.push(
         [this]() { _globalDescriptorAllocator.destroyPools(_device.getDevice()); });
 
-    // Initialize camera - angled view to see 3D perspective (corner view)
     _camera = std::make_unique<Camera>(glm::vec3(30.0F, 70.0F, 30.0F), -135.0F, -20.0F);
 
+    loadTextureAtlas();
+
     // Initialize voxel renderer
-    _voxelRenderer = std::make_unique<VoxelRenderer>(device, *_meshManager, registry,
-                                                     *_renderContext, *_commandExecutor,
-                                                     *_bufferManager, _globalDescriptorAllocator);
-    _voxelRenderer->initPipelines();
+    _voxelRenderer = std::make_unique<VoxelRenderer>(
+        device, *_meshManager, registry, *_renderContext, *_commandExecutor, *_bufferManager,
+        _globalDescriptorAllocator, *this);
+    _voxelRenderer->initPipelines(_textureAtlas.imageView, _textureAtlasSampler);
     // _voxelRenderer->initTestChunk();
     chunkInstanciator = new ChunkInstanciator();
 
-    // Initialize ImGui - must be last after all Vulkan resources are ready
     initImGui();
 }
 
 Renderer::~Renderer() {
     vkDeviceWaitIdle(_device.getDevice());
+
+    if (_textureAtlasSampler != VK_NULL_HANDLE) {
+        vkDestroySampler(_device.getDevice(), _textureAtlasSampler, nullptr);
+    }
+    if (_textureAtlas.imageView != VK_NULL_HANDLE) {
+        vkDestroyImageView(_device.getDevice(), _textureAtlas.imageView, nullptr);
+    }
+    if (_textureAtlas.image != VK_NULL_HANDLE) {
+        vmaDestroyImage(_device.getAllocator(), _textureAtlas.image, _textureAtlas.allocation);
+    }
 
     _mainDeletionQueue.flush();
     // Destroy managed objects first (in reverse order of creation)
@@ -164,7 +178,7 @@ void Renderer::draw() {
     // ici
 
     chunkInstanciator->updateChunksAroundPlayer(_camera->getPosition().x, _camera->getPosition().y,
-                                                _camera->getPosition().z, 12);
+                                                _camera->getPosition().z, 4);
 
     // Render voxel geometry using VoxelRenderer
     _voxelRenderer->drawVoxels(commandBuffer, *_camera, _wireframeMode);
@@ -357,4 +371,223 @@ void Renderer::updateFPS(float deltaTime) {
         _frameTimeAccumulator = 0.0F;
         _frameCount = 0;
     }
+}
+
+uint32_t Renderer::getTextureId(const std::string& path) {
+    if (path.empty())
+        return 0; // Return 0 for air or invalid textures
+
+    auto it = _texturePathToId.find(path);
+    if (it != _texturePathToId.end()) {
+        return it->second;
+    }
+
+    // This case should ideally not be hit if pre-loading is done correctly
+    uint32_t id = _nextTextureId++;
+    _texturePathToId[path] = id;
+    return id;
+}
+
+void Renderer::loadTextureAtlas() {
+    std::cout << "Loading texture atlas...\n";
+
+    // 1. Discover all unique texture paths from the BlockRegistry
+    for (int i = 0; i < MAX_BLOCKS; ++i) {
+        std::string path;
+        path = _blockRegistry.getTexturePath(i, "all");
+        if (!path.empty())
+            (void)getTextureId(path); // Capture ID to populate map
+        path = _blockRegistry.getTexturePath(i, "top");
+        if (!path.empty())
+            (void)getTextureId(path);
+        path = _blockRegistry.getTexturePath(i, "bottom");
+        if (!path.empty())
+            (void)getTextureId(path);
+        path = _blockRegistry.getTexturePath(i, "side");
+        if (!path.empty())
+            (void)getTextureId(path);
+    }
+
+    // Create sorted list for deterministic layout
+    std::map<uint32_t, std::string> idToPath;
+    for (const auto& [path, id] : _texturePathToId) {
+        idToPath[id] = path;
+    }
+
+    std::vector<std::string> uniqueTexturePaths;
+    for (const auto& [id, path] : idToPath) {
+        uniqueTexturePaths.push_back(path);
+    }
+
+    if (uniqueTexturePaths.empty()) {
+        throw std::runtime_error("No textures found to build atlas.");
+    }
+
+    std::cout << "Found " << uniqueTexturePaths.size() << " unique textures\n";
+
+    // 2. Load all images into CPU memory using stb_image
+    struct ImageData {
+        int width, height, channels;
+        stbi_uc* pixels;
+    };
+
+    // Flip source images vertically so UV origin (0,0) = block bottom-left.
+    stbi_set_flip_vertically_on_load(1);
+
+    std::vector<ImageData> loadedImages;
+    int atlasDimension = 0;
+
+    for (const auto& path : uniqueTexturePaths) {
+        ImageData img;
+        img.pixels =
+            stbi_load(path.c_str(), &img.width, &img.height, &img.channels, STBI_rgb_alpha);
+        if (!img.pixels) {
+            throw std::runtime_error("Failed to load texture file: " + path);
+        }
+        if (atlasDimension == 0)
+            atlasDimension = img.width;
+        if (img.width != atlasDimension || img.height != atlasDimension) {
+            stbi_image_free(img.pixels);
+            throw std::runtime_error("All block textures must be square and same dimensions! " +
+                                     path);
+        }
+        std::cout << "  Loaded: " << path << " (" << img.width << "x" << img.height << ")\n";
+        loadedImages.push_back(img);
+    }
+
+    // Reset flip flag for any subsequent texture loads elsewhere in the codebase.
+    stbi_set_flip_vertically_on_load(0);
+
+    // 3. Determine atlas size and create staging buffer
+    _atlasTexturesPerRow = static_cast<int>(std::ceil(std::sqrt(loadedImages.size())));
+    const int atlasWidth = _atlasTexturesPerRow * atlasDimension;
+    const int atlasHeight = _atlasTexturesPerRow * atlasDimension;
+    const VkDeviceSize atlasTotalSize = static_cast<VkDeviceSize>(atlasWidth) * atlasHeight * 4;
+
+    std::cout << "Creating atlas: " << atlasWidth << "x" << atlasHeight << " ("
+              << _atlasTexturesPerRow << "x" << _atlasTexturesPerRow << " tiles)\n";
+
+    AllocatedBuffer stagingBuffer = _bufferManager->createStagingBuffer(atlasTotalSize);
+
+    // 4. Copy individual image data into the staging buffer in a grid layout
+    for (size_t i = 0; i < loadedImages.size(); ++i) {
+        int tileX = static_cast<int>(i) % _atlasTexturesPerRow;
+        int tileY = static_cast<int>(i) / _atlasTexturesPerRow;
+        char* startPtr = static_cast<char*>(stagingBuffer.info.pMappedData) +
+                         (tileY * atlasWidth * atlasDimension * 4) + (tileX * atlasDimension * 4);
+
+        for (int row = 0; row < atlasDimension; ++row) {
+            memcpy(startPtr + (row * atlasWidth * 4),
+                   loadedImages[i].pixels + (row * atlasDimension * 4), atlasDimension * 4);
+        }
+    }
+
+    // 5. Create the final GPU image (the atlas)
+    _textureAtlas.extent = {static_cast<uint32_t>(atlasWidth), static_cast<uint32_t>(atlasHeight),
+                            1};
+    _textureAtlas.format = VK_FORMAT_R8G8B8A8_SRGB;
+
+    VkImageUsageFlags atlasImageUsages =
+        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+
+    VkImageCreateInfo atlasImageInfo{.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                                     .pNext = nullptr,
+                                     .flags = 0,
+                                     .imageType = VK_IMAGE_TYPE_2D,
+                                     .format = _textureAtlas.format,
+                                     .extent = _textureAtlas.extent,
+                                     .mipLevels = 1,
+                                     .arrayLayers = 1,
+                                     .samples = VK_SAMPLE_COUNT_1_BIT,
+                                     .tiling = VK_IMAGE_TILING_OPTIMAL,
+                                     .usage = atlasImageUsages};
+
+    VmaAllocationCreateInfo atlasAllocInfo{
+        .usage = VMA_MEMORY_USAGE_GPU_ONLY,
+        .requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)};
+
+    VkResult ret = vmaCreateImage(_device.getAllocator(), &atlasImageInfo, &atlasAllocInfo,
+                                  &_textureAtlas.image, &_textureAtlas.allocation, nullptr);
+    if (ret != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create texture atlas image");
+    }
+
+    // 6. Copy from staging buffer to the GPU image
+    _commandExecutor->immediateSubmit([&](VkCommandBuffer cmd) {
+        // Transition atlas to TRANSFER_DST_OPTIMAL
+        _commandExecutor->transitionImage(cmd, _textureAtlas.image, VK_IMAGE_LAYOUT_UNDEFINED,
+                                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+        // Copy buffer to image
+        VkBufferImageCopy copyRegion{};
+        copyRegion.bufferOffset = 0;
+        copyRegion.bufferRowLength = 0;
+        copyRegion.bufferImageHeight = 0;
+        copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        copyRegion.imageSubresource.mipLevel = 0;
+        copyRegion.imageSubresource.baseArrayLayer = 0;
+        copyRegion.imageSubresource.layerCount = 1;
+        copyRegion.imageOffset = {0, 0, 0};
+        copyRegion.imageExtent = _textureAtlas.extent;
+
+        vkCmdCopyBufferToImage(cmd, stagingBuffer.buffer, _textureAtlas.image,
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+
+        // Transition atlas to SHADER_READ_ONLY_OPTIMAL
+        _commandExecutor->transitionImage(cmd, _textureAtlas.image,
+                                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    });
+
+    // 7. Clean up staging buffer and loaded images
+    _bufferManager->destroyBuffer(stagingBuffer);
+    for (auto& img : loadedImages) {
+        stbi_image_free(img.pixels);
+    }
+
+    // 8. Create the Image View
+    VkImageViewCreateInfo atlasViewInfo{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .image = _textureAtlas.image,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = _textureAtlas.format,
+        .subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                             .baseMipLevel = 0,
+                             .levelCount = 1,
+                             .baseArrayLayer = 0,
+                             .layerCount = 1}};
+
+    ret = vkCreateImageView(_device.getDevice(), &atlasViewInfo, nullptr, &_textureAtlas.imageView);
+    if (ret != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create texture atlas image view");
+    }
+
+    // 9. Create the Sampler
+    VkSamplerCreateInfo samplerInfo{.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+                                    .pNext = nullptr,
+                                    .flags = 0,
+                                    .magFilter = VK_FILTER_NEAREST, // Pixelated look for voxels
+                                    .minFilter = VK_FILTER_NEAREST,
+                                    .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+                                    .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+                                    .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+                                    .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+                                    .mipLodBias = 0.0F,
+                                    .anisotropyEnable = VK_FALSE,
+                                    .maxAnisotropy = 1.0F,
+                                    .compareEnable = VK_FALSE,
+                                    .compareOp = VK_COMPARE_OP_ALWAYS,
+                                    .minLod = 0.0F,
+                                    .maxLod = 0.0F,
+                                    .borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+                                    .unnormalizedCoordinates = VK_FALSE};
+
+    ret = vkCreateSampler(_device.getDevice(), &samplerInfo, nullptr, &_textureAtlasSampler);
+    if (ret != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create texture atlas sampler");
+    }
+
+    std::cout << "Texture atlas loaded successfully!\n";
 }

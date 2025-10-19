@@ -11,6 +11,7 @@
 #include "../Core/VulkanDevice.hpp"
 #include "../Memory/DescriptorAllocator.hpp"
 #include "../Pipeline/GraphicsPipelineBuilder.hpp"
+#include "../Renderer.hpp"
 #include "../Rendering/CommandExecutor.hpp"
 #include "../Rendering/RenderContext.hpp"
 #include "common/World/Chunk.hpp"
@@ -21,10 +22,10 @@
 VoxelRenderer::VoxelRenderer(VulkanDevice& device, MeshManager& meshManager,
                              BlockRegistry& registry, RenderContext& context,
                              CommandExecutor& executor, VulkanBuffer& bufferManager,
-                             DescriptorAllocatorGrowable& descriptorAllocator)
+                             DescriptorAllocatorGrowable& descriptorAllocator, Renderer& renderer)
     : _device(device), _meshManager(meshManager), _blockRegistry(registry), _context(context),
-      _executor(executor), _bufferManager(bufferManager),
-      _descriptorAllocator(descriptorAllocator) {
+      _executor(executor), _bufferManager(bufferManager), _descriptorAllocator(descriptorAllocator),
+      _renderer(renderer) {
     // Initialize mesh buffer pool
     _meshPool = std::make_unique<MeshBufferPool>(_device, _bufferManager);
 }
@@ -52,9 +53,9 @@ VoxelRenderer::~VoxelRenderer() {
     }
 }
 
-void VoxelRenderer::initPipelines() {
+void VoxelRenderer::initPipelines(VkImageView atlasView, VkSampler atlasSampler) {
     // First initialize MDI resources and descriptor set layout
-    initMDI();
+    initMDI(atlasView, atlasSampler);
 
     VkShaderModule voxelFragShader = Pipeline::loadShaderModule(_device, "shaders/voxel.frag.spv");
     VkShaderModule voxelVertexShader =
@@ -79,8 +80,6 @@ void VoxelRenderer::initPipelines() {
         throw std::runtime_error("Failed to create voxel pipeline layout");
     }
 
-    // --- PACKED VERTEX FORMAT ---
-    // A single binding for our packed uint32_t vertex data
     VkVertexInputBindingDescription binding{
         .binding = 0, .stride = sizeof(uint32_t), .inputRate = VK_VERTEX_INPUT_RATE_VERTEX};
 
@@ -129,11 +128,13 @@ void VoxelRenderer::initPipelines() {
     vkDestroyShaderModule(_device.getDevice(), voxelVertexShader, nullptr);
 }
 
-void VoxelRenderer::initMDI() {
-    // Create descriptor set layout for chunk data SSBO
+void VoxelRenderer::initMDI(VkImageView atlasView, VkSampler atlasSampler) {
+    // Create descriptor set layout for chunk data SSBO and texture atlas
     DescriptorLayoutBuilder layoutBuilder;
     layoutBuilder.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-    _chunkSetLayout = layoutBuilder.build(_device.getDevice(), VK_SHADER_STAGE_VERTEX_BIT);
+    layoutBuilder.addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    _chunkSetLayout = layoutBuilder.build(_device.getDevice(), VK_SHADER_STAGE_VERTEX_BIT |
+                                                                   VK_SHADER_STAGE_FRAGMENT_BIT);
 
     // Create buffers for indirect draw commands
     // Size for max 10000 chunks
@@ -153,10 +154,12 @@ void VoxelRenderer::initMDI() {
     _chunkDescriptorSet =
         _descriptorAllocator.allocate(_device.getDevice(), _chunkSetLayout, nullptr);
 
-    // Write descriptor set to bind the chunk data buffer
+    // Write descriptor set to bind the chunk data buffer AND texture atlas
     DescriptorWriter writer;
     writer.writeBuffer(0, _chunkDataBuffer.buffer, sizeof(GPUChunkData) * MAX_CHUNKS, 0,
                        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    writer.writeImage(1, atlasView, atlasSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                      VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
     writer.updateSet(_device.getDevice(), _chunkDescriptorSet);
 }
 
@@ -290,9 +293,13 @@ void VoxelRenderer::rebuildMeshesFromLoadedChunks() {
         std::vector<VoxelVertex> vertices;
         std::vector<uint32_t> indices;
 
+        auto getTextureId = [this](const std::string& path) -> uint32_t {
+            return _renderer.getTextureId(path);
+        };
+
         ChunkMesh::generateMesh(*chunkPtr, _blockRegistry, vertices, indices, neighborNorth,
                                 neighborSouth, neighborEast, neighborWest, neighborTop,
-                                neighborBottom);
+                                neighborBottom, getTextureId);
 
         if (vertices.empty() || indices.empty()) {
             continue;
@@ -326,7 +333,6 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
     const RenderContext::AllocatedImage& depthImage = _context.getDepthImage();
     VkExtent2D drawExtent = _context.getDrawExtent();
 
-    // --- PREPARE MDI DATA ON CPU ---
     _indirectCommands.clear();
     _chunkDrawData.clear();
 
@@ -364,7 +370,6 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
     _bufferManager.uploadToBuffer(_chunkDataBuffer, _chunkDrawData.data(),
                                   _chunkDrawData.size() * sizeof(GPUChunkData));
 
-    // --- BEGIN RENDERING ---
     VkRenderingAttachmentInfo colorAttachment{
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .pNext = nullptr,

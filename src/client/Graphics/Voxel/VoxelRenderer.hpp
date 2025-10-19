@@ -23,13 +23,14 @@ class CommandExecutor;
 class MeshBufferPool;
 class VulkanBuffer;
 class DescriptorAllocatorGrowable;
+class Renderer;
 struct MeshAllocation;
 
 class VoxelRenderer {
   public:
     VoxelRenderer(VulkanDevice& device, MeshManager& meshManager, BlockRegistry& registry,
                   RenderContext& context, CommandExecutor& executor, VulkanBuffer& bufferManager,
-                  DescriptorAllocatorGrowable& descriptorAllocator);
+                  DescriptorAllocatorGrowable& descriptorAllocator, Renderer& renderer);
     ~VoxelRenderer();
 
     VoxelRenderer(const VoxelRenderer&) = delete;
@@ -37,12 +38,12 @@ class VoxelRenderer {
     VoxelRenderer(VoxelRenderer&&) = delete;
     VoxelRenderer& operator=(VoxelRenderer&&) = delete;
 
-    void initPipelines();
+    void initPipelines(VkImageView atlasView, VkSampler atlasSampler);
     void initTestChunk();
     void drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wireframeMode);
 
   private:
-    void initMDI();
+    void initMDI(VkImageView atlasView, VkSampler atlasSampler);
 
     VulkanDevice& _device;
     MeshManager& _meshManager;
@@ -51,6 +52,7 @@ class VoxelRenderer {
     CommandExecutor& _executor;
     VulkanBuffer& _bufferManager;
     DescriptorAllocatorGrowable& _descriptorAllocator;
+    Renderer& _renderer;
 
     Pipeline _voxelPipeline;
     Pipeline _voxelWireframePipeline;

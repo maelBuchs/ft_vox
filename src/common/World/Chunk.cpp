@@ -28,7 +28,7 @@ Chunk::Chunk(int x, int y, int z) : _blocks{} {
                 static_cast<int>((noiseValue + 1.0F) / 2.0F * static_cast<float>(CHUNK_SIZE));
             for (int by = 0; by < CHUNK_SIZE; by++) {
                 if (CHUNK_TO_WORLD(by, y) < maxHeight) {
-                    setBlock(bx, by, bz, 1); // Set block ID to 1 (solid block)
+                    setBlock(bx, by, bz, 2); // Set block ID to 1 (solid block)
                 }
             }
         }

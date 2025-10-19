@@ -2,7 +2,6 @@
   {
     "id": 0,
     "name": "air",
-    "texture_path": "",
     "tags": {
       "transparent": true
     }
@@ -10,7 +9,9 @@
   {
     "id": 1,
     "name": "stone",
-    "texture_path": "",
+    "textures": {
+      "all": "../../assets/textures/block/stone.png"
+    },
     "tags": {
       "displayable": true,
       "solid": true
@@ -19,7 +20,11 @@
   {
     "id": 2,
     "name": "grass_block",
-    "texture_path": "",
+    "textures": {
+      "top": "../../assets/textures/block/grass_block_top.png",
+      "bottom": "../../assets/textures/block/dirt.png",
+      "side": "../../assets/textures/block/grass_block_side.png"
+    },
     "tags": {
       "displayable": true,
       "solid": true
@@ -28,7 +33,11 @@
   {
     "id": 3,
     "name": "oak_wood",
-    "texture_path": "",
+    "textures": {
+      "top": "../../assets/textures/block/oak_log_top.png",
+      "bottom": "../../assets/textures/block/oak_log_top.png",
+      "side": "../../assets/textures/block/oak_log.png"
+    },
     "tags": {
       "displayable": true,
       "flammable": true,
@@ -38,6 +47,9 @@
   {
     "id": 4,
     "name": "water",
+    "textures": {
+      "all": "../../assets/textures/block/stone.png"
+    },
     "tags": {
       "displayable": true,
       "transparent": true,
