@@ -66,7 +66,7 @@ int Chunk::getIndex(int x, int y, int z) const {
 }
 
 void ChunkInstanciator::loadChunkAt(int x, int y, int z) {
-    decltype(_loadedChunks)::key_type key = decltype(_loadedChunks)::key_type(x, y, z);
+    decltype(_loadedChunks)::key_type key(x, y, z);
     if (_loadedChunks.contains(key)) {
         return; // Chunk already loaded
     }
