@@ -88,7 +88,7 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
                                                      *_renderContext, *_commandExecutor,
                                                      *_bufferManager, _globalDescriptorAllocator);
     _voxelRenderer->initPipelines();
-    _voxelRenderer->initTestChunk();
+    // _voxelRenderer->initTestChunk();
     chunkInstanciator = new ChunkInstanciator();
 
     // Initialize ImGui - must be last after all Vulkan resources are ready

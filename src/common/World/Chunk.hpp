@@ -120,6 +120,7 @@ class ChunkInstanciator {
     // hecks which chunks need to be loaded/unloaded based on player position
 
     void updateChunksAroundPlayer(float playerX, float playerY, float playerZ, float viewDistance);
+    [[nodiscard]] const chunkMap& getLoadedChunks() const { return _loadedChunks; }
 
   private:
     void loadChunkAt(int x, int y, int z);

@@ -160,104 +160,168 @@ void VoxelRenderer::initMDI() {
     writer.updateSet(_device.getDevice(), _chunkDescriptorSet);
 }
 
-void VoxelRenderer::initTestChunk() {
-    // Simple struct to use as a key in our chunk map
-    struct ChunkPos {
-        int x, y, z;
-        bool operator<(const ChunkPos& other) const {
-            if (x != other.x) {
-                return x < other.x;
-            }
-            if (y != other.y) {
-                return y < other.y;
-            }
-            return z < other.z;
-        }
+// void VoxelRenderer::initTestChunk() {
+//     // Simple struct to use as a key in our chunk map
+//     struct ChunkPos {
+//         int x, y, z;
+//         bool operator<(const ChunkPos& other) const {
+//             if (x != other.x) {
+//                 return x < other.x;
+//             }
+//             if (y != other.y) {
+//                 return y < other.y;
+//             }
+//             return z < other.z;
+//         }
+//     };
+
+//     // --- PART 1: Create all chunk data first ---
+//     std::map<ChunkPos, std::unique_ptr<Chunk>> worldChunks;
+
+//     _chunkDrawInfos.clear();
+//     const int renderDistance = 2;
+//     const int layer = 2;
+
+//     for (int y = -layer; y < layer; ++y) {
+//         for (int x = -renderDistance; x < renderDistance; ++x) {
+//             for (int z = -renderDistance; z < renderDistance; ++z) {
+//                 // All chunks are at y=0 for this test
+//                 ChunkPos pos = {x, y, z};
+//                 // std::cout << "Creating chunk at (" << x << ", " << y << ", " << z << ")\n";
+//                 // Create a new chunk and generate its block data and with the world position
+//                 auto chunk = std::make_unique<Chunk>(x, y, z);
+
+//                 // Fill with all the chunk with stone
+//                 for (int bx = 0; bx < Chunk::CHUNK_SIZE; bx++) {
+//                     for (int by = 0; by < Chunk::CHUNK_SIZE; by++) {
+//                         for (int bz = 0; bz < Chunk::CHUNK_SIZE; bz++) {
+//                             chunk->setBlock(bx, by, bz, 1); // stone
+//                         }
+//                     }
+//                 }
+//                 worldChunks[pos] = std::move(chunk);
+//             }
+//         }
+//     }
+
+//     // --- PART 2: Generate meshes for all chunks, now with neighbor data ---
+//     _meshPool->reset(); // Reset the pool before generating new meshes
+
+//     for (const auto& [pos, chunk] : worldChunks) {
+//         // Find the 6 neighbors for the current chunk
+//         auto findNeighbor = [&](int dx, int dy, int dz) -> const Chunk* {
+//             auto it = worldChunks.find({pos.x + dx, pos.y + dy, pos.z + dz});
+//             return (it != worldChunks.end()) ? it->second.get() : nullptr;
+//         };
+
+//         const Chunk* neighborNorth = findNeighbor(0, 0, 1);
+//         const Chunk* neighborSouth = findNeighbor(0, 0, -1);
+//         const Chunk* neighborEast = findNeighbor(1, 0, 0);
+//         const Chunk* neighborWest = findNeighbor(-1, 0, 0);
+//         const Chunk* neighborTop = findNeighbor(0, 1, 0);     // Always null in our test grid
+//         const Chunk* neighborBottom = findNeighbor(0, -1, 0); // Always null in our test grid
+
+//         // Generate the mesh for this specific chunk with neighbor awareness
+//         std::vector<VoxelVertex> vertices;
+//         std::vector<uint32_t> indices;
+//         // si on est on cube en 0 0 0 on met le mode debug
+//         // if (pos.x == 0 && pos.y == 0 && pos.z == 0) {
+//         //     ChunkMesh::generateMesh(*chunk, _blockRegistry, vertices, indices, neighborNorth,
+//         //                             neighborSouth, neighborEast, neighborWest, neighborTop,
+//         //                             neighborBottom, true);
+//         // } else {
+//         ChunkMesh::generateMesh(*chunk, _blockRegistry, vertices, indices, neighborNorth,
+//                                 neighborSouth, neighborEast, neighborWest, neighborTop,
+//                                 neighborBottom);
+//         // }
+//         // ChunkMesh::generateMesh(*chunk, _blockRegistry, vertices, indices, neighborNorth,
+//         //                         neighborSouth, neighborEast, neighborWest, neighborTop,
+//         //                         neighborBottom);
+
+//         if (vertices.empty() || indices.empty()) {
+//             continue; // Skip empty meshes
+//         }
+
+//         MeshAllocation allocation = _meshPool->uploadMesh(
+//             indices, vertices, [this](std::function<void(VkCommandBuffer)>&& func) {
+//                 _executor.immediateSubmit(std::move(func));
+//             });
+
+//         glm::vec3 chunkWorldPos{static_cast<float>(pos.x * Chunk::CHUNK_SIZE),
+//                                 static_cast<float>(pos.y * Chunk::CHUNK_SIZE),
+//                                 static_cast<float>(pos.z * Chunk::CHUNK_SIZE)};
+
+//         _chunkDrawInfos.push_back(ChunkDrawInfo{chunkWorldPos, allocation});
+//     }
+
+//     // Safety check in case all meshes were empty
+//     if (_chunkDrawInfos.empty()) {
+//         throw std::runtime_error("Failed to generate chunk mesh: no vertices or indices");
+//     }
+// }
+
+void VoxelRenderer::rebuildMeshesFromLoadedChunks() {
+    extern ChunkInstanciator* chunkInstanciator;
+    if (!chunkInstanciator) {
+        return;
+    }
+    const chunkMap& worldChunks = chunkInstanciator->getLoadedChunks();
+
+    _chunkDrawInfos.clear();
+    _meshPool->reset();
+    auto findNeighbor = [&](const glm::ivec3& pos, int dx, int dy, int dz) -> const Chunk* {
+        glm::ivec3 npos = pos + glm::ivec3(dx, dy, dz);
+        auto it = worldChunks.find(npos);
+        return (it != worldChunks.end()) ? it->second.get() : nullptr;
     };
 
-    // --- PART 1: Create all chunk data first ---
-    std::map<ChunkPos, std::unique_ptr<Chunk>> worldChunks;
-
-    _chunkPositions.clear();
-    const int renderDistance = 32; // Create a 64x64 grid of chunks
-    for (int x = -renderDistance; x < renderDistance; ++x) {
-        for (int z = -renderDistance; z < renderDistance; ++z) {
-            // All chunks are at y=0 for this test
-            ChunkPos pos = {x, 0, z};
-            _chunkPositions.push_back(
-                glm::vec3(x * Chunk::CHUNK_SIZE, 0.0F, z * Chunk::CHUNK_SIZE));
-
-            // Create a new chunk and generate its block data
-            auto chunk = std::make_unique<Chunk>();
-
-            // Fill with some blocks for testing (staircase-like pattern)
-            for (int bx = 0; bx < 32; bx++) {
-                for (int bz = 0; bz < 32; bz++) {
-                    int height = (bx + bz) / 2;
-                    for (int by = 0; by < height && by < 32; by++) {
-                        if (by < height - 5) {
-                            chunk->setBlock(bx, by, bz, 1); // stone
-                        } else if (by < height - 1) {
-                            chunk->setBlock(bx, by, bz, 2); // grass_block
-                        } else if (by < height && (bx % 3 == 0) && (bz % 3 == 0)) {
-                            chunk->setBlock(bx, by, bz, 4); // water
-                        } else if (by < height) {
-                            chunk->setBlock(bx, by, bz, 3); // oak_wood (some trees)
-                        } else {
-                            chunk->setBlock(bx, by, bz, 0); // air
-                        }
-                    }
-                }
-            }
-            worldChunks[pos] = std::move(chunk);
+    for (const auto& [pos, chunkPtr] : worldChunks) {
+        if (!chunkPtr) {
+            continue;
         }
-    }
 
-    // --- PART 2: Generate meshes for all chunks, now with neighbor data ---
-    _meshPool->reset(); // Reset the pool before generating new meshes
+        const Chunk* neighborNorth = findNeighbor(pos, 0, 0, 1);
+        const Chunk* neighborSouth = findNeighbor(pos, 0, 0, -1);
+        const Chunk* neighborEast = findNeighbor(pos, 1, 0, 0);
+        const Chunk* neighborWest = findNeighbor(pos, -1, 0, 0);
+        const Chunk* neighborTop = findNeighbor(pos, 0, 1, 0);
+        const Chunk* neighborBottom = findNeighbor(pos, 0, -1, 0);
 
-    for (const auto& [pos, chunk] : worldChunks) {
-        // Find the 6 neighbors for the current chunk
-        auto findNeighbor = [&](int dx, int dy, int dz) -> const Chunk* {
-            auto it = worldChunks.find({pos.x + dx, pos.y + dy, pos.z + dz});
-            return (it != worldChunks.end()) ? it->second.get() : nullptr;
-        };
-
-        const Chunk* neighborNorth = findNeighbor(0, 0, 1);
-        const Chunk* neighborSouth = findNeighbor(0, 0, -1);
-        const Chunk* neighborEast = findNeighbor(1, 0, 0);
-        const Chunk* neighborWest = findNeighbor(-1, 0, 0);
-        const Chunk* neighborTop = findNeighbor(0, 1, 0);     // Always null in our test grid
-        const Chunk* neighborBottom = findNeighbor(0, -1, 0); // Always null in our test grid
-
-        // Generate the mesh for this specific chunk with neighbor awareness
         std::vector<VoxelVertex> vertices;
         std::vector<uint32_t> indices;
-        ChunkMesh::generateMesh(*chunk, _blockRegistry, vertices, indices, neighborNorth,
+
+        ChunkMesh::generateMesh(*chunkPtr, _blockRegistry, vertices, indices, neighborNorth,
                                 neighborSouth, neighborEast, neighborWest, neighborTop,
                                 neighborBottom);
 
         if (vertices.empty() || indices.empty()) {
-            continue; // Skip empty meshes
+            continue;
         }
 
-        // Upload this chunk's mesh to the pool
-        // For this test, since all chunks have identical geometry, we only upload once
-        if (_sharedChunkMeshAllocation.indexCount == 0) {
-            _sharedChunkMeshAllocation = _meshPool->uploadMesh(
-                indices, vertices, [this](std::function<void(VkCommandBuffer)>&& func) {
-                    _executor.immediateSubmit(std::move(func));
-                });
-        }
+        MeshAllocation allocation = _meshPool->uploadMesh(
+            indices, vertices, [this](std::function<void(VkCommandBuffer)>&& func) {
+                _executor.immediateSubmit(std::move(func));
+            });
+
+        glm::vec3 chunkWorldPos{static_cast<float>(pos.x * Chunk::CHUNK_SIZE),
+                                static_cast<float>(pos.y * Chunk::CHUNK_SIZE),
+                                static_cast<float>(pos.z * Chunk::CHUNK_SIZE)};
+
+        _chunkDrawInfos.push_back(ChunkDrawInfo{chunkWorldPos, allocation});
     }
 
-    // Safety check in case all meshes were empty
-    if (_sharedChunkMeshAllocation.indexCount == 0) {
-        throw std::runtime_error("Failed to generate chunk mesh: no vertices or indices");
-    }
+    _lastLoadedChunkCount = worldChunks.size();
 }
 
 void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wireframeMode) {
+    extern ChunkInstanciator* chunkInstanciator;
+    if (chunkInstanciator) {
+        const auto& loaded = chunkInstanciator->getLoadedChunks();
+        if (loaded.size() != _lastLoadedChunkCount) {
+            rebuildMeshesFromLoadedChunks();
+        }
+    }
+
     const RenderContext::AllocatedImage& drawImage = _context.getDrawImage();
     const RenderContext::AllocatedImage& depthImage = _context.getDepthImage();
     VkExtent2D drawExtent = _context.getDrawExtent();
@@ -266,24 +330,25 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
     _indirectCommands.clear();
     _chunkDrawData.clear();
 
-    _indirectCommands.reserve(_chunkPositions.size());
-    _chunkDrawData.reserve(_chunkPositions.size());
+    _indirectCommands.reserve(_chunkDrawInfos.size());
+    _chunkDrawData.reserve(_chunkDrawInfos.size());
 
-    // Iterate over all chunk positions and build the command list
-    // All chunks share the same mesh geometry, but render at different positions
-    for (size_t i = 0; i < _chunkPositions.size(); ++i) {
-        // Create the indirect command. The geometry data is the same for all.
+    for (const ChunkDrawInfo& drawInfo : _chunkDrawInfos) {
+        const MeshAllocation& mesh = drawInfo.mesh;
+        if (mesh.indexCount == 0) {
+            continue;
+        }
+
         VkDrawIndexedIndirectCommand indirectCmd{};
-        indirectCmd.indexCount = _sharedChunkMeshAllocation.indexCount;
-        indirectCmd.instanceCount = 1; // Always 1 instance per draw command in MDI
-        indirectCmd.firstIndex = _sharedChunkMeshAllocation.firstIndex;
-        indirectCmd.vertexOffset = _sharedChunkMeshAllocation.vertexOffset;
-        indirectCmd.firstInstance = 0; // Set to 0 because we use gl_DrawID in the shader
+        indirectCmd.indexCount = mesh.indexCount;
+        indirectCmd.instanceCount = 1;
+        indirectCmd.firstIndex = mesh.firstIndex;
+        indirectCmd.vertexOffset = mesh.vertexOffset;
+        indirectCmd.firstInstance = 0;
         _indirectCommands.push_back(indirectCmd);
 
-        // Create the per-chunk data (its world position)
         GPUChunkData chunkData{};
-        chunkData.chunkWorldPos = _chunkPositions[i];
+        chunkData.chunkWorldPos = drawInfo.worldPosition;
         chunkData.padding = 0.0F;
         _chunkDrawData.push_back(chunkData);
     }
