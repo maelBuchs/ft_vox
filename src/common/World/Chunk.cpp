@@ -1,9 +1,13 @@
 #include "Chunk.hpp"
 
 #include <cmath>
+#include <iostream>
 
 #include <glm/glm.hpp>
-#define RENDER_DISTANCE 32
+
+#include "common/Util/perlinNoise.hpp"
+#define CHUNK_TO_WORLD(b, c) ((c) * Chunk::CHUNK_SIZE + (b))
+#define SEED 42L
 
 Chunk::Chunk(int x, int y, int z) : _blocks{} {
     _blocks.fill(AIR_BLOCK_ID);
@@ -14,20 +18,17 @@ Chunk::Chunk(int x, int y, int z) : _blocks{} {
 
     // Create a new chunk and generate its block data
     // Fill with some blocks for testing (staircase-like pattern)
-    for (int bx = 0; bx < 32; bx++) {
-        for (int bz = 0; bz < 32; bz++) {
-            int height = (bx + bz) / 2;
-            for (int by = 0; by < height && by < 32; by++) {
-                if (by < height - 5) {
-                    setBlock(bx, by, bz, 1); // stone
-                } else if (by < height - 1) {
-                    setBlock(bx, by, bz, 2); // grass_block
-                } else if (by < height && (bx % 3 == 0) && (bz % 3 == 0)) {
-                    setBlock(bx, by, bz, 4); // water
-                } else if (by < height) {
-                    setBlock(bx, by, bz, 3); // oak_wood (some trees)
-                } else {
-                    setBlock(bx, by, bz, 0); // air
+    for (int bx = 0; bx < CHUNK_SIZE; bx++) {
+        for (int bz = 0; bz < CHUNK_SIZE; bz++) {
+            float noiseValue = perlinNoiseByCoordinates(CHUNK_TO_WORLD(bx, std::get<0>(position)),
+                                                        CHUNK_TO_WORLD(bz, std::get<2>(position)),
+                                                        0.01F, SEED, 1, 0.1F);
+
+            int maxHeight =
+                static_cast<int>((noiseValue + 1.0F) / 2.0F * static_cast<float>(CHUNK_SIZE));
+            for (int by = 0; by < CHUNK_SIZE; by++) {
+                if (CHUNK_TO_WORLD(by, y) < maxHeight) {
+                    setBlock(bx, by, bz, 1); // Set block ID to 1 (solid block)
                 }
             }
         }
@@ -77,12 +78,12 @@ void ChunkInstanciator::loadChunkAt(int x, int y, int z) {
 
 void ChunkInstanciator::updateChunksAroundPlayer(float playerX, float playerY, float playerZ,
                                                  float viewDistance) {
-    int cxmin = static_cast<int>(std::floor((playerX - viewDistance) / Chunk::CHUNK_SIZE));
-    int cxmax = static_cast<int>(std::floor((playerX + viewDistance) / Chunk::CHUNK_SIZE));
-    int cymin = static_cast<int>(std::floor((playerY - viewDistance) / Chunk::CHUNK_SIZE));
-    int cymax = static_cast<int>(std::floor((playerY + viewDistance) / Chunk::CHUNK_SIZE));
-    int czmin = static_cast<int>(std::floor((playerZ - viewDistance) / Chunk::CHUNK_SIZE));
-    int czmax = static_cast<int>(std::floor((playerZ + viewDistance) / Chunk::CHUNK_SIZE));
+    int cxmin = static_cast<int>(std::floor((playerX / Chunk::CHUNK_SIZE) - viewDistance));
+    int cxmax = static_cast<int>(std::floor((playerX / Chunk::CHUNK_SIZE) + viewDistance));
+    int cymin = static_cast<int>(std::floor((playerY / Chunk::CHUNK_SIZE) - viewDistance));
+    int cymax = static_cast<int>(std::floor((playerY / Chunk::CHUNK_SIZE) + viewDistance));
+    int czmin = static_cast<int>(std::floor((playerZ / Chunk::CHUNK_SIZE) - viewDistance));
+    int czmax = static_cast<int>(std::floor((playerZ / Chunk::CHUNK_SIZE) + viewDistance));
     for (int x = cxmin; x <= cxmax; x++) {
         for (int y = cymin; y <= cymax; y++) {
             for (int z = czmin; z <= czmax; z++) {

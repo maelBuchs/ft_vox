@@ -31,6 +31,7 @@ float interpolate(float a0, float a1, float w) {
     return a0 + (fade(w) * (a1 - a0));
 }
 
+} // namespace
 // Valeur de Perlin à une position
 // Peut etre move out of namespace si besoin
 float perlinValue(float x, float y, long int seed) {
@@ -53,7 +54,23 @@ float perlinValue(float x, float y, long int seed) {
     float value = interpolate(ix0, ix1, sy);
     return value;
 }
-} // namespace
+
+float perlinNoiseByCoordinates(float x, float y, float baseFrequency, long int seed, int octaves,
+                               float persistence) {
+    float total = 0.0F;
+    float amplitude = 1.0F;
+    float frequency = baseFrequency;
+    float maxValue = 0.0F; // Pour normalisation
+
+    for (int i = 0; i < octaves; ++i) {
+        total += perlinValue(x * frequency, y * frequency, seed) * amplitude;
+        maxValue += amplitude;
+        amplitude *= persistence;
+        frequency *= 2.0F;
+    }
+
+    return total / maxValue; // Normalisation à [-1,1] approximatif
+}
 
 // Génère une matrice 2D de Perlin noise
 // octave : entre 1 et 10
