@@ -109,6 +109,8 @@ find_program(GLSLC glslc REQUIRED HINTS
 file(GLOB_RECURSE SHADER_SOURCES
     "${CMAKE_SOURCE_DIR}/shaders/glsl/voxel.vert"
     "${CMAKE_SOURCE_DIR}/shaders/glsl/voxel.frag"
+    "${CMAKE_SOURCE_DIR}/shaders/glsl/sky.vert"
+    "${CMAKE_SOURCE_DIR}/shaders/glsl/sky.frag"
 )
 
 set(SPIRV_SHADERS "")
