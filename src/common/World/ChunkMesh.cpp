@@ -2,28 +2,29 @@
 
 namespace {
 // Helper function to pack a vertex's data into a uint32_t
-// Bit layout: [X:6][Y:6][Z:6][Normal:3][UV:2][Texture:7][Spare:2]
+// Bit layout: [X:6][Y:6][Z:6][Normal:3][UV:2][Texture:7][AO:2]
 uint32_t packVertex(uint32_t x, uint32_t y, uint32_t z, uint32_t normalId, uint32_t uvId,
-                    uint32_t textureId) {
+                    uint32_t textureId, uint32_t ao) {
     uint32_t packedData = 0;
 
-    // 6 bits for X, 6 for Y, 6 for Z
-    packedData |= (x & 0x3F);         // X in bits 0-5
-    packedData |= ((y & 0x3F) << 6);  // Y in bits 6-11
-    packedData |= ((z & 0x3F) << 12); // Z in bits 12-17
-
-    // 3 bits for Normal ID
-    packedData |= ((normalId & 0x7) << 18); // Normal ID in bits 18-20
-
-    // 2 bits for UV Corner ID
-    packedData |= ((uvId & 0x3) << 21); // UV ID in bits 21-22
-
-    // 7 bits for Texture ID
-    packedData |= ((textureId & 0x7F) << 23); // Texture ID in bits 23-29
-
-    // The remaining 2 bits (30-31) are spare
+    packedData |= (x & 0x3F);
+    packedData |= ((y & 0x3F) << 6);
+    packedData |= ((z & 0x3F) << 12);
+    packedData |= ((normalId & 0x7) << 18);
+    packedData |= ((uvId & 0x3) << 21);
+    packedData |= ((textureId & 0x7F) << 23);
+    packedData |= ((ao & 0x3) << 30);
 
     return packedData;
+}
+
+// AO Calculation function
+uint32_t calculateAO(bool side1, bool side2, bool corner) {
+    if (side1 && side2) {
+        return 3; // Fully occluded
+    }
+    return static_cast<uint32_t>(side1) + static_cast<uint32_t>(side2) +
+           static_cast<uint32_t>(corner);
 }
 } // anonymous namespace
 
@@ -57,7 +58,7 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                         : mainChunk.isBlockSolid(x, y, z + 1);
                 if (!isNorthSolid) {
                     addFace(FaceDirection::North, x, y, z, blockId, vertices, indices, registry,
-                            getTextureId);
+                            getTextureId, mainChunk);
                 }
 
                 // South (-Z)
@@ -67,7 +68,7 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                                         : mainChunk.isBlockSolid(x, y, z - 1);
                 if (!isSouthSolid) {
                     addFace(FaceDirection::South, x, y, z, blockId, vertices, indices, registry,
-                            getTextureId);
+                            getTextureId, mainChunk);
                 }
 
                 // East (+X)
@@ -77,7 +78,7 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                         : mainChunk.isBlockSolid(x + 1, y, z);
                 if (!isEastSolid) {
                     addFace(FaceDirection::East, x, y, z, blockId, vertices, indices, registry,
-                            getTextureId);
+                            getTextureId, mainChunk);
                 }
 
                 // West (-X)
@@ -87,7 +88,7 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                                        : mainChunk.isBlockSolid(x - 1, y, z);
                 if (!isWestSolid) {
                     addFace(FaceDirection::West, x, y, z, blockId, vertices, indices, registry,
-                            getTextureId);
+                            getTextureId, mainChunk);
                 }
 
                 // Top (+Y)
@@ -97,7 +98,7 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                         : mainChunk.isBlockSolid(x, y + 1, z);
                 if (!isTopSolid) {
                     addFace(FaceDirection::Top, x, y, z, blockId, vertices, indices, registry,
-                            getTextureId);
+                            getTextureId, mainChunk);
                 }
 
                 // Bottom (-Y)
@@ -107,7 +108,7 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                              : mainChunk.isBlockSolid(x, y - 1, z);
                 if (!isBottomSolid) {
                     addFace(FaceDirection::Bottom, x, y, z, blockId, vertices, indices, registry,
-                            getTextureId);
+                            getTextureId, mainChunk);
                 }
             }
         }
@@ -118,7 +119,8 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
 
 void ChunkMesh::addFace(FaceDirection direction, int x, int y, int z, int blockId,
                         std::vector<VoxelVertex>& vertices, std::vector<uint32_t>& indices,
-                        const BlockRegistry& registry, const TextureIdResolver& getTextureId) {
+                        const BlockRegistry& registry, const TextureIdResolver& getTextureId,
+                        const Chunk& chunk) {
     std::string faceName;
     switch (direction) {
     case FaceDirection::Top:
@@ -135,83 +137,183 @@ void ChunkMesh::addFace(FaceDirection direction, int x, int y, int z, int blockI
     std::string texturePath = registry.getTexturePath(blockId, faceName);
     uint32_t textureId = getTextureId(texturePath);
 
-    // Get the base index for the new vertices
     auto baseIndex = static_cast<uint32_t>(vertices.size());
-
     uint32_t px = static_cast<uint32_t>(x);
     uint32_t py = static_cast<uint32_t>(y);
     uint32_t pz = static_cast<uint32_t>(z);
-
     uint32_t normalId = 0;
+
+    bool s1, s2, c; // side1, side2, corner for AO
+    uint32_t ao[4]; // 0: BL, 1: BR, 2: TR, 3: TL
+
     uint32_t v0 = 0;
     uint32_t v1 = 0;
     uint32_t v2 = 0;
     uint32_t v3 = 0;
 
-    // Define the 4 vertices of the quad based on face direction
-    // All vertex definitions are consistently Counter-Clockwise when viewed from outside.
     switch (direction) {
     case FaceDirection::East: // +X
         normalId = 0;
-        v0 = packVertex(px + 1, py, pz, normalId, 0, textureId);         // Bottom-left
-        v1 = packVertex(px + 1, py, pz + 1, normalId, 1, textureId);     // Bottom-right
-        v2 = packVertex(px + 1, py + 1, pz + 1, normalId, 2, textureId); // Top-right
-        v3 = packVertex(px + 1, py + 1, pz, normalId, 3, textureId);     // Top-left
+        s1 = chunk.isBlockSolid(x + 1, y + 1, z);
+        c = chunk.isBlockSolid(x + 1, y + 1, z - 1);
+        s2 = chunk.isBlockSolid(x + 1, y, z - 1);
+        ao[3] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x + 1, y + 1, z);
+        c = chunk.isBlockSolid(x + 1, y + 1, z + 1);
+        s2 = chunk.isBlockSolid(x + 1, y, z + 1);
+        ao[2] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x + 1, y - 1, z);
+        c = chunk.isBlockSolid(x + 1, y - 1, z + 1);
+        s2 = chunk.isBlockSolid(x + 1, y, z + 1);
+        ao[1] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x + 1, y - 1, z);
+        c = chunk.isBlockSolid(x + 1, y - 1, z - 1);
+        s2 = chunk.isBlockSolid(x + 1, y, z - 1);
+        ao[0] = calculateAO(s1, s2, c);
+        v0 = packVertex(px + 1, py, pz, normalId, 0, textureId, ao[0]);
+        v1 = packVertex(px + 1, py, pz + 1, normalId, 1, textureId, ao[1]);
+        v2 = packVertex(px + 1, py + 1, pz + 1, normalId, 2, textureId, ao[2]);
+        v3 = packVertex(px + 1, py + 1, pz, normalId, 3, textureId, ao[3]);
         break;
     case FaceDirection::West: // -X
         normalId = 1;
-        v0 = packVertex(px, py, pz + 1, normalId, 0, textureId);
-        v1 = packVertex(px, py, pz, normalId, 1, textureId);
-        v2 = packVertex(px, py + 1, pz, normalId, 2, textureId);
-        v3 = packVertex(px, py + 1, pz + 1, normalId, 3, textureId);
+        s1 = chunk.isBlockSolid(x - 1, y + 1, z);
+        c = chunk.isBlockSolid(x - 1, y + 1, z + 1);
+        s2 = chunk.isBlockSolid(x - 1, y, z + 1);
+        ao[3] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x - 1, y + 1, z);
+        c = chunk.isBlockSolid(x - 1, y + 1, z - 1);
+        s2 = chunk.isBlockSolid(x - 1, y, z - 1);
+        ao[2] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x - 1, y - 1, z);
+        c = chunk.isBlockSolid(x - 1, y - 1, z - 1);
+        s2 = chunk.isBlockSolid(x - 1, y, z - 1);
+        ao[1] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x - 1, y - 1, z);
+        c = chunk.isBlockSolid(x - 1, y - 1, z + 1);
+        s2 = chunk.isBlockSolid(x - 1, y, z + 1);
+        ao[0] = calculateAO(s1, s2, c);
+        v0 = packVertex(px, py, pz + 1, normalId, 1, textureId, ao[0]);
+        v1 = packVertex(px, py, pz, normalId, 0, textureId, ao[1]);
+        v2 = packVertex(px, py + 1, pz, normalId, 3, textureId, ao[2]);
+        v3 = packVertex(px, py + 1, pz + 1, normalId, 2, textureId, ao[3]);
         break;
     case FaceDirection::Top: // +Y
         normalId = 2;
-        v0 = packVertex(px, py + 1, pz, normalId, 0, textureId);
-        v1 = packVertex(px + 1, py + 1, pz, normalId, 1, textureId);
-        v2 = packVertex(px + 1, py + 1, pz + 1, normalId, 2, textureId);
-        v3 = packVertex(px, py + 1, pz + 1, normalId, 3, textureId);
+        s1 = chunk.isBlockSolid(x, y + 1, z - 1);
+        c = chunk.isBlockSolid(x - 1, y + 1, z - 1);
+        s2 = chunk.isBlockSolid(x - 1, y + 1, z);
+        ao[0] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x, y + 1, z - 1);
+        c = chunk.isBlockSolid(x + 1, y + 1, z - 1);
+        s2 = chunk.isBlockSolid(x + 1, y + 1, z);
+        ao[1] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x, y + 1, z + 1);
+        c = chunk.isBlockSolid(x + 1, y + 1, z + 1);
+        s2 = chunk.isBlockSolid(x + 1, y + 1, z);
+        ao[2] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x, y + 1, z + 1);
+        c = chunk.isBlockSolid(x - 1, y + 1, z + 1);
+        s2 = chunk.isBlockSolid(x - 1, y + 1, z);
+        ao[3] = calculateAO(s1, s2, c);
+        v0 = packVertex(px, py + 1, pz, normalId, 0, textureId, ao[0]);
+        v1 = packVertex(px + 1, py + 1, pz, normalId, 1, textureId, ao[1]);
+        v2 = packVertex(px + 1, py + 1, pz + 1, normalId, 2, textureId, ao[2]);
+        v3 = packVertex(px, py + 1, pz + 1, normalId, 3, textureId, ao[3]);
         break;
     case FaceDirection::Bottom: // -Y
         normalId = 3;
-        v0 = packVertex(px, py, pz + 1, normalId, 0, textureId);
-        v1 = packVertex(px + 1, py, pz + 1, normalId, 1, textureId);
-        v2 = packVertex(px + 1, py, pz, normalId, 2, textureId);
-        v3 = packVertex(px, py, pz, normalId, 3, textureId);
+        s1 = chunk.isBlockSolid(x, y - 1, z + 1);
+        c = chunk.isBlockSolid(x - 1, y - 1, z + 1);
+        s2 = chunk.isBlockSolid(x - 1, y - 1, z);
+        ao[0] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x, y - 1, z + 1);
+        c = chunk.isBlockSolid(x + 1, y - 1, z + 1);
+        s2 = chunk.isBlockSolid(x + 1, y - 1, z);
+        ao[1] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x, y - 1, z - 1);
+        c = chunk.isBlockSolid(x + 1, y - 1, z - 1);
+        s2 = chunk.isBlockSolid(x + 1, y - 1, z);
+        ao[2] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x, y - 1, z - 1);
+        c = chunk.isBlockSolid(x - 1, y - 1, z - 1);
+        s2 = chunk.isBlockSolid(x - 1, y - 1, z);
+        ao[3] = calculateAO(s1, s2, c);
+        v0 = packVertex(px, py, pz + 1, normalId, 3, textureId, ao[0]);
+        v1 = packVertex(px + 1, py, pz + 1, normalId, 2, textureId, ao[1]);
+        v2 = packVertex(px + 1, py, pz, normalId, 1, textureId, ao[2]);
+        v3 = packVertex(px, py, pz, normalId, 0, textureId, ao[3]);
         break;
     case FaceDirection::North: // +Z
         normalId = 4;
-        v0 = packVertex(px + 1, py, pz + 1, normalId, 0, textureId);
-        v1 = packVertex(px, py, pz + 1, normalId, 1, textureId);
-        v2 = packVertex(px, py + 1, pz + 1, normalId, 2, textureId);
-        v3 = packVertex(px + 1, py + 1, pz + 1, normalId, 3, textureId);
+        s1 = chunk.isBlockSolid(x + 1, y, z + 1);
+        c = chunk.isBlockSolid(x + 1, y + 1, z + 1);
+        s2 = chunk.isBlockSolid(x, y + 1, z + 1);
+        ao[3] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x - 1, y, z + 1);
+        c = chunk.isBlockSolid(x - 1, y + 1, z + 1);
+        s2 = chunk.isBlockSolid(x, y + 1, z + 1);
+        ao[2] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x - 1, y, z + 1);
+        c = chunk.isBlockSolid(x - 1, y - 1, z + 1);
+        s2 = chunk.isBlockSolid(x, y - 1, z + 1);
+        ao[1] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x + 1, y, z + 1);
+        c = chunk.isBlockSolid(x + 1, y - 1, z + 1);
+        s2 = chunk.isBlockSolid(x, y - 1, z + 1);
+        ao[0] = calculateAO(s1, s2, c);
+        v0 = packVertex(px + 1, py, pz + 1, normalId, 1, textureId, ao[0]);
+        v1 = packVertex(px, py, pz + 1, normalId, 0, textureId, ao[1]);
+        v2 = packVertex(px, py + 1, pz + 1, normalId, 3, textureId, ao[2]);
+        v3 = packVertex(px + 1, py + 1, pz + 1, normalId, 2, textureId, ao[3]);
         break;
     case FaceDirection::South: // -Z
         normalId = 5;
-        v0 = packVertex(px, py, pz, normalId, 0, textureId);
-        v1 = packVertex(px + 1, py, pz, normalId, 1, textureId);
-        v2 = packVertex(px + 1, py + 1, pz, normalId, 2, textureId);
-        v3 = packVertex(px, py + 1, pz, normalId, 3, textureId);
+        s1 = chunk.isBlockSolid(x - 1, y, z - 1);
+        c = chunk.isBlockSolid(x - 1, y + 1, z - 1);
+        s2 = chunk.isBlockSolid(x, y + 1, z - 1);
+        ao[3] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x + 1, y, z - 1);
+        c = chunk.isBlockSolid(x + 1, y + 1, z - 1);
+        s2 = chunk.isBlockSolid(x, y + 1, z - 1);
+        ao[2] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x + 1, y, z - 1);
+        c = chunk.isBlockSolid(x + 1, y - 1, z - 1);
+        s2 = chunk.isBlockSolid(x, y - 1, z - 1);
+        ao[1] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x - 1, y, z - 1);
+        c = chunk.isBlockSolid(x - 1, y - 1, z - 1);
+        s2 = chunk.isBlockSolid(x, y - 1, z - 1);
+        ao[0] = calculateAO(s1, s2, c);
+        v0 = packVertex(px, py, pz, normalId, 0, textureId, ao[0]);
+        v1 = packVertex(px + 1, py, pz, normalId, 1, textureId, ao[1]);
+        v2 = packVertex(px + 1, py + 1, pz, normalId, 2, textureId, ao[2]);
+        v3 = packVertex(px, py + 1, pz, normalId, 3, textureId, ao[3]);
         break;
     }
 
-    // Should never reach here, all enum values are covered
-    if (normalId == 0 && v0 == 0) {
-        return; // Defensive programming
+    // Flip quad diagonal to fix AO artifacts
+    if (ao[0] + ao[2] > ao[1] + ao[3]) {
+        vertices.push_back(v0);
+        vertices.push_back(v1);
+        vertices.push_back(v2);
+        vertices.push_back(v3);
+        indices.push_back(baseIndex + 1);
+        indices.push_back(baseIndex + 0);
+        indices.push_back(baseIndex + 3);
+        indices.push_back(baseIndex + 1);
+        indices.push_back(baseIndex + 3);
+        indices.push_back(baseIndex + 2);
+    } else {
+        vertices.push_back(v0);
+        vertices.push_back(v1);
+        vertices.push_back(v2);
+        vertices.push_back(v3);
+        indices.push_back(baseIndex + 0);
+        indices.push_back(baseIndex + 2);
+        indices.push_back(baseIndex + 1);
+        indices.push_back(baseIndex + 0);
+        indices.push_back(baseIndex + 3);
+        indices.push_back(baseIndex + 2);
     }
-
-    vertices.push_back(v0);
-    vertices.push_back(v1);
-    vertices.push_back(v2);
-    vertices.push_back(v3);
-
-    // Add indices with reversed winding for CCW from outside
-    indices.push_back(baseIndex + 0);
-    indices.push_back(baseIndex + 2);
-    indices.push_back(baseIndex + 1);
-
-    // Triangle 2: v0, v3, v2
-    indices.push_back(baseIndex + 0);
-    indices.push_back(baseIndex + 3);
-    indices.push_back(baseIndex + 2);
 }

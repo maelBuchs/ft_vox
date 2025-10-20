@@ -101,56 +101,76 @@ include_directories(${CMAKE_SOURCE_DIR}/src)
 
 # --- Shader Compilation ---
 
-find_program(GLSLC glslc HINTS
+find_program(GLSLC glslc REQUIRED HINTS
     "$ENV{VULKAN_SDK}/Bin"
     "$ENV{VULKAN_SDK}/bin"
 )
 
-if(NOT GLSLC)
-    message(FATAL_ERROR "glslc not found! Please install the Vulkan SDK and ensure glslc is in your PATH.")
-endif()
-
-# Collect all shader files
 file(GLOB_RECURSE SHADER_SOURCES
-    "${CMAKE_SOURCE_DIR}/shaders/glsl/*.vert"
-    "${CMAKE_SOURCE_DIR}/shaders/glsl/*.frag"
-    "${CMAKE_SOURCE_DIR}/shaders/glsl/*.comp"
-    "${CMAKE_SOURCE_DIR}/shaders/glsl/*.geom"
-    "${CMAKE_SOURCE_DIR}/shaders/glsl/*.tesc"
-    "${CMAKE_SOURCE_DIR}/shaders/glsl/*.tese"
+    "${CMAKE_SOURCE_DIR}/shaders/glsl/voxel.vert"
+    "${CMAKE_SOURCE_DIR}/shaders/glsl/voxel.frag"
 )
 
-# Create output directory for compiled shaders in build folder
-set(SHADER_OUTPUT_DIR "${CMAKE_BINARY_DIR}/shaders")
+set(SPIRV_SHADERS "")
+
+if(CMAKE_CONFIGURATION_TYPES OR CMAKE_GENERATOR MATCHES "Visual Studio" OR MSVC)
+    set(SHADER_OUTPUT_DIR "${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/shaders")
+else()
+    set(SHADER_OUTPUT_DIR "${CMAKE_BINARY_DIR}/shaders")
+endif()
+
 file(MAKE_DIRECTORY ${SHADER_OUTPUT_DIR})
 
-# Compile each shader to SPIR-V
-foreach(SHADER ${SHADER_SOURCES})
-    get_filename_component(SHADER_NAME ${SHADER} NAME)
-    set(SHADER_OUTPUT "${SHADER_OUTPUT_DIR}/${SHADER_NAME}.spv")
+# For each shader source, create a custom command that produces a .spv and depends on the .glsl
+foreach(SHADER_SRC ${SHADER_SOURCES})
+    get_filename_component(SHADER_NAME ${SHADER_SRC} NAME)
+    set(SHADER_SPV "${SHADER_OUTPUT_DIR}/${SHADER_NAME}.spv")
 
     add_custom_command(
-        OUTPUT ${SHADER_OUTPUT}
-        COMMAND ${GLSLC} --target-env=vulkan1.4 ${SHADER} -o ${SHADER_OUTPUT}
-        DEPENDS ${SHADER}
+        OUTPUT ${SHADER_SPV}
+        COMMAND ${GLSLC} --target-env=vulkan1.4 -O ${SHADER_SRC} -o ${SHADER_SPV}
+        DEPENDS ${SHADER_SRC}
         COMMENT "Compiling shader: ${SHADER_NAME}"
     )
 
-    list(APPEND SPIRV_SHADERS ${SHADER_OUTPUT})
+    list(APPEND SPIRV_SHADERS ${SHADER_SPV})
 endforeach()
 
-# Create a custom target for shader compilation
-add_custom_target(shaders ALL DEPENDS ${SPIRV_SHADERS})
+# Single checkpoint target depending on all generated SPIR-V files.
+add_custom_target(CompileShaders ALL DEPENDS ${SPIRV_SHADERS})
 
 # Collect source files
-file(GLOB_RECURSE CLIENT_SOURCES
-    "${CMAKE_SOURCE_DIR}/src/client/*.cpp"
-    "${CMAKE_SOURCE_DIR}/src/client/*.hpp"
+set(CLIENT_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/client/Core/App.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/Core/Window.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/Core/InputManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/Game/Camera.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/Graphics/Renderer.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/Graphics/Memory/DescriptorAllocator.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/Graphics/Voxel/VoxelRenderer.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/Graphics/Rendering/RenderContext.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/Graphics/Voxel/MeshManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/Graphics/Rendering/FrameManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/Graphics/Rendering/CommandExecutor.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/Graphics/Voxel/MeshBufferPool.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/Graphics/Pipeline/ComputePipelineBuilder.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/Graphics/Pipeline/Pipeline.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/Graphics/Pipeline/GraphicsPipelineBuilder.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/Graphics/Core/VulkanSwapchain.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/Graphics/Core/VulkanDevice.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/Graphics/Core/VulkanBuffer.cpp
 )
 
-file(GLOB_RECURSE COMMON_SOURCES
-    "${CMAKE_SOURCE_DIR}/src/common/*.cpp"
-    "${CMAKE_SOURCE_DIR}/src/common/*.hpp"
+set(COMMON_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/common/World/ChunkMesh.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/World/BlockRegistry.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/World/Chunk.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/Util/perlinNoise.cpp
+)
+
+# Server executable
+set(SERVER_SOURCES
+
 )
 
 add_executable(ft_vox
@@ -159,14 +179,9 @@ add_executable(ft_vox
     ${COMMON_SOURCES}
 )
 
-# Make sure shaders are compiled before building the executable
-add_dependencies(ft_vox shaders)
+# Ensure shaders are compiled before building the executable
+add_dependencies(ft_vox CompileShaders)
 
-# Server executable
-file(GLOB_RECURSE SERVER_SOURCES
-    "${CMAKE_SOURCE_DIR}/src/server/*.cpp"
-    "${CMAKE_SOURCE_DIR}/src/server/*.hpp"
-)
 
 add_executable(ft_vox_server
     src/main_server.cpp

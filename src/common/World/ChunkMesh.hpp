@@ -39,5 +39,6 @@ class ChunkMesh {
     // Add a face to the mesh
     static void addFace(FaceDirection direction, int x, int y, int z, int blockId,
                         std::vector<VoxelVertex>& vertices, std::vector<uint32_t>& indices,
-                        const BlockRegistry& registry, const TextureIdResolver& getTextureId);
+                        const BlockRegistry& registry, const TextureIdResolver& getTextureId,
+                        const Chunk& chunk);
 };

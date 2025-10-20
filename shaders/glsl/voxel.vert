@@ -27,6 +27,8 @@ layout(location = 0) out vec3 outNormal;
 layout(location = 1) out vec4 outColor;
 layout(location = 2) out vec2 outUV;
 layout(location = 3) flat out uint outTextureId;
+layout(location = 5) flat out uint outNormalId;
+layout(location = 6) out float outAO;
 
 // Lookup table for normals, indexed by Normal ID
 const vec3 NORMALS[6] = vec3[](vec3(1.0, 0.0, 0.0),  // 0: East
@@ -45,8 +47,7 @@ const vec2 UVS[4] = vec2[](vec2(0.0, 0.0), // 0: Bottom-left
 );
 
 void main() {
-    // --- UNPACKING LOGIC ---
-    // Bit layout: [X:6][Y:6][Z:6][Normal:3][UV:2][Texture:7][Spare:2]
+    // Bit layout: [X:6][Y:6][Z:6][Normal:3][UV:2][Texture:7][AO:2]
     uint x = (inVertexData) & 0x3Fu;
     uint y = (inVertexData >> 6) & 0x3Fu;
     uint z = (inVertexData >> 12) & 0x3Fu;
@@ -54,11 +55,15 @@ void main() {
     uint normalId = (inVertexData >> 18) & 0x7u;
     uint uvId = (inVertexData >> 21) & 0x3u;
     uint textureId = (inVertexData >> 23) & 0x7Fu;
+    uint ao = (inVertexData >> 30) & 0x3u;
 
     vec3 inPosition = vec3(float(x), float(y), float(z));
     vec3 normal = NORMALS[normalId];
     vec2 uv = UVS[uvId];
-    // --- END UNPACKING LOGIC ---
+
+    // Convert AO to brightness multiplier (0=darkest, 3=brightest)
+    // Invert: 0 -> 1.0, 1 -> 0.8, 2 -> 0.6, 3 -> 0.4
+    outAO = 1.0 - (float(ao) * 0.25);
 
     // --- Get per-chunk data from SSBO ---
     // In Vulkan multi-draw indirect, we use gl_InstanceIndex
@@ -72,4 +77,5 @@ void main() {
     outUV = uv;
     outColor = vec4(abs(normal), 1.0);
     outTextureId = textureId;
+    outNormalId = normalId;
 }
