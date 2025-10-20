@@ -1,9 +1,11 @@
 #include "Renderer.hpp"
 
 #include <cmath>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <memory>
+#include <vector>
 
 #include <SDL3/SDL.h>
 #include <vulkan/vulkan.h>
@@ -96,6 +98,9 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
     // _voxelRenderer->initTestChunk();
     chunkInstanciator = new ChunkInstanciator();
 
+    // Initialize sky rendering pipeline
+    initSkyPipeline();
+
     initImGui();
 }
 
@@ -121,7 +126,7 @@ Renderer::~Renderer() {
     _frameManager.reset();
 }
 
-void Renderer::draw() {
+void Renderer::draw(float timeOfDay) {
 
     // Get current frame from FrameManager
     auto& currentFrame = _frameManager->getCurrentFrame();
@@ -179,6 +184,9 @@ void Renderer::draw() {
 
     chunkInstanciator->updateChunksAroundPlayer(_camera->getPosition().x, _camera->getPosition().y,
                                                 _camera->getPosition().z, 4);
+
+    // Render sky first (will fill the background)
+    drawSky(commandBuffer, timeOfDay);
 
     // Render voxel geometry using VoxelRenderer
     _voxelRenderer->drawVoxels(commandBuffer, *_camera, _wireframeMode);
@@ -590,4 +598,350 @@ void Renderer::loadTextureAtlas() {
     }
 
     std::cout << "Texture atlas loaded successfully!\n";
+}
+
+void Renderer::initSkyPipeline() {
+    std::cout << "Initializing sky rendering pipeline...\n";
+
+    // Load sky shaders
+    std::ifstream vertFile("shaders/sky.vert.spv", std::ios::ate | std::ios::binary);
+    std::ifstream fragFile("shaders/sky.frag.spv", std::ios::ate | std::ios::binary);
+
+    if (!vertFile.is_open() || !fragFile.is_open()) {
+        throw std::runtime_error("Failed to open sky shader files");
+    }
+
+    size_t vertSize = static_cast<size_t>(vertFile.tellg());
+    size_t fragSize = static_cast<size_t>(fragFile.tellg());
+
+    std::vector<char> vertCode(vertSize);
+    std::vector<char> fragCode(fragSize);
+
+    vertFile.seekg(0);
+    fragFile.seekg(0);
+    vertFile.read(vertCode.data(), static_cast<std::streamsize>(vertSize));
+    fragFile.read(fragCode.data(), static_cast<std::streamsize>(fragSize));
+
+    vertFile.close();
+    fragFile.close();
+
+    // Create shader modules
+    VkShaderModuleCreateInfo vertModuleInfo{.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+                                            .pNext = nullptr,
+                                            .flags = 0,
+                                            .codeSize = vertCode.size(),
+                                            .pCode = reinterpret_cast<const uint32_t*>(vertCode.data())};
+
+    VkShaderModuleCreateInfo fragModuleInfo{.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+                                            .pNext = nullptr,
+                                            .flags = 0,
+                                            .codeSize = fragCode.size(),
+                                            .pCode = reinterpret_cast<const uint32_t*>(fragCode.data())};
+
+    VkShaderModule vertModule = VK_NULL_HANDLE;
+    VkShaderModule fragModule = VK_NULL_HANDLE;
+
+    VkResult ret = vkCreateShaderModule(_device.getDevice(), &vertModuleInfo, nullptr, &vertModule);
+    checkVkResult(ret, "Failed to create sky vertex shader module");
+
+    ret = vkCreateShaderModule(_device.getDevice(), &fragModuleInfo, nullptr, &fragModule);
+    checkVkResult(ret, "Failed to create sky fragment shader module");
+
+    // Push constant range for sky rendering
+    VkPushConstantRange pushConstantRange{
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+        .offset = 0,
+        .size = sizeof(glm::mat4) + sizeof(float) * 4 // mat4 + timeOfDay + 3 padding floats
+    };
+
+    // Create pipeline layout
+    VkPipelineLayoutCreateInfo layoutInfo{.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                                          .pNext = nullptr,
+                                          .flags = 0,
+                                          .setLayoutCount = 0,
+                                          .pSetLayouts = nullptr,
+                                          .pushConstantRangeCount = 1,
+                                          .pPushConstantRanges = &pushConstantRange};
+
+    ret = vkCreatePipelineLayout(_device.getDevice(), &layoutInfo, nullptr, &_skyPipelineLayout);
+    checkVkResult(ret, "Failed to create sky pipeline layout");
+
+    // Shader stages
+    VkPipelineShaderStageCreateInfo vertStageInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .stage = VK_SHADER_STAGE_VERTEX_BIT,
+        .module = vertModule,
+        .pName = "main",
+        .pSpecializationInfo = nullptr};
+
+    VkPipelineShaderStageCreateInfo fragStageInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+        .module = fragModule,
+        .pName = "main",
+        .pSpecializationInfo = nullptr};
+
+    VkPipelineShaderStageCreateInfo shaderStages[] = {vertStageInfo, fragStageInfo};
+
+    // Vertex input state - no vertex buffers needed (full-screen triangle)
+    VkPipelineVertexInputStateCreateInfo vertexInputInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .vertexBindingDescriptionCount = 0,
+        .pVertexBindingDescriptions = nullptr,
+        .vertexAttributeDescriptionCount = 0,
+        .pVertexAttributeDescriptions = nullptr};
+
+    // Input assembly
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        .primitiveRestartEnable = VK_FALSE};
+
+    // Viewport and scissor (dynamic)
+    VkPipelineViewportStateCreateInfo viewportState{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .viewportCount = 1,
+        .pViewports = nullptr, // Dynamic
+        .scissorCount = 1,
+        .pScissors = nullptr // Dynamic
+    };
+
+    // Rasterization state - no culling for sky
+    VkPipelineRasterizationStateCreateInfo rasterizer{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .depthClampEnable = VK_FALSE,
+        .rasterizerDiscardEnable = VK_FALSE,
+        .polygonMode = VK_POLYGON_MODE_FILL,
+        .cullMode = VK_CULL_MODE_NONE, // No culling
+        .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+        .depthBiasEnable = VK_FALSE,
+        .depthBiasConstantFactor = 0.0F,
+        .depthBiasClamp = 0.0F,
+        .depthBiasSlopeFactor = 0.0F,
+        .lineWidth = 1.0F};
+
+    // Multisampling
+    VkPipelineMultisampleStateCreateInfo multisampling{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+        .sampleShadingEnable = VK_FALSE,
+        .minSampleShading = 1.0F,
+        .pSampleMask = nullptr,
+        .alphaToCoverageEnable = VK_FALSE,
+        .alphaToOneEnable = VK_FALSE};
+
+    // Depth stencil - render at max depth, no depth writes
+    VkPipelineDepthStencilStateCreateInfo depthStencil{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .depthTestEnable = VK_TRUE,
+        .depthWriteEnable = VK_FALSE, // Don't write to depth buffer
+        .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL, // Draw behind everything
+        .depthBoundsTestEnable = VK_FALSE,
+        .stencilTestEnable = VK_FALSE,
+        .front = {},
+        .back = {},
+        .minDepthBounds = 0.0F,
+        .maxDepthBounds = 1.0F};
+
+    // Color blend
+    VkPipelineColorBlendAttachmentState colorBlendAttachment{
+        .blendEnable = VK_FALSE,
+        .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
+        .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
+        .colorBlendOp = VK_BLEND_OP_ADD,
+        .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+        .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+        .alphaBlendOp = VK_BLEND_OP_ADD,
+        .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                          VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT};
+
+    VkPipelineColorBlendStateCreateInfo colorBlending{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .logicOpEnable = VK_FALSE,
+        .logicOp = VK_LOGIC_OP_COPY,
+        .attachmentCount = 1,
+        .pAttachments = &colorBlendAttachment,
+        .blendConstants = {0.0F, 0.0F, 0.0F, 0.0F}};
+
+    // Dynamic state
+    std::vector<VkDynamicState> dynamicStates = {VK_DYNAMIC_STATE_VIEWPORT,
+                                                  VK_DYNAMIC_STATE_SCISSOR};
+
+    VkPipelineDynamicStateCreateInfo dynamicState{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()),
+        .pDynamicStates = dynamicStates.data()};
+
+    // Rendering info for dynamic rendering
+    VkFormat colorFormat = _renderContext->getDrawImage().format;
+    VkFormat depthFormat = _renderContext->getDepthImage().format;
+
+    VkPipelineRenderingCreateInfo renderingInfo{.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+                                                .pNext = nullptr,
+                                                .viewMask = 0,
+                                                .colorAttachmentCount = 1,
+                                                .pColorAttachmentFormats = &colorFormat,
+                                                .depthAttachmentFormat = depthFormat,
+                                                .stencilAttachmentFormat = VK_FORMAT_UNDEFINED};
+
+    // Create graphics pipeline
+    VkGraphicsPipelineCreateInfo pipelineInfo{.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+                                              .pNext = &renderingInfo,
+                                              .flags = 0,
+                                              .stageCount = 2,
+                                              .pStages = shaderStages,
+                                              .pVertexInputState = &vertexInputInfo,
+                                              .pInputAssemblyState = &inputAssembly,
+                                              .pTessellationState = nullptr,
+                                              .pViewportState = &viewportState,
+                                              .pRasterizationState = &rasterizer,
+                                              .pMultisampleState = &multisampling,
+                                              .pDepthStencilState = &depthStencil,
+                                              .pColorBlendState = &colorBlending,
+                                              .pDynamicState = &dynamicState,
+                                              .layout = _skyPipelineLayout,
+                                              .renderPass = VK_NULL_HANDLE, // Using dynamic rendering
+                                              .subpass = 0,
+                                              .basePipelineHandle = VK_NULL_HANDLE,
+                                              .basePipelineIndex = -1};
+
+    ret = vkCreateGraphicsPipelines(_device.getDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr,
+                                    &_skyPipeline);
+    checkVkResult(ret, "Failed to create sky graphics pipeline");
+
+    // Clean up shader modules
+    vkDestroyShaderModule(_device.getDevice(), vertModule, nullptr);
+    vkDestroyShaderModule(_device.getDevice(), fragModule, nullptr);
+
+    // Register cleanup
+    _mainDeletionQueue.push([this]() {
+        vkDestroyPipeline(_device.getDevice(), _skyPipeline, nullptr);
+        vkDestroyPipelineLayout(_device.getDevice(), _skyPipelineLayout, nullptr);
+    });
+
+    std::cout << "Sky pipeline initialized successfully!\n";
+}
+
+void Renderer::drawSky(VkCommandBuffer cmd, float timeOfDay) {
+    // Get draw and depth images
+    const RenderContext::AllocatedImage& drawImage = _renderContext->getDrawImage();
+    const RenderContext::AllocatedImage& depthImage = _renderContext->getDepthImage();
+
+    // Begin rendering to draw image
+    VkRenderingAttachmentInfo colorAttachment{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = nullptr,
+        .imageView = drawImage.imageView,
+        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .resolveMode = VK_RESOLVE_MODE_NONE,
+        .resolveImageView = VK_NULL_HANDLE,
+        .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, // Clear for sky
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue = {.color = {0.0F, 0.0F, 0.0F, 1.0F}}};
+
+    VkRenderingAttachmentInfo depthAttachment{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = nullptr,
+        .imageView = depthImage.imageView,
+        .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        .resolveMode = VK_RESOLVE_MODE_NONE,
+        .resolveImageView = VK_NULL_HANDLE,
+        .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, // Clear depth buffer
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue = {.depthStencil = {1.0F, 0}}};
+
+    VkRenderingInfo renderInfo{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .renderArea = {.offset = {0, 0}, 
+                       .extent = {drawImage.extent.width, drawImage.extent.height}},
+        .layerCount = 1,
+        .viewMask = 0,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &colorAttachment,
+        .pDepthAttachment = &depthAttachment,
+        .pStencilAttachment = nullptr};
+
+    vkCmdBeginRendering(cmd, &renderInfo);
+
+    // Bind sky pipeline
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _skyPipeline);
+
+    // Set viewport and scissor
+    VkViewport viewport{.x = 0.0F,
+                        .y = 0.0F,
+                        .width = static_cast<float>(drawImage.extent.width),
+                        .height = static_cast<float>(drawImage.extent.height),
+                        .minDepth = 0.0F,
+                        .maxDepth = 1.0F};
+
+    VkRect2D scissor{.offset = {0, 0}, 
+                     .extent = {drawImage.extent.width, drawImage.extent.height}};
+
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+    // Prepare push constants
+    // Calculate view matrix without translation (for skybox effect)
+    glm::mat4 view = _camera->getViewMatrix();
+    glm::mat4 viewNoTranslation = glm::mat4(glm::mat3(view)); // Remove translation component
+
+    // Calculate projection matrix (80 degree FOV as per requirements)
+    float aspect = static_cast<float>(drawImage.extent.width) /
+                   static_cast<float>(drawImage.extent.height);
+    glm::mat4 projection = glm::perspective(glm::radians(80.0F), aspect, 0.1F, 1000.0F);
+    
+    // Vulkan uses inverted Y axis
+    projection[1][1] *= -1.0F;
+
+    // Calculate inverse of viewProjection
+    glm::mat4 viewProjection = projection * viewNoTranslation;
+    glm::mat4 inverseViewProj = glm::inverse(viewProjection);
+
+    // Push constants struct (must match shader layout)
+    struct SkyPushConstants {
+        glm::mat4 inverseViewProj;
+        float timeOfDay;
+        float padding1;
+        float padding2;
+        float padding3;
+    } pushConstants;
+
+    pushConstants.inverseViewProj = inverseViewProj;
+    pushConstants.timeOfDay = timeOfDay;
+    pushConstants.padding1 = 0.0F;
+    pushConstants.padding2 = 0.0F;
+    pushConstants.padding3 = 0.0F;
+
+    vkCmdPushConstants(cmd, _skyPipelineLayout,
+                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                       sizeof(SkyPushConstants), &pushConstants);
+
+    // Draw full-screen triangle (3 vertices, no vertex buffer needed)
+    vkCmdDraw(cmd, 3, 1, 0, 0);
+
+    vkCmdEndRendering(cmd);
 }

@@ -76,6 +76,12 @@ void App::run() {
         Camera& camera = _renderer->getCamera();
         inputManager.updateCamera(camera, deltaTime);
 
+        // Update time of day
+        _timeOfDay += _timeSpeed * deltaTime;
+        if (_timeOfDay > 1.0F) {
+            _timeOfDay -= 1.0F; // Wrap around
+        }
+
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
@@ -94,6 +100,19 @@ void App::run() {
         ImGui::Separator();
         const glm::vec3 camPos = camera.getPosition();
         ImGui::Text("Camera Position: (%.1f, %.1f, %.1f)", camPos.x, camPos.y, camPos.z);
+
+        ImGui::Separator();
+        ImGui::Text("Sky System");
+        if (ImGui::SliderFloat("Time of Day", &_timeOfDay, 0.0F, 1.0F)) {
+            // Slider changed, time is now manually controlled
+        }
+        ImGui::SliderFloat("Time Speed", &_timeSpeed, 0.0F, 0.2F);
+        
+        // Display time as readable format
+        int hours = static_cast<int>(_timeOfDay * 24.0F);
+        int minutes = static_cast<int>((_timeOfDay * 24.0F - hours) * 60.0F);
+        ImGui::Text("Current Time: %02d:%02d", hours, minutes);
+        
         ImGui::End();
 
         ImGui::Render();
@@ -101,6 +120,6 @@ void App::run() {
         // Update FPS counter
         _renderer->updateFPS(deltaTime);
 
-        _renderer->draw();
+        _renderer->draw(_timeOfDay);
     }
 }

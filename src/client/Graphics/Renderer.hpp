@@ -40,7 +40,7 @@ class Renderer {
     Renderer& operator=(Renderer&&) = delete;
 
     static constexpr uint64_t VULKAN_TIMEOUT_NS = 1000000000; // 1 second
-    void draw();
+    void draw(float timeOfDay);
     void resizeSwapchain();
     void updateFPS(float deltaTime);
     void createDrawImages(VkExtent2D extent);
@@ -59,6 +59,8 @@ class Renderer {
     static void checkVkResult(VkResult result, const char* errorMessage);
     void initImGui();
     void loadTextureAtlas();
+    void initSkyPipeline();
+    void drawSky(VkCommandBuffer cmd, float timeOfDay);
 
     Window& _window;
     VulkanDevice& _device;
@@ -75,6 +77,10 @@ class Renderer {
     std::unique_ptr<RenderContext> _renderContext;
     std::unique_ptr<CommandExecutor> _commandExecutor;
     std::unique_ptr<VoxelRenderer> _voxelRenderer;
+
+    // Sky rendering
+    VkPipeline _skyPipeline = VK_NULL_HANDLE;
+    VkPipelineLayout _skyPipelineLayout = VK_NULL_HANDLE;
 
     // Wireframe mode
     bool _wireframeMode = false;
