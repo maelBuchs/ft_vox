@@ -9,6 +9,7 @@
 #include "BlockRegistry.hpp"
 #include "Chunk.hpp"
 #include "common/Types/RenderTypes.hpp"
+class Chunk;
 
 class ChunkMesh {
   public:

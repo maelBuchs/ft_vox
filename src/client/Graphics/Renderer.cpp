@@ -177,8 +177,7 @@ void Renderer::draw() {
     }
     // ici
 
-    chunkInstanciator->updateChunksAroundPlayer(_camera->getPosition().x, _camera->getPosition().y,
-                                                _camera->getPosition().z, 4);
+    chunkInstanciator->updateChunksAroundPlayer(_camera->getPosition());
 
     // Render voxel geometry using VoxelRenderer
     _voxelRenderer->drawVoxels(commandBuffer, *_camera, _wireframeMode);
