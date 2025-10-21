@@ -6,6 +6,9 @@ layout(location = 0) in vec3 inViewDir;
 // Output color
 layout(location = 0) out vec4 outFragColor;
 
+// Blue noise texture for dithering
+layout(set = 0, binding = 0) uniform sampler2D blueNoiseTexture;
+
 // Push constants (same as vertex shader)
 layout(push_constant) uniform constants {
     mat4 inverseViewProj;
@@ -20,6 +23,109 @@ PushConstants;
 const float PI = 3.14159265359;
 const float TWO_PI = 6.28318530718;
 const float AXIAL_TILT = 0.32; // radians ~18 degrees for subtle seasonal tilt
+
+// Atmospheric Scattering Parameters
+const vec3 betaR = vec3(5.5e-6, 13.0e-6, 22.4e-6); // Rayleigh scattering coefficient
+const vec3 betaM = vec3(21e-6);                    // Mie scattering coefficient
+const float Hr = 7994.0;                           // Rayleigh scale height
+const float Hm = 1200.0;                           // Mie scale height
+const float earthRadius = 6360e3;
+const float atmosphereRadius = 6420e3;
+const float sunIntensity = 20.0;
+
+// Scattering samples (reduce if performance is an issue)
+const int numSamples = 8;      // Primary ray samples
+const int numSamplesLight = 4; // Light ray samples
+
+// Rayleigh phase function - determines how light scatters in air
+float rayleighPhase(float cosTheta) {
+    return (3.0 / (16.0 * PI)) * (1.0 + cosTheta * cosTheta);
+}
+
+// Henyey-Greenstein phase function for Mie scattering
+float miePhase(float cosTheta, float g) {
+    float g2 = g * g;
+    return (1.0 / (4.0 * PI)) * ((1.0 - g2) / pow(1.0 + g2 - 2.0 * g * cosTheta, 1.5));
+}
+
+vec3 computeAtmosphericScattering(vec3 viewDir, vec3 sunDir, float groundAltitude) {
+    // Camera position (slightly above ground)
+    vec3 rayOrigin = vec3(0.0, earthRadius + groundAltitude, 0.0);
+
+    // Check if ray hits atmosphere
+    vec3 rayDir = normalize(viewDir);
+    float a = dot(rayDir, rayDir);
+    float b = 2.0 * dot(rayDir, rayOrigin);
+    float c = dot(rayOrigin, rayOrigin) - (atmosphereRadius * atmosphereRadius);
+    float discriminant = b * b - 4.0 * a * c;
+
+    if (discriminant < 0.0) {
+        return vec3(0.0); // Ray doesn't hit atmosphere
+    }
+
+    // Calculate intersection points
+    float t0 = (-b - sqrt(discriminant)) / (2.0 * a);
+    float t1 = (-b + sqrt(discriminant)) / (2.0 * a);
+    t0 = max(t0, 0.0);
+
+    float segmentLength = (t1 - t0) / float(numSamples);
+    float cosTheta = dot(rayDir, sunDir);
+
+    // Phase functions
+    float phaseR = rayleighPhase(cosTheta);
+    float phaseM = miePhase(cosTheta, 0.76); // g = 0.76 for forward scattering
+
+    // Accumulated optical depth
+    vec3 totalRayleigh = vec3(0.0);
+    vec3 totalMie = vec3(0.0);
+    float opticalDepthR = 0.0;
+    float opticalDepthM = 0.0;
+
+    // March through atmosphere
+    for (int i = 0; i < numSamples; i++) {
+        // Sample point along ray
+        float t = t0 + segmentLength * (float(i) + 0.5);
+        vec3 samplePos = rayOrigin + rayDir * t;
+        float height = length(samplePos) - earthRadius;
+
+        // Density at sample point
+        float hr = exp(-height / Hr) * segmentLength;
+        float hm = exp(-height / Hm) * segmentLength;
+
+        opticalDepthR += hr;
+        opticalDepthM += hm;
+
+        // Sample light ray toward sun
+        float opticalDepthLightR = 0.0;
+        float opticalDepthLightM = 0.0;
+
+        // Simplified light sampling (check if sun is visible from this point)
+        for (int j = 0; j < numSamplesLight; j++) {
+            float tLight = float(j) * segmentLength;
+            vec3 lightSamplePos = samplePos + sunDir * tLight;
+            float lightHeight = length(lightSamplePos) - earthRadius;
+
+            if (lightHeight < 0.0)
+                break; // Hit ground
+
+            opticalDepthLightR += exp(-lightHeight / Hr) * segmentLength;
+            opticalDepthLightM += exp(-lightHeight / Hm) * segmentLength;
+        }
+
+        // Calculate transmittance
+        vec3 tau = betaR * (opticalDepthR + opticalDepthLightR) +
+                   betaM * 1.1 * (opticalDepthM + opticalDepthLightM);
+        vec3 attenuation = exp(-tau);
+
+        totalRayleigh += attenuation * hr;
+        totalMie += attenuation * hm;
+    }
+
+    // Final scattering
+    vec3 scattering = sunIntensity * (totalRayleigh * betaR * phaseR + totalMie * betaM * phaseM);
+
+    return scattering;
+}
 
 // Function to calculate sun/moon direction based on time of day
 vec3 getCelestialDirection(float time) {
@@ -85,73 +191,98 @@ vec2 projectToDisc(vec3 direction, vec3 centerDir) {
 }
 
 void main() {
-    // Normalize the view direction
     vec3 viewDir = normalize(inViewDir);
-
-    // Calculate sun direction
     vec3 sunDir = getCelestialDirection(PushConstants.timeOfDay);
-
-    // Moon is opposite to the sun
     vec3 moonDir = -sunDir;
 
-    // Get base sky color
-    vec3 skyColor = getSkyColor(viewDir, sunDir, PushConstants.timeOfDay);
+    float sunFacing = dot(viewDir, sunDir);
+    float sunFront = smoothstep(0.0, 0.02, sunFacing);
 
-    // --- Sun contribution -------------------------------------------------
-    vec2 sunPlane = projectToDisc(viewDir, sunDir);
-    float sunRadius = 0.048;
-    float sunDistance = length(sunPlane);
-    float sunCore = smoothstep(sunRadius, sunRadius - 0.004, sunDistance);
-    float sunCorona = smoothstep(sunRadius + 0.02, sunRadius - 0.012, sunDistance);
-    float sunVisibility = smoothstep(-0.35, 0.08, sunDir.y);
-    float sunRim = clamp(1.0 - sunDistance / sunRadius, 0.0, 1.0);
-    float sunStreak = sin(12.0 * atan(sunPlane.y, sunPlane.x)) * 0.06 * sunRim;
-    vec3 sunBodyColor = mix(vec3(1.35, 1.08, 0.60), vec3(1.0, 0.78, 0.35),
-                            clamp(sunDistance / sunRadius, 0.0, 1.0));
-    sunBodyColor += vec3(0.08, 0.04, 0.0) * sunStreak;
-    skyColor += sunBodyColor * sunVisibility * (sunCore * 1.6 + sunCorona * 0.45);
+    float moonFacing = dot(viewDir, moonDir);
+    float moonFront = smoothstep(0.0, 0.02, moonFacing);
+
+    // Start with atmospheric scattering (this gives us sunset/sunrise colors!)
+    vec3 skyColor = computeAtmosphericScattering(viewDir, sunDir, 1.0);
+
+    // Add base sky gradient for areas scattering doesn't cover well
+    vec3 baseSky = getSkyColor(viewDir, sunDir, PushConstants.timeOfDay);
+    float scatterStrength = smoothstep(-0.1, 0.3, sunDir.y); // Fade scattering when sun is down
+    skyColor = mix(baseSky * 0.3, skyColor, scatterStrength);
+
+    // Only draw the sun if it’s in front of the camera
+    if (sunFront > 0.0) {
+        vec2 sunPlane = projectToDisc(viewDir, sunDir);
+        float sunRadius = 0.048;
+        float sunDistance = length(sunPlane);
+        float sunCore = smoothstep(sunRadius, sunRadius - 0.004, sunDistance);
+        float sunCorona = smoothstep(sunRadius + 0.02, sunRadius - 0.012, sunDistance);
+        float sunVisibility = smoothstep(-0.35, 0.08, sunDir.y);
+        float sunRim = clamp(1.0 - sunDistance / sunRadius, 0.0, 1.0);
+        float sunStreak = sin(12.0 * atan(sunPlane.y, sunPlane.x)) * 0.06 * sunRim;
+        vec3 sunBodyColor = mix(vec3(1.35, 1.08, 0.60), vec3(1.0, 0.78, 0.35),
+                                clamp(sunDistance / sunRadius, 0.0, 1.0));
+        sunBodyColor += vec3(0.08, 0.04, 0.0) * sunStreak;
+
+        skyColor += sunBodyColor * sunVisibility * (sunCore * 1.6 + sunCorona * 0.45) * sunFront;
+    }
 
     const float moonRadius = 0.038;
-    vec2 moonPlane = projectToDisc(viewDir, moonDir);
-    float moonDistance = length(moonPlane);
-    float moonSurface = smoothstep(moonRadius, moonRadius - 0.004, moonDistance);
-    float moonHalo = smoothstep(moonRadius + 0.022, moonRadius - 0.01, moonDistance);
     float moonVisibility =
         smoothstep(-0.48, -0.05, moonDir.y) * (1.0 - smoothstep(-0.02, 0.18, sunDir.y));
 
-    if (moonVisibility > 0.0) {
-        vec2 normalizedCoords = moonPlane / max(moonRadius, 1e-4);
-        float radial = length(normalizedCoords);
+    if (moonVisibility > 0.0 && moonFront > 0.0) {
+        vec2 moonPlane = projectToDisc(viewDir, moonDir);
+        float moonDistance = length(moonPlane);
+        float moonSurface = smoothstep(moonRadius, moonRadius - 0.004, moonDistance);
+        float moonHalo = smoothstep(moonRadius + 0.022, moonRadius - 0.01, moonDistance);
 
-        // Lighting direction projected onto the moon plane for 2D phase control
-        vec2 moonLightPlane = projectToDisc(normalize(-sunDir), moonDir);
-        moonLightPlane =
-            (length(moonLightPlane) > 1e-4) ? normalize(moonLightPlane) : vec2(1.0, 0.0);
+        if (moonSurface > 0.0) {
+            vec2 normalizedCoords = moonPlane / max(moonRadius, 1e-4);
+            float radial = length(normalizedCoords);
 
-        float phase = dot(normalizedCoords, moonLightPlane);
-        float litAmount = smoothstep(-0.45, 0.35, phase);
+            // Moon is lit by the sun (not self-illuminated!)
+            // Calculate sun direction relative to moon
+            vec3 sunToMoon = normalize(-sunDir); // Sun lights the moon
+            vec2 moonLightPlane = projectToDisc(sunToMoon, moonDir);
+            moonLightPlane =
+                (length(moonLightPlane) > 1e-4) ? normalize(moonLightPlane) : vec2(1.0, 0.0);
 
-        float rimShadow = smoothstep(0.7, 1.0, radial);
-        float centerGlow = 1.0 - smoothstep(0.0, 0.9, radial);
+            // Moon phase based on sun lighting
+            float phase = dot(normalizedCoords, moonLightPlane);
+            float litAmount = smoothstep(-0.45, 0.35, phase);
 
-        float craterNoiseA = sin(normalizedCoords.x * 16.0) * sin(normalizedCoords.y * 18.0);
-        float craterNoiseB = sin(length(normalizedCoords) * 22.0);
-        float craterMask = smoothstep(0.0, 0.85, 1.0 - radial);
-        float craterPattern = (craterNoiseA * 0.06 + craterNoiseB * 0.04) * craterMask;
+            // Crater pattern
+            float craterNoiseA = sin(normalizedCoords.x * 16.0) * sin(normalizedCoords.y * 18.0);
+            float craterNoiseB = sin(length(normalizedCoords) * 22.0);
+            float craterMask = smoothstep(0.0, 0.85, 1.0 - radial);
+            float craterPattern = (craterNoiseA * 0.06 + craterNoiseB * 0.04) * craterMask;
 
-        vec3 moonTerminatorColor = vec3(0.32, 0.34, 0.4);
-        vec3 moonLitColor = vec3(0.86, 0.88, 0.95);
-        vec3 moonSurfaceColor = mix(moonTerminatorColor, moonLitColor, litAmount);
-        moonSurfaceColor -= vec3(0.06, 0.07, 0.09) * craterPattern;
+            // Moon colors (grayscale, not sun-colored!)
+            vec3 moonDarkColor = vec3(0.15, 0.15, 0.18); // Dark side
+            vec3 moonLitColor = vec3(0.86, 0.88, 0.92);  // Lit side
+            vec3 moonColor = mix(moonDarkColor, moonLitColor, litAmount);
+            moonColor -= vec3(0.06, 0.07, 0.09) * craterPattern;
 
-        moonSurfaceColor += vec3(0.04, 0.045, 0.06) * centerGlow * litAmount;
-        moonSurfaceColor *= mix(1.0, 0.7, rimShadow);
-
-        skyColor += moonSurfaceColor * moonSurface * moonVisibility;
-        skyColor += vec3(0.54, 0.6, 0.72) * moonHalo * moonVisibility * 0.3;
+            skyColor += moonColor * moonSurface * moonVisibility * moonFront;
+            skyColor += vec3(0.54, 0.6, 0.72) * moonHalo * moonVisibility * 0.2 * moonFront;
+        }
     }
 
+    // Final adjustments
     skyColor = clamp(skyColor, 0.0, 1.0);
 
-    outFragColor = vec4(skyColor, 1.0);
+    // Apply blue noise dithering
+    vec2 noiseUV = gl_FragCoord.xy / 64.0; // Blue noise texture is 64x64
+    float noise = texture(blueNoiseTexture, noiseUV).r;
+    skyColor += (noise - 0.5) / 255.0; // ±1/255 code step, centered around zero
+    skyColor = clamp(skyColor, 0.0, 1.0);
+
+    // Optional: Add stars at night
+    if (sunDir.y < -0.1) {
+        float starStrength = smoothstep(-0.1, -0.3, sunDir.y);
+        // Add procedural stars here if desired
+    }
+
+    vec3 encoded = pow(skyColor, vec3(1.0 / 2.2));
+    outFragColor = vec4(encoded, 1.0);
 }

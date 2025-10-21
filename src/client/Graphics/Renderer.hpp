@@ -59,6 +59,7 @@ class Renderer {
     static void checkVkResult(VkResult result, const char* errorMessage);
     void initImGui();
     void loadTextureAtlas();
+    void loadBlueNoiseTexture();
     void initSkyPipeline();
     void drawSky(VkCommandBuffer cmd, float timeOfDay);
 
@@ -81,6 +82,8 @@ class Renderer {
     // Sky rendering
     VkPipeline _skyPipeline = VK_NULL_HANDLE;
     VkPipelineLayout _skyPipelineLayout = VK_NULL_HANDLE;
+    VkDescriptorSetLayout _skyDescriptorSetLayout = VK_NULL_HANDLE;
+    VkDescriptorSet _skyDescriptorSet = VK_NULL_HANDLE;
 
     // Wireframe mode
     bool _wireframeMode = false;
@@ -95,4 +98,8 @@ class Renderer {
     std::unordered_map<std::string, uint32_t> _texturePathToId;
     uint32_t _nextTextureId = 0;
     int _atlasTexturesPerRow = 0; // Number of textures per row in atlas
+
+    // Blue noise texture for dithering
+    RenderContext::AllocatedImage _blueNoiseTexture{};
+    VkSampler _blueNoiseSampler = VK_NULL_HANDLE;
 };
