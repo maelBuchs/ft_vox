@@ -10,7 +10,7 @@ void InputManager::processEvent(const SDL_Event& event) {
     }
 
     if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE) {
-        _shouldQuit = true;
+        _escapePressed = true;
     }
 
     if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_F1) {
@@ -49,6 +49,14 @@ bool InputManager::isKeyDown(SDL_Scancode key) const {
 bool InputManager::isWireframeToggled() {
     if (_wireframeToggled) {
         _wireframeToggled = false;
+        return true;
+    }
+    return false;
+}
+
+bool InputManager::isEscapePressed() {
+    if (_escapePressed) {
+        _escapePressed = false;
         return true;
     }
     return false;

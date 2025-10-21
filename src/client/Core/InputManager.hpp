@@ -26,7 +26,9 @@ class InputManager {
 
     // Special actions
     [[nodiscard]] bool shouldQuit() const { return _shouldQuit; }
+    void setShouldQuit(bool quit) { _shouldQuit = quit; }
     [[nodiscard]] bool isWireframeToggled();
+    [[nodiscard]] bool isEscapePressed();
 
     // Mouse state
     [[nodiscard]] glm::vec2 getMouseDelta() const { return _mouseDelta; }
@@ -39,5 +41,6 @@ class InputManager {
     bool _shouldQuit = false;
     bool _wireframeToggled = false;
     bool _wireframeKeyWasPressed = false;
+    bool _escapePressed = false;
     glm::vec2 _mouseDelta{0.0F, 0.0F};
 };

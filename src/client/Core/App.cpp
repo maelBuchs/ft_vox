@@ -56,6 +56,12 @@ void App::run() {
 
         inputManager.newFrame();
 
+        // Handle Escape to toggle UI mode
+        if (inputManager.isEscapePressed()) {
+            _uiMode = !_uiMode;
+            SDL_SetWindowRelativeMouseMode(_window->getSDLWindow(), !_uiMode);
+        }
+
         while (SDL_PollEvent(&event)) {
             // Handle window resize
             if (event.type == SDL_EVENT_WINDOW_RESIZED ||
@@ -72,9 +78,11 @@ void App::run() {
             _renderer->setWireframeMode(!_renderer->isWireframeMode());
         }
 
-        // Update camera based on input
+        // Update camera based on input (only if not in UI mode)
         Camera& camera = _renderer->getCamera();
-        inputManager.updateCamera(camera, deltaTime);
+        if (!_uiMode) {
+            inputManager.updateCamera(camera, deltaTime);
+        }
 
         // Update time of day
         _timeOfDay += _timeSpeed * deltaTime;
@@ -107,12 +115,17 @@ void App::run() {
             // Slider changed, time is now manually controlled
         }
         ImGui::SliderFloat("Time Speed", &_timeSpeed, 0.0F, 0.2F);
-        
+
         // Display time as readable format
         int hours = static_cast<int>(_timeOfDay * 24.0F);
         int minutes = static_cast<int>((_timeOfDay * 24.0F - hours) * 60.0F);
         ImGui::Text("Current Time: %02d:%02d", hours, minutes);
-        
+
+        ImGui::Separator();
+        if (ImGui::Button("Quit")) {
+            inputManager.setShouldQuit(true);
+        }
+
         ImGui::End();
 
         ImGui::Render();

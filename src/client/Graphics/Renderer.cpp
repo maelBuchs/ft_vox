@@ -89,6 +89,7 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
     _camera = std::make_unique<Camera>(glm::vec3(30.0F, 70.0F, 30.0F), -135.0F, -20.0F);
 
     loadTextureAtlas();
+    loadBlueNoiseTexture();
 
     // Initialize voxel renderer
     _voxelRenderer = std::make_unique<VoxelRenderer>(
@@ -180,7 +181,6 @@ void Renderer::draw(float timeOfDay) {
                                           VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
         firstFrame = false;
     }
-    // ici
 
     chunkInstanciator->updateChunksAroundPlayer(_camera->getPosition());
 
@@ -599,6 +599,116 @@ void Renderer::loadTextureAtlas() {
     std::cout << "Texture atlas loaded successfully!\n";
 }
 
+void Renderer::loadBlueNoiseTexture() {
+    std::cout << "Loading blue noise texture...\n";
+
+    // 1. Load pixels from disk
+    int width, height, channels;
+    stbi_uc* pixels = stbi_load("../../assets/textures/blue_noise/LDR_LLL1_0.png", &width, &height,
+                                &channels, STBI_rgb_alpha);
+    if (!pixels) {
+        throw std::runtime_error("Failed to load blue noise texture");
+    }
+
+    // 2. Create GPU image (1 mip, GPU-only)
+    _blueNoiseTexture.extent = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
+    _blueNoiseTexture.format = VK_FORMAT_R8G8B8A8_UNORM;
+
+    VkImageCreateInfo imageInfo{.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                                .imageType = VK_IMAGE_TYPE_2D,
+                                .format = _blueNoiseTexture.format,
+                                .extent = _blueNoiseTexture.extent,
+                                .mipLevels = 1,
+                                .arrayLayers = 1,
+                                .samples = VK_SAMPLE_COUNT_1_BIT,
+                                .tiling = VK_IMAGE_TILING_OPTIMAL,
+                                .usage =
+                                    VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT};
+
+    VmaAllocationCreateInfo allocInfo{.usage = VMA_MEMORY_USAGE_GPU_ONLY,
+                                      .requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT};
+
+    VkResult ret = vmaCreateImage(_device.getAllocator(), &imageInfo, &allocInfo,
+                                  &_blueNoiseTexture.image, &_blueNoiseTexture.allocation, nullptr);
+    if (ret != VK_SUCCESS) {
+        stbi_image_free(pixels);
+        throw std::runtime_error("Failed to create blue noise image");
+    }
+
+    // 3. Stage & upload
+    AllocatedBuffer stagingBuffer =
+        _bufferManager->createStagingBuffer(static_cast<VkDeviceSize>(width) * height * 4);
+
+    memcpy(stagingBuffer.info.pMappedData, pixels, static_cast<size_t>(width) * height * 4);
+    stbi_image_free(pixels);
+
+    _commandExecutor->immediateSubmit([&](VkCommandBuffer cmd) {
+        // Transition to TRANSFER_DST_OPTIMAL
+        _commandExecutor->transitionImage(cmd, _blueNoiseTexture.image, VK_IMAGE_LAYOUT_UNDEFINED,
+                                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+        // Copy buffer to image
+        VkBufferImageCopy copyRegion{};
+        copyRegion.bufferOffset = 0;
+        copyRegion.bufferRowLength = 0;
+        copyRegion.bufferImageHeight = 0;
+        copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        copyRegion.imageSubresource.mipLevel = 0;
+        copyRegion.imageSubresource.baseArrayLayer = 0;
+        copyRegion.imageSubresource.layerCount = 1;
+        copyRegion.imageOffset = {0, 0, 0};
+        copyRegion.imageExtent = _blueNoiseTexture.extent;
+
+        vkCmdCopyBufferToImage(cmd, stagingBuffer.buffer, _blueNoiseTexture.image,
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+
+        // Transition to SHADER_READ_ONLY_OPTIMAL
+        _commandExecutor->transitionImage(cmd, _blueNoiseTexture.image,
+                                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    });
+
+    _bufferManager->destroyBuffer(stagingBuffer);
+
+    // 4. Create view
+    VkImageViewCreateInfo viewInfo{.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                                   .image = _blueNoiseTexture.image,
+                                   .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                                   .format = _blueNoiseTexture.format,
+                                   .subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                                                        .baseMipLevel = 0,
+                                                        .levelCount = 1,
+                                                        .baseArrayLayer = 0,
+                                                        .layerCount = 1}};
+    ret = vkCreateImageView(_device.getDevice(), &viewInfo, nullptr, &_blueNoiseTexture.imageView);
+    if (ret != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create blue noise image view");
+    }
+
+    // 5. Create sampler (nearest filter, repeat)
+    VkSamplerCreateInfo samplerInfo{.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+                                    .magFilter = VK_FILTER_NEAREST,
+                                    .minFilter = VK_FILTER_NEAREST,
+                                    .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+                                    .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+                                    .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+                                    .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT};
+    ret = vkCreateSampler(_device.getDevice(), &samplerInfo, nullptr, &_blueNoiseSampler);
+    if (ret != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create blue noise sampler");
+    }
+
+    // 6. Register clean-up
+    _mainDeletionQueue.push([this]() {
+        vkDestroySampler(_device.getDevice(), _blueNoiseSampler, nullptr);
+        vkDestroyImageView(_device.getDevice(), _blueNoiseTexture.imageView, nullptr);
+        vmaDestroyImage(_device.getAllocator(), _blueNoiseTexture.image,
+                        _blueNoiseTexture.allocation);
+    });
+
+    std::cout << "Blue noise texture loaded successfully!\n";
+}
+
 void Renderer::initSkyPipeline() {
     std::cout << "Initializing sky rendering pipeline...\n";
 
@@ -629,13 +739,15 @@ void Renderer::initSkyPipeline() {
                                             .pNext = nullptr,
                                             .flags = 0,
                                             .codeSize = vertCode.size(),
-                                            .pCode = reinterpret_cast<const uint32_t*>(vertCode.data())};
+                                            .pCode =
+                                                reinterpret_cast<const uint32_t*>(vertCode.data())};
 
     VkShaderModuleCreateInfo fragModuleInfo{.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
                                             .pNext = nullptr,
                                             .flags = 0,
                                             .codeSize = fragCode.size(),
-                                            .pCode = reinterpret_cast<const uint32_t*>(fragCode.data())};
+                                            .pCode =
+                                                reinterpret_cast<const uint32_t*>(fragCode.data())};
 
     VkShaderModule vertModule = VK_NULL_HANDLE;
     VkShaderModule fragModule = VK_NULL_HANDLE;
@@ -646,6 +758,12 @@ void Renderer::initSkyPipeline() {
     ret = vkCreateShaderModule(_device.getDevice(), &fragModuleInfo, nullptr, &fragModule);
     checkVkResult(ret, "Failed to create sky fragment shader module");
 
+    // Create descriptor set layout for blue noise texture
+    DescriptorLayoutBuilder layoutBuilder;
+    layoutBuilder.addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    _skyDescriptorSetLayout =
+        layoutBuilder.build(_device.getDevice(), VK_SHADER_STAGE_FRAGMENT_BIT);
+
     // Push constant range for sky rendering
     VkPushConstantRange pushConstantRange{
         .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -653,12 +771,12 @@ void Renderer::initSkyPipeline() {
         .size = sizeof(glm::mat4) + sizeof(float) * 4 // mat4 + timeOfDay + 3 padding floats
     };
 
-    // Create pipeline layout
+    // Create pipeline layout with descriptor set
     VkPipelineLayoutCreateInfo layoutInfo{.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
                                           .pNext = nullptr,
                                           .flags = 0,
-                                          .setLayoutCount = 0,
-                                          .pSetLayouts = nullptr,
+                                          .setLayoutCount = 1,
+                                          .pSetLayouts = &_skyDescriptorSetLayout,
                                           .pushConstantRangeCount = 1,
                                           .pPushConstantRanges = &pushConstantRange};
 
@@ -749,7 +867,7 @@ void Renderer::initSkyPipeline() {
         .pNext = nullptr,
         .flags = 0,
         .depthTestEnable = VK_TRUE,
-        .depthWriteEnable = VK_FALSE, // Don't write to depth buffer
+        .depthWriteEnable = VK_FALSE,                  // Don't write to depth buffer
         .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL, // Draw behind everything
         .depthBoundsTestEnable = VK_FALSE,
         .stencilTestEnable = VK_FALSE,
@@ -782,7 +900,7 @@ void Renderer::initSkyPipeline() {
 
     // Dynamic state
     std::vector<VkDynamicState> dynamicStates = {VK_DYNAMIC_STATE_VIEWPORT,
-                                                  VK_DYNAMIC_STATE_SCISSOR};
+                                                 VK_DYNAMIC_STATE_SCISSOR};
 
     VkPipelineDynamicStateCreateInfo dynamicState{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
@@ -795,38 +913,49 @@ void Renderer::initSkyPipeline() {
     VkFormat colorFormat = _renderContext->getDrawImage().format;
     VkFormat depthFormat = _renderContext->getDepthImage().format;
 
-    VkPipelineRenderingCreateInfo renderingInfo{.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-                                                .pNext = nullptr,
-                                                .viewMask = 0,
-                                                .colorAttachmentCount = 1,
-                                                .pColorAttachmentFormats = &colorFormat,
-                                                .depthAttachmentFormat = depthFormat,
-                                                .stencilAttachmentFormat = VK_FORMAT_UNDEFINED};
+    VkPipelineRenderingCreateInfo renderingInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+        .pNext = nullptr,
+        .viewMask = 0,
+        .colorAttachmentCount = 1,
+        .pColorAttachmentFormats = &colorFormat,
+        .depthAttachmentFormat = depthFormat,
+        .stencilAttachmentFormat = VK_FORMAT_UNDEFINED};
 
     // Create graphics pipeline
-    VkGraphicsPipelineCreateInfo pipelineInfo{.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-                                              .pNext = &renderingInfo,
-                                              .flags = 0,
-                                              .stageCount = 2,
-                                              .pStages = shaderStages,
-                                              .pVertexInputState = &vertexInputInfo,
-                                              .pInputAssemblyState = &inputAssembly,
-                                              .pTessellationState = nullptr,
-                                              .pViewportState = &viewportState,
-                                              .pRasterizationState = &rasterizer,
-                                              .pMultisampleState = &multisampling,
-                                              .pDepthStencilState = &depthStencil,
-                                              .pColorBlendState = &colorBlending,
-                                              .pDynamicState = &dynamicState,
-                                              .layout = _skyPipelineLayout,
-                                              .renderPass = VK_NULL_HANDLE, // Using dynamic rendering
-                                              .subpass = 0,
-                                              .basePipelineHandle = VK_NULL_HANDLE,
-                                              .basePipelineIndex = -1};
+    VkGraphicsPipelineCreateInfo pipelineInfo{
+        .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+        .pNext = &renderingInfo,
+        .flags = 0,
+        .stageCount = 2,
+        .pStages = shaderStages,
+        .pVertexInputState = &vertexInputInfo,
+        .pInputAssemblyState = &inputAssembly,
+        .pTessellationState = nullptr,
+        .pViewportState = &viewportState,
+        .pRasterizationState = &rasterizer,
+        .pMultisampleState = &multisampling,
+        .pDepthStencilState = &depthStencil,
+        .pColorBlendState = &colorBlending,
+        .pDynamicState = &dynamicState,
+        .layout = _skyPipelineLayout,
+        .renderPass = VK_NULL_HANDLE, // Using dynamic rendering
+        .subpass = 0,
+        .basePipelineHandle = VK_NULL_HANDLE,
+        .basePipelineIndex = -1};
 
     ret = vkCreateGraphicsPipelines(_device.getDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr,
                                     &_skyPipeline);
     checkVkResult(ret, "Failed to create sky graphics pipeline");
+
+    // Allocate and write descriptor set for blue noise texture
+    _skyDescriptorSet =
+        _globalDescriptorAllocator.allocate(_device.getDevice(), _skyDescriptorSetLayout);
+    DescriptorWriter writer;
+    writer.writeImage(0, _blueNoiseTexture.imageView, _blueNoiseSampler,
+                      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                      VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    writer.updateSet(_device.getDevice(), _skyDescriptorSet);
 
     // Clean up shader modules
     vkDestroyShaderModule(_device.getDevice(), vertModule, nullptr);
@@ -836,6 +965,7 @@ void Renderer::initSkyPipeline() {
     _mainDeletionQueue.push([this]() {
         vkDestroyPipeline(_device.getDevice(), _skyPipeline, nullptr);
         vkDestroyPipelineLayout(_device.getDevice(), _skyPipelineLayout, nullptr);
+        vkDestroyDescriptorSetLayout(_device.getDevice(), _skyDescriptorSetLayout, nullptr);
     });
 
     std::cout << "Sky pipeline initialized successfully!\n";
@@ -875,7 +1005,7 @@ void Renderer::drawSky(VkCommandBuffer cmd, float timeOfDay) {
         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
         .pNext = nullptr,
         .flags = 0,
-        .renderArea = {.offset = {0, 0}, 
+        .renderArea = {.offset = {0, 0},
                        .extent = {drawImage.extent.width, drawImage.extent.height}},
         .layerCount = 1,
         .viewMask = 0,
@@ -889,6 +1019,10 @@ void Renderer::drawSky(VkCommandBuffer cmd, float timeOfDay) {
     // Bind sky pipeline
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _skyPipeline);
 
+    // Bind descriptor set for blue noise texture
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _skyPipelineLayout, 0, 1,
+                            &_skyDescriptorSet, 0, nullptr);
+
     // Set viewport and scissor
     VkViewport viewport{.x = 0.0F,
                         .y = 0.0F,
@@ -897,8 +1031,7 @@ void Renderer::drawSky(VkCommandBuffer cmd, float timeOfDay) {
                         .minDepth = 0.0F,
                         .maxDepth = 1.0F};
 
-    VkRect2D scissor{.offset = {0, 0}, 
-                     .extent = {drawImage.extent.width, drawImage.extent.height}};
+    VkRect2D scissor{.offset = {0, 0}, .extent = {drawImage.extent.width, drawImage.extent.height}};
 
     vkCmdSetViewport(cmd, 0, 1, &viewport);
     vkCmdSetScissor(cmd, 0, 1, &scissor);
@@ -909,10 +1042,10 @@ void Renderer::drawSky(VkCommandBuffer cmd, float timeOfDay) {
     glm::mat4 viewNoTranslation = glm::mat4(glm::mat3(view)); // Remove translation component
 
     // Calculate projection matrix (80 degree FOV as per requirements)
-    float aspect = static_cast<float>(drawImage.extent.width) /
-                   static_cast<float>(drawImage.extent.height);
+    float aspect =
+        static_cast<float>(drawImage.extent.width) / static_cast<float>(drawImage.extent.height);
     glm::mat4 projection = glm::perspective(glm::radians(80.0F), aspect, 0.1F, 1000.0F);
-    
+
     // Vulkan uses inverted Y axis
     projection[1][1] *= -1.0F;
 
