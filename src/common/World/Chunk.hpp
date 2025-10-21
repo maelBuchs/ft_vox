@@ -79,8 +79,8 @@ class ChunkInstanciator {
         // return a copy to avoid data races
         for (auto& chunk : _readyChunks) {
             _loadedChunks.push_back(std::move(chunk));
-            _readyChunks.pop_back();
         }
+        _readyChunks.clear();
         return _loadedChunks;
     }
     // hecks which chunks need to be loaded/unloaded based on player position
