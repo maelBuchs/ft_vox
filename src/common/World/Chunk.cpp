@@ -5,14 +5,16 @@
 #define CHUNK_TO_WORLD(b, c) ((c) * Chunk::CHUNK_SIZE + (b))
 #define SEED 42L
 
-Chunk::Chunk(int x, int y, int z) : _blocks{} {
-    _blocks.fill(AIR_BLOCK_ID);
-    // All chunks are at y=0 for this test
-    glm::ivec3 pos = {x, y, z};
-    position = pos;
+float getHeightValue(int bx, int bz) {
+    float noiseValue = perlinNoiseByCoordinates(bx, bz, 0.01F, SEED, 1, 0.1F);
 
-    // Create a new chunk and generate its block data
-    // Fill with some blocks for testing (staircase-like pattern)
+    int min_height = -50;
+    int max_height = 150;
+    return (min_height + noiseValue * (max_height - min_height));
+}
+
+void Chunk::generateChunk() {
+
     for (int bx = 0; bx < CHUNK_SIZE; bx++) {
         for (int bz = 0; bz < CHUNK_SIZE; bz++) {
             float noiseValue =
@@ -20,14 +22,26 @@ Chunk::Chunk(int x, int y, int z) : _blocks{} {
                                          CHUNK_TO_WORLD(bz, position.z), 0.01F, SEED, 1, 0.1F);
 
             int maxHeight =
-                static_cast<int>((noiseValue + 1.0F) / 2.0F * static_cast<float>(CHUNK_SIZE));
+                getHeightValue(CHUNK_TO_WORLD(bx, position.x), CHUNK_TO_WORLD(bz, position.z));
             for (int by = 0; by < CHUNK_SIZE; by++) {
-                if (CHUNK_TO_WORLD(by, y) < maxHeight) {
-                    // std::cout << "EEEHOOOO\n" << std::endl;
+                if (CHUNK_TO_WORLD(by, position.y) < maxHeight) {
                     setBlock(bx, by, bz, 2); // Set block ID to 1 (solid block)
                 }
             }
         }
+    }
+}
+
+bool Chunk::loadChunk() {
+    // Placeholder for chunk loading logic
+    // Return false to indicate chunk does not exist and needs generation
+    return false;
+}
+
+Chunk::Chunk(int x, int y, int z) : _blocks{}, position{x, y, z} {
+    _blocks.fill(AIR_BLOCK_ID);
+    if (!loadChunk()) {
+        generateChunk();
     }
 }
 

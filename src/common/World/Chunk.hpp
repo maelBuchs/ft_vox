@@ -19,7 +19,7 @@
 #include "glm/fwd.hpp"
 
 #define GLM_ENABLE_EXPERIMENTAL
-#define RENDER_DISTANCE 2
+#define RENDER_DISTANCE 6
 #define MAX_THREADS 2
 
 class Chunk;
@@ -60,6 +60,10 @@ class Chunk {
     glm::ivec3 position;
     std::array<uint8_t, VOLUME> _blocks;
     bool _isEmpty = true;
+
+    void generateChunk();
+    bool loadChunk();
+    // void saveChunk();
 };
 
 class ChunkInstanciator {
