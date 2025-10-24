@@ -170,6 +170,12 @@ set(COMMON_SOURCES
     ${CMAKE_SOURCE_DIR}/src/common/Util/perlinNoise.cpp
 )
 
+# Server-side world management (used by client for async chunk loading)
+set(SERVER_WORLD_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/server/World/WorldManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/server/World/MeshingThread.cpp
+)
+
 # Server executable
 set(SERVER_SOURCES
 
@@ -179,6 +185,7 @@ add_executable(ft_vox
     src/main_client.cpp
     ${CLIENT_SOURCES}
     ${COMMON_SOURCES}
+    ${SERVER_WORLD_SOURCES}
 )
 
 # Ensure shaders are compiled before building the executable

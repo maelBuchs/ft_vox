@@ -1,11 +1,23 @@
 #pragma once
 
+#include <limits>
 #include <memory>
+#include <unordered_set>
+#include <vector>
+
+#include <glm/vec3.hpp>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/hash.hpp>
+
+#include "common/Protocol/Protocol.hpp"
+#include "common/Util/ThreadSafeQueue.hpp"
 
 class Window;
 class VulkanDevice;
 class Renderer;
 class BlockRegistry;
+class WorldManager;
+class MeshingThread;
 
 class App {
   public:
@@ -27,6 +39,20 @@ class App {
     void setTimeOfDay(float time) { _timeOfDay = time; }
 
   private:
+    /**
+     * @brief Enqueue chunk generation requests for the surrounding chunks.
+     *
+     * @param centerChunk The center chunk position.
+     */
+    void enqueueChunkRequests(const glm::ivec3& centerChunk);
+
+    /**
+     * @brief Rebuild the chunk request offsets based on the given radius.
+     *
+     * @param radius The radius around the center chunk to rebuild offsets for.
+     */
+    void rebuildChunkOffsets(int radius);
+
     std::unique_ptr<BlockRegistry> _blockRegistry;
     std::unique_ptr<Window> _window;
     std::unique_ptr<VulkanDevice> _vulkanDevice;
@@ -38,4 +64,31 @@ class App {
 
     // UI mode for ImGui interaction
     bool _uiMode = false;
+
+    // === Async chunk loading system ===
+    // Communication queues (owned by App, passed by reference to workers)
+    ThreadSafeQueue<ChunkRequest> _chunkRequestQueue;
+    ThreadSafeQueue<GenerationTask> _meshingTaskQueue;
+    ThreadSafeQueue<MeshData> _finishedMeshQueue;
+    ThreadSafeQueue<MeshingComplete> _meshingCompleteQueue;
+
+    // Configurable chunk load radius (in chunks)
+    int _loadRadius = 8;
+    int _lastLoadRadius = -1;
+
+    // Request throttling
+    static constexpr int MAX_REQUESTS_PER_FRAME = 512; // Don't flood the queue
+    int _currentShellRadius = 0;                       // For breadth-first chunk loading
+    std::unordered_set<glm::ivec3> _requestedChunks;   // Track what we've already requested
+
+    // Worker threads
+    std::unique_ptr<WorldManager> _worldManager;
+    std::vector<std::unique_ptr<MeshingThread>> _meshingThreads;
+    static constexpr int NUM_MESHING_WORKERS = 4; // Parallel meshing workers
+
+    glm::ivec3 _lastRequestedCenter{std::numeric_limits<int>::min(),
+                                    std::numeric_limits<int>::min(),
+                                    std::numeric_limits<int>::min()};
+    bool _needsRequestRefresh = true;
+    std::vector<glm::ivec3> _chunkRequestOffsets;
 };

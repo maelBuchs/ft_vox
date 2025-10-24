@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -9,9 +8,9 @@
 #include <SDL3/SDL_events.h>
 #include <vulkan/vulkan.h>
 
-#include "common/Types/RenderTypes.hpp"
+#include "common/Protocol/Protocol.hpp"
+#include "common/Util/ThreadSafeQueue.hpp"
 #include "Core/DeletionQueue.hpp"
-#include "Core/VulkanTypes.hpp"
 #include "Memory/DescriptorAllocator.hpp"
 #include "Pipeline/Pipeline.hpp"
 #include "Rendering/RenderContext.hpp"
@@ -31,7 +30,8 @@ class VoxelRenderer;
 
 class Renderer {
   public:
-    Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry);
+    Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry,
+             ThreadSafeQueue<MeshData>& finishedMeshQueue);
     ~Renderer();
 
     Renderer(const Renderer&) = delete;
@@ -40,6 +40,7 @@ class Renderer {
     Renderer& operator=(Renderer&&) = delete;
 
     static constexpr uint64_t VULKAN_TIMEOUT_NS = 1000000000; // 1 second
+    void updateMeshes(); // Process finished mesh data from worker threads
     void draw(float timeOfDay);
     void resizeSwapchain();
     void updateFPS(float deltaTime);
@@ -66,10 +67,12 @@ class Renderer {
     Window& _window;
     VulkanDevice& _device;
     BlockRegistry& _blockRegistry;
+    ThreadSafeQueue<MeshData>& _finishedMeshQueue; // Reference to mesh queue from App
     std::unique_ptr<VulkanSwapchain> _swapchain;
     DescriptorAllocatorGrowable _globalDescriptorAllocator;
     std::vector<VkSemaphore> _swapchainSemaphores;
     std::vector<VkSemaphore> _renderSemaphores;
+    std::vector<VkFence> _imagesInFlight;
     DeletionQueue _mainDeletionQueue;
     std::unique_ptr<VulkanBuffer> _bufferManager;
     std::unique_ptr<MeshManager> _meshManager;
@@ -89,8 +92,8 @@ class Renderer {
     bool _wireframeMode = false;
 
     // FPS tracking
-    float _fps = 0.0f;
-    float _frameTimeAccumulator = 0.0f;
+    float _fps = 0.0F;
+    float _frameTimeAccumulator = 0.0F;
     int _frameCount = 0;
 
     RenderContext::AllocatedImage _textureAtlas{};

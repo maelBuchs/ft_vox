@@ -10,14 +10,12 @@
 #include <SDL3/SDL.h>
 #include <vulkan/vulkan.h>
 
-
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
 #include "../Core/Window.hpp"
 #include "../Game/Camera.hpp"
 #include "common/World/BlockRegistry.hpp"
-#include "common/World/Chunk.hpp"
 #include "Core/VulkanBuffer.hpp"
 #include "Core/VulkanDevice.hpp"
 #include "Core/VulkanSwapchain.hpp"
@@ -30,10 +28,10 @@
 #include "Voxel/MeshManager.hpp"
 #include "Voxel/VoxelRenderer.hpp"
 
-ChunkInstanciator* chunkInstanciator = nullptr;
-
-Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry)
-    : _window(window), _device(device), _blockRegistry(registry) {
+Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry,
+                   ThreadSafeQueue<MeshData>& finishedMeshQueue)
+    : _window(window), _device(device), _blockRegistry(registry),
+      _finishedMeshQueue(finishedMeshQueue) {
     try {
         _swapchain = std::make_unique<VulkanSwapchain>(window, device);
         _bufferManager = std::make_unique<VulkanBuffer>(device);
@@ -58,6 +56,7 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
     size_t swapchainImageCount = _swapchain->getSwapchainImages().size();
     _swapchainSemaphores.resize(swapchainImageCount);
     _renderSemaphores.resize(swapchainImageCount);
+    _imagesInFlight.resize(swapchainImageCount, VK_NULL_HANDLE);
 
     VkSemaphoreCreateInfo semaphoreCreateInfo{
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, .pNext = nullptr, .flags = 0};
@@ -95,10 +94,8 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
     // Initialize voxel renderer
     _voxelRenderer = std::make_unique<VoxelRenderer>(
         device, *_meshManager, registry, *_renderContext, *_commandExecutor, *_bufferManager,
-        _globalDescriptorAllocator, *this);
+        _globalDescriptorAllocator, *this, _finishedMeshQueue);
     _voxelRenderer->initPipelines(_textureAtlas.imageView, _textureAtlasSampler);
-    // _voxelRenderer->initTestChunk();
-    chunkInstanciator = new ChunkInstanciator();
 
     // Initialize sky rendering pipeline
     initSkyPipeline();
@@ -128,6 +125,12 @@ Renderer::~Renderer() {
     _frameManager.reset();
 }
 
+void Renderer::updateMeshes() {
+    // Process finished mesh data from worker threads
+    // This uploads mesh data to GPU buffers (fast operation, non-blocking)
+    _voxelRenderer->update();
+}
+
 void Renderer::draw(float timeOfDay) {
 
     // Get current frame from FrameManager
@@ -141,6 +144,12 @@ void Renderer::draw(float timeOfDay) {
     currentFrame._deletionQueue.flush();
     currentFrame._frameDescriptors.clearPools(_device.getDevice());
 
+    for (VkFence& fence : _imagesInFlight) {
+        if (fence == currentFrame._renderFence) {
+            fence = VK_NULL_HANDLE;
+        }
+    }
+
     ret = vkResetFences(_device.getDevice(), 1, &currentFrame._renderFence);
     checkVkResult(ret, "Failed to reset fence");
 
@@ -152,6 +161,13 @@ void Renderer::draw(float timeOfDay) {
         vkAcquireNextImageKHR(_device.getDevice(), _swapchain->getSwapchain(), VULKAN_TIMEOUT_NS,
                               _swapchainSemaphores[semaphoreIndex], nullptr, &swapchainImageIndex);
     checkVkResult(ret, "Failed to acquire next image");
+
+    if (_imagesInFlight[swapchainImageIndex] != VK_NULL_HANDLE) {
+        ret = vkWaitForFences(_device.getDevice(), 1, &_imagesInFlight[swapchainImageIndex],
+                              VK_TRUE, VULKAN_TIMEOUT_NS);
+        checkVkResult(ret, "Failed to wait for in-flight image fence");
+    }
+    _imagesInFlight[swapchainImageIndex] = currentFrame._renderFence;
 
     // Reset and begin command buffer
     VkCommandBuffer commandBuffer = currentFrame._mainCommandBuffer;
@@ -182,8 +198,6 @@ void Renderer::draw(float timeOfDay) {
                                           VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
         firstFrame = false;
     }
-
-    chunkInstanciator->updateChunksAroundPlayer(_camera->getPosition());
 
     // Render sky first (will fill the background)
     drawSky(commandBuffer, timeOfDay);
@@ -245,13 +259,14 @@ void Renderer::draw(float timeOfDay) {
     VkSemaphoreSubmitInfo waitInfo{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
                                    .pNext = nullptr,
                                    .semaphore = _swapchainSemaphores[semaphoreIndex],
-                                   .value = 1,
-                                   .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR,
+                                   .value = 0,
+                                   .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                                    .deviceIndex = 0};
+    VkSemaphore renderFinishedSemaphore = _renderSemaphores[swapchainImageIndex];
     VkSemaphoreSubmitInfo signalInfo{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
                                      .pNext = nullptr,
-                                     .semaphore = _renderSemaphores[semaphoreIndex],
-                                     .value = 1,
+                                     .semaphore = renderFinishedSemaphore,
+                                     .value = 0,
                                      .stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
                                      .deviceIndex = 0};
 
@@ -273,7 +288,7 @@ void Renderer::draw(float timeOfDay) {
     VkPresentInfoKHR presentInfo{.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
                                  .pNext = nullptr,
                                  .waitSemaphoreCount = 1,
-                                 .pWaitSemaphores = &_renderSemaphores[semaphoreIndex],
+                                 .pWaitSemaphores = &renderFinishedSemaphore,
                                  .swapchainCount = 1,
                                  .pSwapchains = &retSwapchain,
                                  .pImageIndices = &swapchainImageIndex,
@@ -306,6 +321,9 @@ void Renderer::resizeSwapchain() {
     // Recreate draw and depth images with new size
     VkExtent2D newExtent = _swapchain->getSwapchainExtent();
     _renderContext->createDrawImages(newExtent);
+
+    size_t swapchainImageCount = _swapchain->getSwapchainImages().size();
+    _imagesInFlight.assign(swapchainImageCount, VK_NULL_HANDLE);
 }
 
 void Renderer::initImGui() {

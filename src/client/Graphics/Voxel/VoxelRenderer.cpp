@@ -23,10 +23,11 @@
 VoxelRenderer::VoxelRenderer(VulkanDevice& device, MeshManager& meshManager,
                              BlockRegistry& registry, RenderContext& context,
                              CommandExecutor& executor, VulkanBuffer& bufferManager,
-                             DescriptorAllocatorGrowable& descriptorAllocator, Renderer& renderer)
+                             DescriptorAllocatorGrowable& descriptorAllocator, Renderer& renderer,
+                             ThreadSafeQueue<MeshData>& finishedMeshQueue)
     : _device(device), _meshManager(meshManager), _blockRegistry(registry), _context(context),
       _executor(executor), _bufferManager(bufferManager), _descriptorAllocator(descriptorAllocator),
-      _renderer(renderer) {
+      _renderer(renderer), _finishedMeshQueue(finishedMeshQueue) {
     // Initialize mesh buffer pool
     _meshPool = std::make_unique<MeshBufferPool>(_device, _bufferManager);
 }
@@ -164,84 +165,42 @@ void VoxelRenderer::initMDI(VkImageView atlasView, VkSampler atlasSampler) {
     writer.updateSet(_device.getDevice(), _chunkDescriptorSet);
 }
 
-void VoxelRenderer::rebuildMeshesFromLoadedChunks() {
-    extern ChunkInstanciator* chunkInstanciator;
-    if (chunkInstanciator == nullptr) {
-        return;
-    }
-    const std::vector<Chunk>& worldChunks = chunkInstanciator->getLoadedChunks();
+void VoxelRenderer::update() {
+    // Process all available finished meshes without blocking
+    while (auto meshOpt = _finishedMeshQueue.try_pop()) {
+        MeshData meshData = std::move(meshOpt.value());
 
-    _chunkDrawInfos.clear();
-    _meshPool->reset();
-
-    // Neighbor lookup by comparing chunk positions (worldChunks is a vector of Chunk)
-    auto findNeighbor = [&](const glm::ivec3& pos, int dx, int dy, int dz) -> const Chunk* {
-        glm::ivec3 npos = glm::ivec3(pos.x + dx, pos.y + dy, pos.z + dz);
-        for (const auto& c : worldChunks) {
-            const glm::ivec3& cpos = c.getPosition();
-            if (cpos.x == npos.x && cpos.y == npos.y && cpos.z == npos.z) {
-                return &c;
-            }
-        }
-        return nullptr;
-    };
-
-    for (const auto& chunk : worldChunks) {
-        // chunk is a value in the vector; take its address for pointer semantics used below
-        const Chunk* chunkPtr = &chunk;
-        const glm::ivec3 pos = chunk.getPosition();
-
-        const Chunk* neighborNorth = findNeighbor(pos, 0, 0, 1);
-        const Chunk* neighborSouth = findNeighbor(pos, 0, 0, -1);
-        const Chunk* neighborEast = findNeighbor(pos, 1, 0, 0);
-        const Chunk* neighborWest = findNeighbor(pos, -1, 0, 0);
-        const Chunk* neighborTop = findNeighbor(pos, 0, 1, 0);
-        const Chunk* neighborBottom = findNeighbor(pos, 0, -1, 0);
-
-        std::vector<VoxelVertex> vertices;
-        std::vector<uint32_t> indices;
-
-        auto getTextureId = [this](const std::string& path) -> uint32_t {
-            return _renderer.getTextureId(path);
-        };
-
-        ChunkMesh::generateMesh(*chunkPtr, _blockRegistry, vertices, indices, neighborNorth,
-                                neighborSouth, neighborEast, neighborWest, neighborTop,
-                                neighborBottom, getTextureId);
-
-        if (vertices.empty() || indices.empty()) {
+        if (meshData.vertices.empty() || meshData.indices.empty()) {
             continue;
         }
 
-        MeshAllocation allocation = _meshPool->uploadMesh(
-            indices, vertices, [this](std::function<void(VkCommandBuffer)>&& func) {
-                _executor.immediateSubmit(std::move(func));
-            });
+        // Upload mesh to GPU (fast operation)
+        MeshAllocation allocation =
+            _meshPool->uploadMesh(meshData.indices, meshData.vertices,
+                                  [this](std::function<void(VkCommandBuffer)>&& func) {
+                                      _executor.immediateSubmit(std::move(func));
+                                  });
 
-        // Access glm::ivec3 components via operator[] to avoid union-member access warnings
-        glm::vec3 chunkWorldPos{static_cast<float>(pos[0] * Chunk::CHUNK_SIZE),
-                                static_cast<float>(pos[1] * Chunk::CHUNK_SIZE),
-                                static_cast<float>(pos[2] * Chunk::CHUNK_SIZE)};
+        const glm::ivec3 chunkCoords = meshData.chunkPosition;
+        const glm::vec3 chunkWorldPos{static_cast<float>(chunkCoords[0] * Chunk::CHUNK_SIZE),
+                                      static_cast<float>(chunkCoords[1] * Chunk::CHUNK_SIZE),
+                                      static_cast<float>(chunkCoords[2] * Chunk::CHUNK_SIZE)};
 
-        // Use designated initializer to make the intent explicit
-        _chunkDrawInfos.push_back(
-            ChunkDrawInfo{.worldPosition = chunkWorldPos, .mesh = allocation});
+        if (auto it = _chunkDrawLookup.find(chunkCoords); it != _chunkDrawLookup.end()) {
+            ChunkDrawInfo& info = _chunkDrawInfos[it->second];
+            info.chunkCoords = chunkCoords;
+            info.worldPosition = chunkWorldPos;
+            info.mesh = allocation;
+        } else {
+            const size_t index = _chunkDrawInfos.size();
+            _chunkDrawInfos.push_back(ChunkDrawInfo{
+                .chunkCoords = chunkCoords, .worldPosition = chunkWorldPos, .mesh = allocation});
+            _chunkDrawLookup.emplace(chunkCoords, index);
+        }
     }
-
-    _lastLoadedChunkCount = worldChunks.size();
 }
 
 void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wireframeMode) {
-    extern ChunkInstanciator* chunkInstanciator;
-    if (chunkInstanciator) {
-
-        auto& loadedChunks = chunkInstanciator->getLoadedChunks();
-        if (loadedChunks.size() != _lastLoadedChunkCount) {
-            std::cout << "rebuilding meshes from loaded chunks...\n";
-            rebuildMeshesFromLoadedChunks();
-            std::cout << "done. total chunks: " << loadedChunks.size() << "\n";
-        }
-    }
 
     const RenderContext::AllocatedImage& drawImage = _context.getDrawImage();
     const RenderContext::AllocatedImage& depthImage = _context.getDepthImage();
