@@ -17,6 +17,10 @@
 #include "common/Util/ThreadSafeQueue.hpp"
 #include "common/World/Chunk.hpp"
 
+#define SEED 42L
+
+#define CHUNK_TO_WORLD(b, c) (((c) * Chunk::CHUNK_SIZE) + (b))
+
 /**
  * WorldManager runs on dedicated generation worker threads.
  * Responsibilities:
@@ -77,7 +81,7 @@ class WorldManager {
      * Generate a chunk at the given position.
      * Uses Perlin noise for terrain generation.
      */
-    std::shared_ptr<Chunk> generateChunk(const glm::ivec3& pos);
+    static std::shared_ptr<Chunk> generateChunk(const glm::ivec3& pos);
 
     /**
      * Get a chunk from cache or return nullptr if not loaded.

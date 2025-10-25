@@ -32,6 +32,17 @@
   },
   {
     "id": 3,
+    "name": "dirt",
+    "textures": {
+      "all": "../../assets/textures/block/dirt.png"
+    },
+    "tags": {
+      "displayable": true,
+      "solid": true
+    }
+  },
+  {
+    "id": 4,
     "name": "oak_wood",
     "textures": {
       "top": "../../assets/textures/block/oak_log_top.png",
@@ -45,7 +56,19 @@
     }
   },
   {
-    "id": 4,
+    "id": 5,
+    "name": "bedrock",
+    "textures": {
+      "all": "../../assets/textures/block/bedrock.png"
+    },
+    "tags": {
+      "displayable": true,
+      "transparent": true,
+      "fluid": true
+    }
+  },
+  {
+    "id": 6,
     "name": "water",
     "textures": {
       "all": "../../assets/textures/block/stone.png"

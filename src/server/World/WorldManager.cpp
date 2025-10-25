@@ -5,6 +5,10 @@
 
 #include "common/Util/perlinNoise.hpp"
 
+#define SEED 42L
+
+#define CHUNK_TO_WORLD(b, c) ((c) * Chunk::CHUNK_SIZE + (b))
+
 WorldManager::WorldManager(ThreadSafeQueue<ChunkRequest>& requestQueue,
                            ThreadSafeQueue<GenerationTask>& meshingQueue,
                            ThreadSafeQueue<MeshingComplete>& completionQueue)
@@ -123,42 +127,7 @@ void WorldManager::generationWorkerLoop() {
     }
 }
 
-std::shared_ptr<Chunk> WorldManager::generateChunk(const glm::ivec3& pos) {
-    auto chunk = std::make_shared<Chunk>(pos.x, pos.y, pos.z);
 
-    // Simple terrain generation using Perlin noise
-    constexpr float scale = 0.05F; // Noise scale
-    constexpr int groundLevel = 64;
-
-    for (int x = 0; x < Chunk::CHUNK_SIZE; ++x) {
-        for (int z = 0; z < Chunk::CHUNK_SIZE; ++z) {
-            // World coordinates
-            int worldX = pos.x * Chunk::CHUNK_SIZE + x;
-            int worldZ = pos.z * Chunk::CHUNK_SIZE + z;
-
-            // Generate height using Perlin noise
-            // float noise =
-            //     perlinNoiseByCoordinates(static_cast<float>(worldX) * scale,
-            //                              static_cast<float>(worldZ) * scale, scale, 12345, 4,
-            //                              0.5F);
-            // int height = groundLevel + static_cast<int>(noise * 20.0F); // ±20 blocks variation
-            int height = groundLevel + 16;
-
-            for (int y = 0; y < Chunk::CHUNK_SIZE; ++y) {
-                int worldY = pos.y * Chunk::CHUNK_SIZE + y;
-
-                if (worldY <= height) {
-                    // Place blocks below height
-                    chunk->setBlock(x, y, z, 1); // Grass (block ID 1)
-                } else {
-                    chunk->setBlock(x, y, z, Chunk::AIR_BLOCK_ID); // Air
-                }
-            }
-        }
-    }
-
-    return chunk;
-}
 
 std::shared_ptr<Chunk> WorldManager::getChunkFromCache(const glm::ivec3& pos) {
     // Caller must hold _chunkMutex lock

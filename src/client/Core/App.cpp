@@ -178,7 +178,7 @@ void App::run() {
         }
 
         // Runtime control for how many chunks to load in each direction
-        if (ImGui::SliderInt("Chunk Load Radius", &_loadRadius, 1, 12)) {
+        if (ImGui::SliderInt("Chunk Load Radius", &_loadRadius, 1, 64)) {
             _needsRequestRefresh = true;
         }
 
@@ -258,9 +258,11 @@ void App::enqueueChunkRequests(const glm::ivec3& centerChunk) {
         }
 
         // Enqueue the request
-        _chunkRequestQueue.push(ChunkRequest(chunkPos));
-        _requestedChunks.insert(chunkPos);
-        requestsThisFrame++;
+        if (chunkPos[1] >= 0) {
+            _chunkRequestQueue.push(ChunkRequest(chunkPos));
+            _requestedChunks.insert(chunkPos);
+            requestsThisFrame++;
+        }
 
         if (requestsThisFrame >= MAX_REQUESTS_PER_FRAME) {
             break; // Continue next frame
@@ -275,8 +277,8 @@ void App::rebuildChunkOffsets(int radius) {
     _chunkRequestOffsets.clear();
 
     const int range = radius;
-    const int verticalMin = -1;
-    const int verticalMax = 1;
+    const int verticalMin = -400;
+    const int verticalMax = 400;
 
     _chunkRequestOffsets.reserve(static_cast<std::size_t>((2 * range + 1) * (2 * range + 1) *
                                                           (verticalMax - verticalMin + 1)));

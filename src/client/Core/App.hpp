@@ -73,7 +73,7 @@ class App {
     ThreadSafeQueue<MeshingComplete> _meshingCompleteQueue;
 
     // Configurable chunk load radius (in chunks)
-    int _loadRadius = 8;
+    int _loadRadius = 64;
     int _lastLoadRadius = -1;
 
     // Request throttling

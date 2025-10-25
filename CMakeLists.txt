@@ -172,6 +172,7 @@ set(COMMON_SOURCES
 
 # Server-side world management (used by client for async chunk loading)
 set(SERVER_WORLD_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/server/World/WorldGeneration.cpp
     ${CMAKE_SOURCE_DIR}/src/server/World/WorldManager.cpp
     ${CMAKE_SOURCE_DIR}/src/server/World/MeshingThread.cpp
 )

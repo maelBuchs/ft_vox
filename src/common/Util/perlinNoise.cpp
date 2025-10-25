@@ -2,10 +2,11 @@
 
 #include <cmath>
 #include <numbers>
+#include <sys/stat.h>
 
 namespace {
 // Génère un vecteur gradient pseudo-aléatoire basé sur les coordonnées
-glm::vec2 randomGradient(int ix, int iy, unsigned int seed) {
+glm::vec2 randomGradient(int ix, int iy, int64_t seed) {
     unsigned int h = (ix * 374761393) + (iy * 668265263);
     h ^= (seed * 0x27d4eb2d); // multiplier la seed pour la disperser
     h = (h ^ (h >> 13)) * 1274126177;
@@ -14,7 +15,7 @@ glm::vec2 randomGradient(int ix, int iy, unsigned int seed) {
     return glm::vec2(std::cos(angle), std::sin(angle));
 }
 // Produit le produit scalaire distance * gradient
-float dotGridGradient(int ix, int iy, float x, float y, long int seed) {
+float dotGridGradient(int ix, int iy, float x, float y, int64_t seed) {
     glm::vec2 gradient = randomGradient(ix, iy, seed);
     float dx = x - (float)ix;
     float dy = y - (float)iy;
@@ -34,7 +35,7 @@ float interpolate(float a0, float a1, float w) {
 } // namespace
 // Valeur de Perlin à une position
 // Peut etre move out of namespace si besoin
-float perlinValue(float x, float y, long int seed) {
+float perlinValue(float x, float y, int64_t seed) {
     int x0 = static_cast<int>(floorf(x));
     int x1 = x0 + 1;
     int y0 = static_cast<int>(floorf(y));
@@ -52,31 +53,16 @@ float perlinValue(float x, float y, long int seed) {
     float ix1 = interpolate(n0, n1, sx);
 
     float value = interpolate(ix0, ix1, sy);
+    value = (value + 1.0f) * 0.5f;
+
     return value;
-}
-
-float perlinNoiseByCoordinates(float x, float y, float baseFrequency, long int seed, int octaves,
-                               float persistence) {
-    float total = 0.0F;
-    float amplitude = 1.0F;
-    float frequency = baseFrequency;
-    float maxValue = 0.0F; // Pour normalisation
-
-    for (int i = 0; i < octaves; ++i) {
-        total += perlinValue(x * frequency, y * frequency, seed) * amplitude;
-        maxValue += amplitude;
-        amplitude *= persistence;
-        frequency *= 2.0F;
-    }
-
-    return total / maxValue; // Normalisation à [-1,1] approximatif
 }
 
 // Génère une matrice 2D de Perlin noise
 // octave : entre 1 et 10
 // persistence : entre 0 et 1
 std::vector<std::vector<float>> perlinNoise(int width, int height, float baseFrequency,
-                                            long int seed, int octaves, float persistence) {
+                                            int64_t seed, int octaves, float persistence) {
     std::vector<std::vector<float>> perlin(height, std::vector<float>(width));
 
     for (int y = 0; y < height; ++y) {

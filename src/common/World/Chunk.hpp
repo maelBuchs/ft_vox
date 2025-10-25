@@ -22,6 +22,8 @@
 #define RENDER_DISTANCE 6
 #define MAX_THREADS 2
 
+enum class BiomeType : uint8_t { PLAINS, MOUNTAINS, OCEAN };
+
 class Chunk;
 using chunkMap = std::unordered_map<glm::ivec3, std::unique_ptr<Chunk>>;
 
@@ -65,51 +67,3 @@ class Chunk {
     bool loadChunk();
     // void saveChunk();
 };
-
-// class ChunkInstanciator {
-//   public:
-//     ChunkInstanciator() {
-//         for (int i = 0; i < MAX_THREADS - 1; ++i) {
-//             _workers.emplace_back(&ChunkInstanciator::startWorker, this);
-//         }
-//     }
-//     ~ChunkInstanciator() = default;
-//     ChunkInstanciator(const ChunkInstanciator&) = delete;
-//     ChunkInstanciator& operator=(const ChunkInstanciator&) = delete;
-//     ChunkInstanciator(ChunkInstanciator&&) = delete;
-//     ChunkInstanciator& operator=(ChunkInstanciator&&) = delete;
-//     std::vector<Chunk>& getLoadedChunks() {
-//         std::lock_guard<std::mutex> lock(_queueMutex);
-//         // return a copy to avoid data races
-//         for (auto& chunk : _readyChunks) {
-//             _loadedChunks.push_back(std::move(chunk));
-//         }
-//         _readyChunks.clear();
-//         return _loadedChunks;
-//     }
-//     // hecks which chunks need to be loaded/unloaded based on player position
-
-//     /*DONE */ void startWorker();
-//     // void startMeshWorker();
-//     void stopWorkers() {
-//         running = false;
-//         for (auto& worker : _workers) {
-//             if (worker.joinable()) {
-//                 worker.join();
-//             }
-//         }
-//     }
-//     void update();
-//     void updateChunksAroundPlayer(glm::ivec3 playerChunkPos);
-//     bool isLoadedOrRequested(int x, int y, int z);
-//     void unloadChunkIfNeeded(glm::ivec3 playerChunkPos);
-
-//   private:
-//     std::vector<ChunkCoord> _chunksToGenerate;
-//     std::vector<Chunk> _readyChunks;
-//     std::vector<Chunk> _loadedChunks;
-//     std::unordered_map<glm::ivec3, bool> _loadedChunkMap;
-//     std::mutex _queueMutex;
-//     bool running = true;
-//     std::vector<std::thread> _workers;
-// };
