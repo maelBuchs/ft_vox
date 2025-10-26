@@ -12,6 +12,8 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
+#include <tracy/Tracy.hpp>
+#include <tracy/TracyVulkan.hpp>
 
 #include "../Core/Window.hpp"
 #include "../Game/Camera.hpp"
@@ -27,6 +29,7 @@
 #include "Rendering/RenderContext.hpp"
 #include "Voxel/MeshManager.hpp"
 #include "Voxel/VoxelRenderer.hpp"
+
 
 Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry,
                    ThreadSafeQueue<MeshData>& finishedMeshQueue)
@@ -132,6 +135,7 @@ void Renderer::updateMeshes() {
 }
 
 void Renderer::draw(float timeOfDay) {
+    ZoneScoped;
 
     // Get current frame from FrameManager
     auto& currentFrame = _frameManager->getCurrentFrame();
@@ -181,6 +185,8 @@ void Renderer::draw(float timeOfDay) {
 
     ret = vkBeginCommandBuffer(commandBuffer, &cmdBeginInfo);
     checkVkResult(ret, "Failed to begin command buffer");
+
+    TracyVkCollect(_device.getTracyCtx(), commandBuffer);
 
     // Get images from RenderContext
     const RenderContext::AllocatedImage& drawImage = _renderContext->getDrawImage();

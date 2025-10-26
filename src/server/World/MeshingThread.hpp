@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <thread>
+#include <tracy/Tracy.hpp>
 #include <vector>
 
 #include "common/Protocol/Protocol.hpp"

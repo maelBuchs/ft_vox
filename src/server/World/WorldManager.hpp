@@ -5,6 +5,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <tracy/Tracy.hpp>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>

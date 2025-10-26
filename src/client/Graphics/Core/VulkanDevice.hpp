@@ -3,6 +3,7 @@
 #include <vk_mem_alloc.h>
 
 #include <SDL3/SDL_video.h>
+#include <tracy/TracyVulkan.hpp>
 #include <vulkan/vulkan.h>
 
 class VulkanDevice {
@@ -23,6 +24,7 @@ class VulkanDevice {
     [[nodiscard]] VkQueue getQueue() const { return _graphicsQueue; }
     [[nodiscard]] uint32_t getGraphicsQueueFamily() const { return _graphicsQueueFamily; }
     [[nodiscard]] VmaAllocator getAllocator() const { return _allocator; }
+    [[nodiscard]] TracyVkCtx getTracyCtx() const { return _tracyCtx; }
 
   private:
     VkInstance _instance;
@@ -33,4 +35,7 @@ class VulkanDevice {
     VkQueue _graphicsQueue;
     uint32_t _graphicsQueueFamily;
     VmaAllocator _allocator;
+    VkCommandPool _tracyCommandPool;
+    VkCommandBuffer _tracyCommandBuffer;
+    TracyVkCtx _tracyCtx;
 };

@@ -1,5 +1,6 @@
 #include <cmath>
 #include <cstdlib>
+#include <tracy/Tracy.hpp>
 
 #include "common/World/Chunk.hpp"
 #include "WorldManager.hpp"
@@ -58,6 +59,8 @@ void addSurface(Chunk* chunk) {
 }
 } // namespace
 std::shared_ptr<Chunk> WorldManager::generateChunk(const glm::ivec3& pos) {
+    ZoneScoped;
+
     auto chunk = std::make_shared<Chunk>(pos[0], pos[1], pos[2]);
 
     // Simple terrain generation using Perlin noise

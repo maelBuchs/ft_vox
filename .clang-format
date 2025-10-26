@@ -34,6 +34,8 @@ IncludeCategories:
     Priority:        2
   - Regex:           '^<glm/'
     Priority:        3
+  - Regex:           '^<tracy/.*'
+    Priority:        2
   - Regex:           '^<.*\.h>'
     Priority:        1
   - Regex:           '^<.*>'
