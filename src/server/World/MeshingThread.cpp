@@ -67,11 +67,9 @@ void MeshingThread::meshingThreadLoop() {
             task.neighborSouth.get(), task.neighborEast.get(), task.neighborWest.get(),
             task.neighborTop.get(), task.neighborBottom.get(), _textureResolver);
 
-        // Only push if mesh has data
-        if (!vertices.empty() && !indices.empty()) {
-            MeshData meshData(task.chunkPosition, std::move(vertices), std::move(indices));
-            _meshQueue.push(std::move(meshData));
-        }
+        // Always deliver the mesh result to the renderer, even when it's empty
+        MeshData meshData(task.chunkPosition, std::move(vertices), std::move(indices));
+        _meshQueue.push(std::move(meshData));
 
         // Always notify completion (even if mesh is empty)
         _completionQueue.push(MeshingComplete(task.chunkPosition));

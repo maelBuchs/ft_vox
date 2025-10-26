@@ -171,6 +171,20 @@ void VoxelRenderer::update() {
         MeshData meshData = std::move(meshOpt.value());
 
         if (meshData.vertices.empty() || meshData.indices.empty()) {
+            auto it = _chunkDrawLookup.find(meshData.chunkPosition);
+            if (it != _chunkDrawLookup.end()) {
+                const size_t idx = it->second;
+
+                // If you eventually add MeshBufferPool::free(meshAllocation)
+                // you could reclaim the space here.
+
+                if (idx != _chunkDrawInfos.size() - 1) {
+                    _chunkDrawInfos[idx] = _chunkDrawInfos.back();
+                    _chunkDrawLookup[_chunkDrawInfos[idx].chunkCoords] = idx;
+                }
+                _chunkDrawInfos.pop_back();
+                _chunkDrawLookup.erase(it);
+            }
             continue;
         }
 
