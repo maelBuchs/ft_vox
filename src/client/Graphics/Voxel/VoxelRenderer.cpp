@@ -4,6 +4,7 @@
 #include <map>
 #include <stdexcept>
 #include <vector>
+#include <tracy/Tracy.hpp>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -54,11 +55,14 @@ VoxelRenderer::~VoxelRenderer() {
     if (_chunkDataBuffer.buffer != VK_NULL_HANDLE) {
         _bufferManager.destroyBuffer(_chunkDataBuffer);
     }
+    if (_atlasConfigBuffer.buffer != VK_NULL_HANDLE) {
+        _bufferManager.destroyBuffer(_atlasConfigBuffer);
+    }
 }
 
-void VoxelRenderer::initPipelines(VkImageView atlasView, VkSampler atlasSampler) {
+void VoxelRenderer::initPipelines(VkImageView atlasView, VkSampler atlasSampler, int texturesPerRow) {
     // First initialize MDI resources and descriptor set layout
-    initMDI(atlasView, atlasSampler);
+    initMDI(atlasView, atlasSampler, texturesPerRow);
 
     VkShaderModule voxelFragShader = Pipeline::loadShaderModule(_device, "shaders/voxel.frag.spv");
     VkShaderModule voxelVertexShader =
@@ -131,11 +135,12 @@ void VoxelRenderer::initPipelines(VkImageView atlasView, VkSampler atlasSampler)
     vkDestroyShaderModule(_device.getDevice(), voxelVertexShader, nullptr);
 }
 
-void VoxelRenderer::initMDI(VkImageView atlasView, VkSampler atlasSampler) {
-    // Create descriptor set layout for chunk data SSBO and texture atlas
+void VoxelRenderer::initMDI(VkImageView atlasView, VkSampler atlasSampler, int texturesPerRow) {
+    // Create descriptor set layout for chunk data SSBO, texture atlas, and atlas config
     DescriptorLayoutBuilder layoutBuilder;
     layoutBuilder.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
     layoutBuilder.addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    layoutBuilder.addBinding(2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); // Atlas configuration
     _chunkSetLayout = layoutBuilder.build(_device.getDevice(), VK_SHADER_STAGE_VERTEX_BIT |
                                                                    VK_SHADER_STAGE_FRAGMENT_BIT);
 
@@ -153,20 +158,32 @@ void VoxelRenderer::initMDI(VkImageView atlasView, VkSampler atlasSampler) {
                                                        VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                                                    VMA_MEMORY_USAGE_CPU_TO_GPU);
 
+    // Create uniform buffer for atlas configuration
+    _atlasConfigBuffer = _bufferManager.createBuffer(sizeof(int),
+                                                     VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
+                                                         VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                                     VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+    // Upload texturesPerRow to the uniform buffer
+    _bufferManager.uploadToBuffer(_atlasConfigBuffer, &texturesPerRow, sizeof(int));
+
     // Allocate descriptor set for chunk data SSBO
     _chunkDescriptorSet =
         _descriptorAllocator.allocate(_device.getDevice(), _chunkSetLayout, nullptr);
 
-    // Write descriptor set to bind the chunk data buffer AND texture atlas
+    // Write descriptor set to bind the chunk data buffer, texture atlas, and atlas config
     DescriptorWriter writer;
     writer.writeBuffer(0, _chunkDataBuffer.buffer, sizeof(GPUChunkData) * MAX_CHUNKS, 0,
                        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
     writer.writeImage(1, atlasView, atlasSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                       VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    writer.writeBuffer(2, _atlasConfigBuffer.buffer, sizeof(int), 0,
+                       VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
     writer.updateSet(_device.getDevice(), _chunkDescriptorSet);
 }
 
 void VoxelRenderer::update(const glm::ivec3& cameraChunkPos, int maxLoadDistance) {
+    ZoneScoped;
     // Process all available finished meshes without blocking
     while (auto meshOpt = _finishedMeshQueue.try_pop()) {
         MeshData meshData = std::move(meshOpt.value());
@@ -203,8 +220,7 @@ void VoxelRenderer::update(const glm::ivec3& cameraChunkPos, int maxLoadDistance
         }
 
         // Upload mesh to GPU (fast operation)
-        MeshAllocation allocation =
-            _meshPool->uploadMesh(meshData.indices, meshData.vertices,
+        MeshAllocation allocation = _meshPool->uploadMesh(meshData.indices, meshData.vertices,
                                   [this](std::function<void(VkCommandBuffer)>&& func) {
                                       _executor.immediateSubmit(std::move(func));
                                   });

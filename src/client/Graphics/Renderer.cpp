@@ -98,7 +98,7 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
     _voxelRenderer = std::make_unique<VoxelRenderer>(
         device, *_meshManager, registry, *_renderContext, *_commandExecutor, *_bufferManager,
         _globalDescriptorAllocator, *this, _finishedMeshQueue);
-    _voxelRenderer->initPipelines(_textureAtlas.imageView, _textureAtlasSampler);
+    _voxelRenderer->initPipelines(_textureAtlas.imageView, _textureAtlasSampler, _atlasTexturesPerRow);
 
     // Initialize sky rendering pipeline
     initSkyPipeline();
@@ -438,7 +438,9 @@ void Renderer::loadTextureAtlas() {
     std::cout << "Loading texture atlas...\n";
 
     // 1. Discover all unique texture paths from the BlockRegistry
-    for (int i = 0; i < MAX_BLOCKS; ++i) {
+    // DYNAMIC: Uses actual block count from JSON
+    size_t blockCount = _blockRegistry.getBlockCount();
+    for (size_t i = 0; i < blockCount; ++i) {
         std::string path;
         path = _blockRegistry.getTexturePath(i, "all");
         if (!path.empty())

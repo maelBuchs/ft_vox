@@ -3,6 +3,8 @@
 #include <chrono>
 #include <iostream>
 
+#include <tracy/Tracy.hpp>
+
 #include "common/Util/perlinNoise.hpp"
 
 #define SEED 42L
@@ -70,6 +72,7 @@ void WorldManager::stop() {
 }
 
 void WorldManager::generationWorkerLoop() {
+    ZoneScoped;
     ChunkRequest request;
 
     while (_running.load()) {
@@ -79,6 +82,7 @@ void WorldManager::generationWorkerLoop() {
             break;
         }
 
+        TracyMessageL("Processing chunk request");
         const glm::ivec3& pos = request.chunkPosition;
 
         // Check if chunk is already loaded or being generated (with lock)
@@ -127,8 +131,6 @@ void WorldManager::generationWorkerLoop() {
     }
 }
 
-
-
 std::shared_ptr<Chunk> WorldManager::getChunkFromCache(const glm::ivec3& pos) {
     // Caller must hold _chunkMutex lock
     auto it = _loadedChunks.find(pos);
@@ -149,10 +151,32 @@ void WorldManager::markNeighborsDirty(const glm::ivec3& pos) {
 
         // Only mark dirty if chunk is loaded
         if (_loadedChunks.find(neighborPos) != _loadedChunks.end()) {
+            bool wasAlreadyDirty = _dirtyChunks.find(neighborPos) != _dirtyChunks.end();
             _dirtyChunks.insert(neighborPos);
 
-            // If not currently being meshed, enqueue it
-            if (_meshingChunks.find(neighborPos) == _meshingChunks.end()) {
+            // This prevents cascading re-meshes where chunks get meshed 5-7 times
+            // Count how many neighbors exist (loaded) vs how many are possible
+            int loadedNeighbors = 0;
+            int possibleNeighbors = 0;
+            for (const glm::ivec3& checkOffset : neighborOffsets) {
+                const glm::ivec3 checkPos = neighborPos + checkOffset;
+
+                // Count this as a possible neighbor if it's within world bounds
+                // (Y >= 0 for bottom boundary check - no chunks below Y=0)
+                if (checkPos.y >= 0) {
+                    possibleNeighbors++;
+                    if (_loadedChunks.find(checkPos) != _loadedChunks.end()) {
+                        loadedNeighbors++;
+                    }
+                }
+            }
+
+            // Re-mesh ONLY if chunk has ALL POSSIBLE neighbors loaded
+            // This handles edge cases like Y=0 chunks that can't have a bottom neighbor
+            if (loadedNeighbors == possibleNeighbors &&
+                _meshingChunks.find(neighborPos) == _meshingChunks.end()) {
+                // Remove from dirty set since we're about to mesh it
+                _dirtyChunks.erase(neighborPos);
                 _meshingChunks.insert(neighborPos);
 
                 GenerationTask task(neighborPos, _loadedChunks[neighborPos]);
@@ -178,11 +202,12 @@ void WorldManager::markNeighborsDirty(const glm::ivec3& pos) {
 
 WorldManager::QueueStats WorldManager::getQueueStats() const {
     std::lock_guard<std::mutex> lock(_chunkMutex);
-    return QueueStats{_requestQueue.size(), _meshingQueue.size(), _loadedChunks.size(),
+    return QueueStats{_requestQueue.size(),     _meshingQueue.size(),  _loadedChunks.size(),
                       _generatingChunks.size(), _meshingChunks.size(), _chunksToUnload.size()};
 }
 
 void WorldManager::completionProcessorLoop() {
+    ZoneScoped;
     MeshingComplete completion;
 
     while (_running.load()) {
@@ -201,25 +226,47 @@ void WorldManager::completionProcessorLoop() {
 
         // Check if chunk is dirty (needs re-meshing)
         if (_dirtyChunks.find(pos) != _dirtyChunks.end()) {
-            _dirtyChunks.erase(pos);
+            // Count how many neighbors are loaded vs possible
+            static constexpr glm::ivec3 neighborOffsets[] = {{1, 0, 0},  {-1, 0, 0}, {0, 1, 0},
+                                                             {0, -1, 0}, {0, 0, 1},  {0, 0, -1}};
+            int loadedNeighbors = 0;
+            int possibleNeighbors = 0;
+            for (const glm::ivec3& offset : neighborOffsets) {
+                const glm::ivec3 checkPos = pos + offset;
 
-            // Re-mesh with updated neighbors
-            if (_loadedChunks.find(pos) != _loadedChunks.end() &&
-                _meshingChunks.find(pos) == _meshingChunks.end()) {
-
-                _meshingChunks.insert(pos);
-
-                GenerationTask task(pos, _loadedChunks[pos]);
-                task.neighborNorth = getChunkFromCache(glm::ivec3(pos.x, pos.y, pos.z + 1));
-                task.neighborSouth = getChunkFromCache(glm::ivec3(pos.x, pos.y, pos.z - 1));
-                task.neighborEast = getChunkFromCache(glm::ivec3(pos.x + 1, pos.y, pos.z));
-                task.neighborWest = getChunkFromCache(glm::ivec3(pos.x - 1, pos.y, pos.z));
-                task.neighborTop = getChunkFromCache(glm::ivec3(pos.x, pos.y + 1, pos.z));
-                task.neighborBottom = getChunkFromCache(glm::ivec3(pos.x, pos.y - 1, pos.z));
-
-                _meshingQueue.push(std::move(task));
-                _totalMeshingTasksEnqueued.fetch_add(1);
+                // Count as possible if within world bounds (Y >= 0)
+                if (checkPos.y >= 0) {
+                    possibleNeighbors++;
+                    if (_loadedChunks.find(checkPos) != _loadedChunks.end()) {
+                        loadedNeighbors++;
+                    }
+                }
             }
+
+            // Only re-mesh if chunk has ALL POSSIBLE neighbors
+            // Otherwise, keep it dirty and it will be picked up later
+            if (loadedNeighbors == possibleNeighbors) {
+                _dirtyChunks.erase(pos);
+
+                // Re-mesh with updated neighbors
+                if (_loadedChunks.find(pos) != _loadedChunks.end() &&
+                    _meshingChunks.find(pos) == _meshingChunks.end()) {
+
+                    _meshingChunks.insert(pos);
+
+                    GenerationTask task(pos, _loadedChunks[pos]);
+                    task.neighborNorth = getChunkFromCache(glm::ivec3(pos.x, pos.y, pos.z + 1));
+                    task.neighborSouth = getChunkFromCache(glm::ivec3(pos.x, pos.y, pos.z - 1));
+                    task.neighborEast = getChunkFromCache(glm::ivec3(pos.x + 1, pos.y, pos.z));
+                    task.neighborWest = getChunkFromCache(glm::ivec3(pos.x - 1, pos.y, pos.z));
+                    task.neighborTop = getChunkFromCache(glm::ivec3(pos.x, pos.y + 1, pos.z));
+                    task.neighborBottom = getChunkFromCache(glm::ivec3(pos.x, pos.y - 1, pos.z));
+
+                    _meshingQueue.push(std::move(task));
+                    _totalMeshingTasksEnqueued.fetch_add(1);
+                }
+            }
+            // If not enough neighbors, keep it in _dirtyChunks to be retried later
         }
     }
 }

@@ -2,7 +2,10 @@
 
 #include <iostream>
 
+#include <tracy/Tracy.hpp>
+
 #include "common/World/ChunkMesh.hpp"
+
 
 MeshingThread::MeshingThread(ThreadSafeQueue<GenerationTask>& taskQueue,
                              ThreadSafeQueue<MeshData>& meshQueue,
@@ -10,7 +13,28 @@ MeshingThread::MeshingThread(ThreadSafeQueue<GenerationTask>& taskQueue,
                              const BlockRegistry& blockRegistry,
                              const TextureIdResolver& textureResolver)
     : _taskQueue(taskQueue), _meshQueue(meshQueue), _completionQueue(completionQueue),
-      _blockRegistry(blockRegistry), _textureResolver(textureResolver) {}
+      _blockRegistry(blockRegistry), _textureResolver(textureResolver) {
+
+    // DYNAMIC: Size based on actual block count from JSON
+    static const std::string topStr = "top";
+    static const std::string bottomStr = "bottom";
+    static const std::string sideStr = "side";
+
+    size_t blockCount = blockRegistry.getBlockCount();
+    _textureCache.resize(blockCount * 3); // 3 face types per block
+
+    for (size_t blockId = 0; blockId < blockCount; ++blockId) {
+        const std::string& topPath = blockRegistry.getTexturePath(blockId, topStr);
+        const std::string& bottomPath = blockRegistry.getTexturePath(blockId, bottomStr);
+        const std::string& sidePath = blockRegistry.getTexturePath(blockId, sideStr);
+
+        _textureCache[blockId * 3 + 0] = textureResolver(topPath);
+        _textureCache[blockId * 3 + 1] = textureResolver(bottomPath);
+        _textureCache[blockId * 3 + 2] = textureResolver(sidePath);
+    }
+
+    std::cout << "[MeshingThread] Built texture cache for " << blockCount << " block types\n";
+}
 
 MeshingThread::~MeshingThread() {
     stop();
@@ -44,6 +68,7 @@ void MeshingThread::stop() {
 }
 
 void MeshingThread::meshingThreadLoop() {
+    ZoneScoped;
     GenerationTask task;
 
     while (_running.load()) {
@@ -58,14 +83,14 @@ void MeshingThread::meshingThreadLoop() {
             continue;
         }
 
-        // Generate mesh using ChunkMesh::generateMesh
+        // Generate mesh using ChunkMesh::generateMesh with pre-built texture cache
         std::vector<VoxelVertex> vertices;
         std::vector<uint32_t> indices;
 
-        ChunkMesh::generateMesh(
-            *task.chunkData, _blockRegistry, vertices, indices, task.neighborNorth.get(),
-            task.neighborSouth.get(), task.neighborEast.get(), task.neighborWest.get(),
-            task.neighborTop.get(), task.neighborBottom.get(), _textureResolver);
+        ChunkMesh::generateMesh(*task.chunkData, _blockRegistry, vertices, indices,
+                                task.neighborNorth.get(), task.neighborSouth.get(),
+                                task.neighborEast.get(), task.neighborWest.get(),
+                                task.neighborTop.get(), task.neighborBottom.get(), _textureCache);
 
         // Always deliver the mesh result to the renderer, even when it's empty
         MeshData meshData(task.chunkPosition, std::move(vertices), std::move(indices));

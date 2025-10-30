@@ -43,7 +43,7 @@ class VoxelRenderer {
     VoxelRenderer(VoxelRenderer&&) = delete;
     VoxelRenderer& operator=(VoxelRenderer&&) = delete;
 
-    void initPipelines(VkImageView atlasView, VkSampler atlasSampler);
+    void initPipelines(VkImageView atlasView, VkSampler atlasSampler, int texturesPerRow);
     void initTestChunk();
 
     /**
@@ -71,7 +71,7 @@ class VoxelRenderer {
     [[nodiscard]] size_t getLoadedChunkCount() const { return _chunkDrawInfos.size(); }
 
   private:
-    void initMDI(VkImageView atlasView, VkSampler atlasSampler);
+    void initMDI(VkImageView atlasView, VkSampler atlasSampler, int texturesPerRow);
 
     VulkanDevice& _device;
     MeshManager& _meshManager;
@@ -106,6 +106,7 @@ class VoxelRenderer {
 
     AllocatedBuffer _indirectBuffer;
     AllocatedBuffer _chunkDataBuffer;
+    AllocatedBuffer _atlasConfigBuffer; // Uniform buffer for atlas configuration
 
     std::vector<VkDrawIndexedIndirectCommand> _indirectCommands;
     std::vector<GPUChunkData> _chunkDrawData;
