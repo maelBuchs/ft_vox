@@ -72,6 +72,18 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+# 8. Tracy Profiler
+set(TRACY_ENABLE ON CACHE BOOL "" FORCE)
+set(TRACY_ON_DEMAND ON CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    tracy
+    GIT_REPOSITORY https://github.com/wolfpld/tracy.git
+    GIT_TAG        v0.12.2
+    GIT_SHALLOW    TRUE
+    GIT_PROGRESS   TRUE
+)
+FetchContent_MakeAvailable(tracy)
+
 # ImGui requires manual setup - create library with backends
 add_library(imgui STATIC
   ${imgui_SOURCE_DIR}/imgui.cpp
@@ -223,8 +235,11 @@ target_link_libraries(ft_vox PRIVATE imgui)
 # 7. nlohmann/json
 target_link_libraries(ft_vox PRIVATE nlohmann_json::nlohmann_json)
 
+# 8. Tracy
+target_link_libraries(ft_vox PRIVATE TracyClient)
+
 # Link libraries to server
-target_link_libraries(ft_vox_server PRIVATE glm::glm nlohmann_json::nlohmann_json)
+target_link_libraries(ft_vox_server PRIVATE glm::glm nlohmann_json::nlohmann_json TracyClient)
 
 # --- Compilation Flags ---
 

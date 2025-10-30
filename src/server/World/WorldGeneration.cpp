@@ -1,5 +1,6 @@
 #include <cmath>
 #include <cstdlib>
+#include <tracy/Tracy.hpp>
 
 #include "common/World/Chunk.hpp"
 #include "WorldManager.hpp"
@@ -56,6 +57,8 @@ void addSurface(Chunk* chunk, const int heightMap[Chunk::CHUNK_SIZE][Chunk::CHUN
 }
 } // namespace
 std::shared_ptr<Chunk> WorldManager::generateChunk(const glm::ivec3& pos) {
+    ZoneScoped;
+
     auto chunk = std::make_shared<Chunk>(pos[0], pos[1], pos[2]);
 
     // Pre-compute height map once to avoid redundant calculations

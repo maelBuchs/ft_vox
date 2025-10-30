@@ -1,6 +1,9 @@
 #include <iostream>
 
+#include <tracy/Tracy.hpp>
+
 #include "client/Core/App.hpp"
+#include "common/Util/TracyMemory.hpp"
 
 int main() {
     try {

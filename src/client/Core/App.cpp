@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <memory>
+#include <tracy/Tracy.hpp>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_events.h>
@@ -20,6 +21,7 @@
 #include "server/World/MeshingThread.hpp"
 #include "server/World/WorldManager.hpp"
 #include "Window.hpp"
+
 
 App::App() {
     try {
@@ -75,6 +77,8 @@ App::~App() {
 }
 
 void App::run() {
+    ZoneScoped;
+
     if (!_window) {
         std::cerr << "Window not initialized!\n";
         return;
@@ -306,6 +310,8 @@ void App::run() {
         _renderer->updateFPS(deltaTime);
 
         _renderer->draw(_timeOfDay);
+
+        FrameMark;
     }
 }
 

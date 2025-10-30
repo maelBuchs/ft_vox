@@ -5,11 +5,13 @@
 #include <VkBootstrap.h>
 
 #include <SDL3/SDL_vulkan.h>
+#include <tracy/TracyVulkan.hpp>
 #include <vulkan/vulkan.h>
 
 VulkanDevice::VulkanDevice(SDL_Window* window)
     : _instance(nullptr), _debugMessenger(nullptr), _surface(nullptr), _physicalDevice(nullptr),
-      _device(nullptr), _graphicsQueue(nullptr) {
+      _device(nullptr), _graphicsQueue(nullptr), _allocator(nullptr), _tracyCommandPool(nullptr),
+      _tracyCommandBuffer(nullptr), _tracyCtx(nullptr) {
 
     vkb::InstanceBuilder instanceBuilder;
     auto instRet = instanceBuilder.set_app_name("ft_vox")
@@ -94,9 +96,31 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
                                             .device = _device,
                                             .instance = _instance};
     vmaCreateAllocator(&allocatorInfo, &_allocator);
+
+    // Create Tracy command pool and buffer
+    VkCommandPoolCreateInfo poolInfo{.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+                                     .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+                                     .queueFamilyIndex = _graphicsQueueFamily};
+    vkCreateCommandPool(_device, &poolInfo, nullptr, &_tracyCommandPool);
+
+    VkCommandBufferAllocateInfo allocInfo{.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                                          .commandPool = _tracyCommandPool,
+                                          .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+                                          .commandBufferCount = 1};
+    vkAllocateCommandBuffers(_device, &allocInfo, &_tracyCommandBuffer);
+
+    _tracyCtx = TracyVkContext(_physicalDevice, _device, _graphicsQueue, _tracyCommandBuffer);
 }
 
 VulkanDevice::~VulkanDevice() {
+    if (_tracyCtx != nullptr) {
+        TracyVkDestroy(_tracyCtx);
+    }
+
+    if (_tracyCommandPool != nullptr) {
+        vkDestroyCommandPool(_device, _tracyCommandPool, nullptr);
+    }
+
     if (_allocator != nullptr) {
         vmaDestroyAllocator(_allocator);
     }
