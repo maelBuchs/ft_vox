@@ -179,7 +179,7 @@ void WorldManager::markNeighborsDirty(const glm::ivec3& pos) {
 WorldManager::QueueStats WorldManager::getQueueStats() const {
     std::lock_guard<std::mutex> lock(_chunkMutex);
     return QueueStats{_requestQueue.size(), _meshingQueue.size(), _loadedChunks.size(),
-                      _generatingChunks.size(), _meshingChunks.size()};
+                      _generatingChunks.size(), _meshingChunks.size(), _chunksToUnload.size()};
 }
 
 void WorldManager::completionProcessorLoop() {
@@ -226,6 +226,11 @@ void WorldManager::completionProcessorLoop() {
 
 bool WorldManager::enqueueMeshingTask(const glm::ivec3& pos) {
     std::lock_guard<std::mutex> lock(_chunkMutex);
+    return enqueueMeshingTaskInternal(pos);
+}
+
+bool WorldManager::enqueueMeshingTaskInternal(const glm::ivec3& pos) {
+    // NOTE: This function assumes _chunkMutex is already locked by the caller!
 
     auto chunkIt = _loadedChunks.find(pos);
     if (chunkIt == _loadedChunks.end()) {
@@ -253,4 +258,83 @@ bool WorldManager::enqueueMeshingTask(const glm::ivec3& pos) {
     _meshingQueue.push(std::move(task));
     _totalMeshingTasksEnqueued.fetch_add(1);
     return true;
+}
+
+void WorldManager::markChunkForUnload(const glm::ivec3& pos) {
+    std::lock_guard<std::mutex> lock(_chunkMutex);
+    _chunksToUnload.insert(pos);
+}
+
+void WorldManager::unmarkChunkForUnload(const glm::ivec3& pos) {
+    std::lock_guard<std::mutex> lock(_chunkMutex);
+    _chunksToUnload.erase(pos);
+}
+
+std::vector<glm::ivec3> WorldManager::unloadMarkedChunks() {
+    std::lock_guard<std::mutex> lock(_chunkMutex);
+    std::vector<glm::ivec3> unloadedChunks;
+    unloadedChunks.reserve(_chunksToUnload.size());
+
+    for (const glm::ivec3& pos : _chunksToUnload) {
+        // Remove from loaded chunks map (this frees RAM via shared_ptr)
+        auto it = _loadedChunks.find(pos);
+        if (it != _loadedChunks.end()) {
+            _loadedChunks.erase(it);
+            unloadedChunks.push_back(pos);
+        }
+
+        // Also remove from other tracking sets to keep state clean
+        _generatingChunks.erase(pos);
+        _meshingChunks.erase(pos);
+        _dirtyChunks.erase(pos);
+    }
+
+    _chunksToUnload.clear();
+
+    if (!unloadedChunks.empty()) {
+        std::cout << "[WorldManager] Unloaded " << unloadedChunks.size() << " chunks from RAM\n";
+    }
+
+    return unloadedChunks;
+}
+
+std::vector<glm::ivec3> WorldManager::getLoadedChunkPositions() const {
+    std::lock_guard<std::mutex> lock(_chunkMutex);
+    std::vector<glm::ivec3> positions;
+    positions.reserve(_loadedChunks.size());
+
+    for (const auto& [pos, chunk] : _loadedChunks) {
+        positions.push_back(pos);
+    }
+
+    return positions;
+}
+
+bool WorldManager::isChunkLoaded(const glm::ivec3& pos) const {
+    std::lock_guard<std::mutex> lock(_chunkMutex);
+    return _loadedChunks.find(pos) != _loadedChunks.end();
+}
+
+void WorldManager::requestRemeshForAllChunks(const std::vector<glm::ivec3>& excludeChunks) {
+    std::lock_guard<std::mutex> lock(_chunkMutex);
+
+    // Convert exclude list to set for fast lookup
+    std::unordered_set<glm::ivec3> excludeSet(excludeChunks.begin(), excludeChunks.end());
+
+    int remeshedCount = 0;
+    for (const auto& [pos, chunk] : _loadedChunks) {
+        // Skip chunks that were unloaded
+        if (excludeSet.find(pos) != excludeSet.end()) {
+            continue;
+        }
+
+        // Mark as dirty and enqueue for meshing
+        _dirtyChunks.insert(pos);
+
+        // Use internal version to avoid deadlock (we already hold _chunkMutex)
+        enqueueMeshingTaskInternal(pos);
+        remeshedCount++;
+    }
+
+    std::cout << "[WorldManager] Requested re-meshing for " << remeshedCount << " loaded chunks\n";
 }

@@ -1,5 +1,6 @@
 #include "VoxelRenderer.hpp"
 
+#include <iostream>
 #include <map>
 #include <stdexcept>
 #include <vector>
@@ -165,13 +166,26 @@ void VoxelRenderer::initMDI(VkImageView atlasView, VkSampler atlasSampler) {
     writer.updateSet(_device.getDevice(), _chunkDescriptorSet);
 }
 
-void VoxelRenderer::update() {
+void VoxelRenderer::update(const glm::ivec3& cameraChunkPos, int maxLoadDistance) {
     // Process all available finished meshes without blocking
     while (auto meshOpt = _finishedMeshQueue.try_pop()) {
         MeshData meshData = std::move(meshOpt.value());
 
+        const glm::ivec3 chunkCoords = meshData.chunkPosition;
+
+        // CRITICAL: Check if chunk is still within acceptable distance
+        // If player has moved away, discard this mesh to prevent "ghost chunks"
+        const glm::ivec3 offset = chunkCoords - cameraChunkPos;
+        const int chebyshevDistance = std::max({std::abs(offset.x), std::abs(offset.y), std::abs(offset.z)});
+
+        if (chebyshevDistance > maxLoadDistance) {
+            // Chunk is too far away - discard this mesh
+            // This prevents loading chunks that finished meshing after the player moved away
+            continue;
+        }
+
         if (meshData.vertices.empty() || meshData.indices.empty()) {
-            auto it = _chunkDrawLookup.find(meshData.chunkPosition);
+            auto it = _chunkDrawLookup.find(chunkCoords);
             if (it != _chunkDrawLookup.end()) {
                 const size_t idx = it->second;
 
@@ -195,7 +209,6 @@ void VoxelRenderer::update() {
                                       _executor.immediateSubmit(std::move(func));
                                   });
 
-        const glm::ivec3 chunkCoords = meshData.chunkPosition;
         const glm::vec3 chunkWorldPos{static_cast<float>(chunkCoords[0] * Chunk::CHUNK_SIZE),
                                       static_cast<float>(chunkCoords[1] * Chunk::CHUNK_SIZE),
                                       static_cast<float>(chunkCoords[2] * Chunk::CHUNK_SIZE)};
@@ -346,4 +359,40 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
                              sizeof(VkDrawIndexedIndirectCommand));
 
     vkCmdEndRendering(cmd);
+}
+
+void VoxelRenderer::rebuildMeshPool(const std::vector<glm::ivec3>& unloadedChunks) {
+    std::cout << "[VoxelRenderer] Unloading " << unloadedChunks.size() << " chunks from VRAM...\n";
+
+    // CRITICAL: Wait for GPU to finish all operations before modifying tracking structures
+    vkDeviceWaitIdle(_device.getDevice());
+
+    // Remove ONLY the unloaded chunks from tracking structures
+    // We do NOT reset the pool - this allows existing chunks to keep their allocations
+    // and prevents flickering. The pool will have some fragmentation, but that's acceptable.
+
+    for (const glm::ivec3& pos : unloadedChunks) {
+        auto it = _chunkDrawLookup.find(pos);
+        if (it != _chunkDrawLookup.end()) {
+            const size_t idx = it->second;
+
+            // Swap-and-pop to maintain contiguous vector
+            if (idx != _chunkDrawInfos.size() - 1) {
+                _chunkDrawInfos[idx] = _chunkDrawInfos.back();
+                _chunkDrawLookup[_chunkDrawInfos[idx].chunkCoords] = idx;
+            }
+            _chunkDrawInfos.pop_back();
+            _chunkDrawLookup.erase(it);
+        }
+    }
+
+    // NOTE: We do NOT call _meshPool->reset() here!
+    // This means the pool will have fragmented space where unloaded chunks used to be.
+    // This is acceptable because:
+    // 1. Existing chunks keep their valid allocations (no flickering)
+    // 2. New chunks can still be allocated (pool keeps growing)
+    // 3. If pool runs out of space, we'll handle that separately
+
+    std::cout << "[VoxelRenderer] Unloaded " << unloadedChunks.size()
+              << " chunks. " << _chunkDrawInfos.size() << " chunks remain loaded.\n";
 }

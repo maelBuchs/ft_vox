@@ -73,7 +73,7 @@ class App {
     ThreadSafeQueue<MeshingComplete> _meshingCompleteQueue;
 
     // Configurable chunk load radius (in chunks)
-    int _loadRadius = 64;
+    int _loadRadius = 8;
     int _lastLoadRadius = -1;
 
     // Request throttling
@@ -91,4 +91,10 @@ class App {
                                     std::numeric_limits<int>::min()};
     bool _needsRequestRefresh = true;
     std::vector<glm::ivec3> _chunkRequestOffsets;
+
+    // === Chunk unloading system ===
+    static constexpr int UNLOAD_CHECK_INTERVAL = 30; // Check every 0.5 seconds at 60fps (was 120)
+    int _framesSinceUnloadCheck = 0;
+    float _unloadDistanceMultiplier =
+        2.5F; // Unload chunks 2.5x farther than load radius
 };

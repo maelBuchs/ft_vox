@@ -125,10 +125,11 @@ Renderer::~Renderer() {
     _frameManager.reset();
 }
 
-void Renderer::updateMeshes() {
+void Renderer::updateMeshes(const glm::ivec3& cameraChunkPos, int maxLoadDistance) {
     // Process finished mesh data from worker threads
     // This uploads mesh data to GPU buffers (fast operation, non-blocking)
-    _voxelRenderer->update();
+    // Only accepts meshes within maxLoadDistance to prevent "ghost chunks"
+    _voxelRenderer->update(cameraChunkPos, maxLoadDistance);
 }
 
 void Renderer::draw(float timeOfDay) {
@@ -412,6 +413,19 @@ uint32_t Renderer::getTextureId(const std::string& path) {
     uint32_t id = _nextTextureId++;
     _texturePathToId[path] = id;
     return id;
+}
+
+void Renderer::rebuildMeshPool(const std::vector<glm::ivec3>& unloadedChunks) {
+    if (_voxelRenderer) {
+        _voxelRenderer->rebuildMeshPool(unloadedChunks);
+    }
+}
+
+size_t Renderer::getLoadedChunkCount() const {
+    if (_voxelRenderer) {
+        return _voxelRenderer->getLoadedChunkCount();
+    }
+    return 0;
 }
 
 void Renderer::loadTextureAtlas() {

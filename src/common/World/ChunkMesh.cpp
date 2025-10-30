@@ -121,20 +121,27 @@ void ChunkMesh::addFace(FaceDirection direction, int x, int y, int z, int blockI
                         std::vector<VoxelVertex>& vertices, std::vector<uint32_t>& indices,
                         const BlockRegistry& registry, const TextureIdResolver& getTextureId,
                         const Chunk& chunk) {
-    std::string faceName;
+    // Use static const strings to avoid repeated allocations in hot path
+    // This was creating 3000-9000 string allocations per chunk!
+    static const std::string topStr = "top";
+    static const std::string bottomStr = "bottom";
+    static const std::string sideStr = "side";
+
+    const std::string* faceNamePtr;
     switch (direction) {
     case FaceDirection::Top:
-        faceName = "top";
+        faceNamePtr = &topStr;
         break;
     case FaceDirection::Bottom:
-        faceName = "bottom";
+        faceNamePtr = &bottomStr;
         break;
     default:
-        faceName = "side";
+        faceNamePtr = &sideStr;
         break;
     }
 
-    std::string texturePath = registry.getTexturePath(blockId, faceName);
+    // Use reference to avoid string copy
+    const std::string& texturePath = registry.getTexturePath(blockId, *faceNamePtr);
     uint32_t textureId = getTextureId(texturePath);
 
     auto baseIndex = static_cast<uint32_t>(vertices.size());

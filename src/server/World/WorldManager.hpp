@@ -61,8 +61,47 @@ class WorldManager {
         size_t loadedChunksCount;
         size_t generatingChunksCount;
         size_t meshingChunksCount;
+        size_t chunksToUnloadCount;
     };
     QueueStats getQueueStats() const;
+
+    /**
+     * Mark a chunk for unloading. Thread-safe.
+     * The chunk will be removed from memory during the next cleanup pass.
+     */
+    void markChunkForUnload(const glm::ivec3& pos);
+
+    /**
+     * Unmark a chunk for unloading (keep it loaded). Thread-safe.
+     * Use this when a chunk that was previously marked comes back within range.
+     */
+    void unmarkChunkForUnload(const glm::ivec3& pos);
+
+    /**
+     * Unload all chunks marked for unloading. Returns the list of unloaded chunk positions.
+     * Thread-safe. Call this from the main thread when ready to rebuild mesh pool.
+     */
+    std::vector<glm::ivec3> unloadMarkedChunks();
+
+    /**
+     * Get a copy of all currently loaded chunk positions. Thread-safe.
+     * Useful for determining which chunks are far from camera and should be unloaded.
+     */
+    std::vector<glm::ivec3> getLoadedChunkPositions() const;
+
+    /**
+     * Check if a chunk is currently loaded in memory. Thread-safe.
+     * @param pos Chunk position to check
+     * @return true if chunk is loaded, false otherwise
+     */
+    bool isChunkLoaded(const glm::ivec3& pos) const;
+
+    /**
+     * Request re-meshing for all loaded chunks (except those in exclusion list).
+     * Thread-safe. Use this after mesh pool rebuild to regenerate meshes.
+     * @param excludeChunks Chunks to exclude from re-meshing (e.g., unloaded chunks)
+     */
+    void requestRemeshForAllChunks(const std::vector<glm::ivec3>& excludeChunks);
 
   private:
     /**
@@ -95,6 +134,12 @@ class WorldManager {
     bool enqueueMeshingTask(const glm::ivec3& pos);
 
     /**
+     * Internal version of enqueueMeshingTask that assumes _chunkMutex is already locked.
+     * Used to avoid deadlock when called from functions that already hold the lock.
+     */
+    bool enqueueMeshingTaskInternal(const glm::ivec3& pos);
+
+    /**
      * Mark neighbors as dirty for re-meshing.
      */
     void markNeighborsDirty(const glm::ivec3& pos);
@@ -116,6 +161,7 @@ class WorldManager {
     std::unordered_set<glm::ivec3> _generatingChunks; // Chunks currently being generated
     std::unordered_set<glm::ivec3> _meshingChunks;    // Chunks currently being meshed
     std::unordered_set<glm::ivec3> _dirtyChunks;      // Chunks that need re-meshing
+    std::unordered_set<glm::ivec3> _chunksToUnload;   // Chunks marked for unloading
 
     // Performance instrumentation
     std::atomic<uint64_t> _totalChunksGenerated{0};

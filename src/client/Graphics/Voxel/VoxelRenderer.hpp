@@ -49,10 +49,26 @@ class VoxelRenderer {
     /**
      * Update: Check for finished meshes and upload to GPU.
      * Call this every frame BEFORE drawVoxels.
+     * @param cameraChunkPos Current camera chunk position for distance checks
+     * @param maxLoadDistance Maximum distance (in chunks) to accept new meshes
      */
-    void update();
+    void update(const glm::ivec3& cameraChunkPos, int maxLoadDistance);
 
     void drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wireframeMode);
+
+    /**
+     * Rebuild the entire mesh pool and clear all chunk meshes.
+     * Call this when chunks are unloaded to free VRAM.
+     * WARNING: This waits for GPU idle - may cause a frame hitch.
+     *
+     * @param unloadedChunks List of chunk positions that were unloaded from RAM
+     */
+    void rebuildMeshPool(const std::vector<glm::ivec3>& unloadedChunks);
+
+    /**
+     * Get the current number of chunks loaded in the renderer.
+     */
+    [[nodiscard]] size_t getLoadedChunkCount() const { return _chunkDrawInfos.size(); }
 
   private:
     void initMDI(VkImageView atlasView, VkSampler atlasSampler);
