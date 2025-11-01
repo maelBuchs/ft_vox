@@ -24,6 +24,9 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(SDL)
 
+# Mark SDL includes as SYSTEM to suppress warnings
+set_target_properties(SDL3-shared PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES $<TARGET_PROPERTY:SDL3-shared,INTERFACE_INCLUDE_DIRECTORIES>)
+
 # 2. GLM
 FetchContent_Declare(
   glm
@@ -31,6 +34,9 @@ FetchContent_Declare(
   GIT_TAG        1.0.1
 )
 FetchContent_MakeAvailable(glm)
+
+# Mark GLM includes as SYSTEM to suppress warnings
+set_target_properties(glm PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES $<TARGET_PROPERTY:glm,INTERFACE_INCLUDE_DIRECTORIES>)
 
 # 3. STB
 FetchContent_Declare(
@@ -48,6 +54,9 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(vk-bootstrap)
 
+# Mark vk-bootstrap includes as SYSTEM to suppress warnings
+set_target_properties(vk-bootstrap PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES $<TARGET_PROPERTY:vk-bootstrap,INTERFACE_INCLUDE_DIRECTORIES>)
+
 # 5. VMA (Vulkan Memory Allocator)
 FetchContent_Declare(
   VulkanMemoryAllocator
@@ -55,6 +64,9 @@ FetchContent_Declare(
   GIT_TAG        v3.3.0
 )
 FetchContent_MakeAvailable(VulkanMemoryAllocator)
+
+# Mark VMA includes as SYSTEM to suppress warnings
+set_target_properties(VulkanMemoryAllocator PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES $<TARGET_PROPERTY:VulkanMemoryAllocator,INTERFACE_INCLUDE_DIRECTORIES>)
 
 # 6. Dear ImGui
 FetchContent_Declare(
@@ -72,6 +84,9 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+# Mark nlohmann_json includes as SYSTEM to suppress warnings
+set_target_properties(nlohmann_json PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES $<TARGET_PROPERTY:nlohmann_json,INTERFACE_INCLUDE_DIRECTORIES>)
+
 # 8. Tracy Profiler
 set(TRACY_ENABLE ON CACHE BOOL "" FORCE)
 set(TRACY_ON_DEMAND ON CACHE BOOL "" FORCE)
@@ -84,6 +99,9 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(tracy)
 
+# Mark Tracy includes as SYSTEM to suppress warnings
+set_target_properties(TracyClient PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES $<TARGET_PROPERTY:TracyClient,INTERFACE_INCLUDE_DIRECTORIES>)
+
 # ImGui requires manual setup - create library with backends
 add_library(imgui STATIC
   ${imgui_SOURCE_DIR}/imgui.cpp
@@ -95,7 +113,7 @@ add_library(imgui STATIC
   ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp
 )
 
-target_include_directories(imgui PUBLIC
+target_include_directories(imgui SYSTEM PUBLIC
   ${imgui_SOURCE_DIR}
   ${imgui_SOURCE_DIR}/backends
 )
@@ -108,7 +126,7 @@ target_link_libraries(imgui PUBLIC
 
 # --- Project Structure ---
 
-include_directories(${stb_SOURCE_DIR})
+include_directories(SYSTEM ${stb_SOURCE_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
 # --- Shader Compilation ---
@@ -249,31 +267,39 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 
-# Detect compiler type - use GCC-like flags for Clang even on Windows
+# Apply compiler flags based on compiler type
 if(MSVC AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    # Pure MSVC compiler
-    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-        target_compile_options(ft_vox PRIVATE /W4 /Od /Zi)
-        target_link_options(ft_vox PRIVATE /DEBUG)
-        target_compile_options(ft_vox_server PRIVATE /W4 /Od /Zi)
-        target_link_options(ft_vox_server PRIVATE /DEBUG)
-    elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-        target_compile_options(ft_vox PRIVATE /W4 /O2)
-        target_compile_definitions(ft_vox PRIVATE NDEBUG)
-        target_compile_options(ft_vox_server PRIVATE /W4 /O2)
-        target_compile_definitions(ft_vox_server PRIVATE NDEBUG)
-    endif()
+    # --- MSVC (Visual Studio) ---
+    target_compile_options(ft_vox PRIVATE
+        $<$<CONFIG:Debug>:/W4 /Od /Zi>
+        $<$<CONFIG:Release>:/W4 /O2>
+    )
+    target_compile_options(ft_vox_server PRIVATE
+        $<$<CONFIG:Debug>:/W4 /Od /Zi>
+        $<$<CONFIG:Release>:/W4 /O2>
+    )
+    target_link_options(ft_vox PRIVATE $<$<CONFIG:Debug>:/DEBUG>)
+    target_link_options(ft_vox_server PRIVATE $<$<CONFIG:Debug>:/DEBUG>)
+    target_compile_definitions(ft_vox PRIVATE $<$<CONFIG:Release>:NDEBUG>)
+    target_compile_definitions(ft_vox_server PRIVATE $<$<CONFIG:Release>:NDEBUG>)
 else()
-    # GCC/Clang (including Clang on Windows)
-    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-        target_compile_options(ft_vox PRIVATE -Wall -Wextra -g -O0)
-        target_compile_options(ft_vox_server PRIVATE -Wall -Wextra -g -O0)
-    elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-        target_compile_options(ft_vox PRIVATE -Wall -Wextra -O3 -march=native)
-        target_compile_definitions(ft_vox PRIVATE NDEBUG)
-        target_compile_options(ft_vox_server PRIVATE -Wall -Wextra -O3 -march=native)
-        target_compile_definitions(ft_vox_server PRIVATE NDEBUG)
-    endif()
+    # --- GCC/Clang (Linux and Clang on Windows) ---
+    target_compile_options(ft_vox PRIVATE
+        $<$<CONFIG:Debug>:-Wall -Wextra -g -O0
+            -Wno-c++98-compat -Wno-c++98-compat-pedantic
+            -Wno-padded -Wno-documentation
+            -Wno-unused-command-line-argument>
+        $<$<CONFIG:Release>:-Wall -Wextra -O3>
+    )
+    target_compile_options(ft_vox_server PRIVATE
+        $<$<CONFIG:Debug>:-Wall -Wextra -g -O0
+            -Wno-c++98-compat -Wno-c++98-compat-pedantic
+            -Wno-padded -Wno-documentation
+            -Wno-unused-command-line-argument>
+        $<$<CONFIG:Release>:-Wall -Wextra -O3>
+    )
+    target_compile_definitions(ft_vox PRIVATE $<$<CONFIG:Release>:NDEBUG>)
+    target_compile_definitions(ft_vox_server PRIVATE $<$<CONFIG:Release>:NDEBUG>)
 endif()
 
 # Note for STB :

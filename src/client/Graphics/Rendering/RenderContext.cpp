@@ -1,5 +1,6 @@
 #include "RenderContext.hpp"
 
+#include <iostream>
 #include <stdexcept>
 
 #include "../Core/VulkanDevice.hpp"

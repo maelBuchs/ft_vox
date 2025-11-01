@@ -48,7 +48,6 @@ void MeshingThread::start() {
 
     _running.store(true);
     _meshingThread = std::make_unique<std::thread>(&MeshingThread::meshingThreadLoop, this);
-    std::cout << "[MeshingThread] Meshing thread started\n";
 }
 
 void MeshingThread::stop() {
@@ -56,15 +55,12 @@ void MeshingThread::stop() {
         return;
     }
 
-    std::cout << "[MeshingThread] Stopping meshing thread...\n";
     _running.store(false);
     _taskQueue.shutdown(); // Wake up the thread if it's waiting
 
     if (_meshingThread && _meshingThread->joinable()) {
         _meshingThread->join();
     }
-
-    std::cout << "[MeshingThread] Meshing thread stopped\n";
 }
 
 void MeshingThread::meshingThreadLoop() {

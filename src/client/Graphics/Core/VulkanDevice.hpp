@@ -26,6 +26,14 @@ class VulkanDevice {
     [[nodiscard]] VmaAllocator getAllocator() const { return _allocator; }
     [[nodiscard]] TracyVkCtx getTracyCtx() const { return _tracyCtx; }
 
+    // Get current VRAM usage statistics
+    struct VRAMStats {
+        uint64_t usedBytes;
+        uint64_t budgetBytes;
+        uint32_t allocationCount;
+    };
+    [[nodiscard]] VRAMStats getVRAMStats() const;
+
   private:
     VkInstance _instance;
     VkDebugUtilsMessengerEXT _debugMessenger;

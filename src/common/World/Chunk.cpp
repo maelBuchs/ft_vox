@@ -3,7 +3,6 @@
 #include "glm/fwd.hpp"
 
 #define CHUNK_TO_WORLD(b, c) ((c) * Chunk::CHUNK_SIZE + (b))
-#define SEED 42L
 
 bool Chunk::loadChunk() {
     // Placeholder for chunk loading logic
@@ -13,9 +12,6 @@ bool Chunk::loadChunk() {
 
 Chunk::Chunk(int x, int y, int z) : _blocks{}, position{x, y, z} {
     _blocks.fill(AIR_BLOCK_ID);
-    // if (!loadChunk()) {
-    // generateChunk();
-    // }
 }
 
 uint8_t Chunk::getBlock(int x, int y, int z) const {

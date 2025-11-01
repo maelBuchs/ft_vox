@@ -1,9 +1,21 @@
 #version 460
 #extension GL_ARB_shader_draw_parameters : require
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
-// --- PACKED VERTEX INPUT ---
-// We now receive a single uint as vertex input
-layout(location = 0) in uint inVertexData;
+// ============================================================================
+// BUFFER DEVICE ADDRESS EXTENSIONS
+// ============================================================================
+// GL_EXT_buffer_reference allows us to use GPU pointers to access per-chunk buffers.
+// Each chunk has its own dedicated vertex/index buffer in VRAM.
+// No more mega-buffers, no more fragmentation, instant allocation/deallocation!
+// ============================================================================
+
+// Buffer references for per-chunk vertex data access
+layout(buffer_reference, std430, buffer_reference_align = 4) readonly buffer VertexBuffer {
+    uint vertices[];
+};
 
 // GLOBAL data - same for all draws in this batch
 layout(push_constant) uniform constants {
@@ -11,10 +23,13 @@ layout(push_constant) uniform constants {
 }
 PushConstants;
 
-// PER-CHUNK data - indexed by the draw call
+// PER-CHUNK data - indexed by the draw call (HYBRID approach)
+// NOTE: Buffer reference types must be uint64_t in SSBO
 struct GPUChunkData {
     vec3 chunkWorldPos;
-    float padding;
+    uint indexCount;
+    uint64_t vertexBufferAddress;   // Device address of this chunk's vertex buffer
+    // Note: Index buffer is shared (mega buffer), accessed via traditional binding
 };
 
 // SSBO containing per-chunk data
@@ -47,6 +62,19 @@ const vec2 UVS[4] = vec2[](vec2(0.0, 0.0), // 0: Bottom-left
 );
 
 void main() {
+    // ========================================================================
+    // BINDLESS BUFFER ACCESS - Get this chunk's data via gl_DrawID
+    // ========================================================================
+    GPUChunkData chunkData = chunkBuffer.chunks[gl_DrawID];
+
+    // Convert device address to buffer reference
+    VertexBuffer vertexBuffer = VertexBuffer(chunkData.vertexBufferAddress);
+
+    // ========================================================================
+    // FETCH VERTEX DATA from this chunk's dedicated buffer
+    // ========================================================================
+    uint inVertexData = vertexBuffer.vertices[gl_VertexIndex];
+
     // Bit layout: [X:6][Y:6][Z:6][Normal:3][UV:2][Texture:7][AO:2]
     uint x = (inVertexData) & 0x3Fu;
     uint y = (inVertexData >> 6) & 0x3Fu;
@@ -65,12 +93,10 @@ void main() {
     // Invert: 0 -> 1.0, 1 -> 0.8, 2 -> 0.6, 3 -> 0.4
     outAO = 1.0 - (float(ao) * 0.25);
 
-    // --- Get per-chunk data from SSBO ---
-    // In Vulkan multi-draw indirect, we use gl_InstanceIndex
-    // We set firstInstance in the indirect command to identify each chunk
-    GPUChunkData chunkData = chunkBuffer.chunks[gl_DrawID];
+    // ========================================================================
+    // TRANSFORM TO WORLD SPACE and project
+    // ========================================================================
     vec3 worldPos = inPosition + chunkData.chunkWorldPos;
-
     gl_Position = PushConstants.viewProjection * vec4(worldPos, 1.0);
 
     outNormal = normal;

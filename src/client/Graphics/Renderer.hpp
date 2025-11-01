@@ -42,8 +42,8 @@ class Renderer {
     Renderer(Renderer&&) = delete;
     Renderer& operator=(Renderer&&) = delete;
 
-    static constexpr uint64_t VULKAN_TIMEOUT_NS = 1000000000; // 1 second
-    void updateMeshes(const glm::ivec3& cameraChunkPos, int maxLoadDistance); // Process finished mesh data from worker threads
+    void updateMeshes(const glm::ivec3& cameraChunkPos,
+                      int maxLoadDistance); // Process finished mesh data from worker threads
     void draw(float timeOfDay);
     void resizeSwapchain();
     void updateFPS(float deltaTime);
@@ -62,6 +62,7 @@ class Renderer {
     // Chunk unloading support
     void rebuildMeshPool(const std::vector<glm::ivec3>& unloadedChunks);
     [[nodiscard]] size_t getLoadedChunkCount() const;
+    [[nodiscard]] float getMeshPoolUsage() const;
 
   private:
     static void checkVkResult(VkResult result, const char* errorMessage);
@@ -112,4 +113,7 @@ class Renderer {
     // Blue noise texture for dithering
     RenderContext::AllocatedImage _blueNoiseTexture{};
     VkSampler _blueNoiseSampler = VK_NULL_HANDLE;
+
+    // ImGui
+    VkDescriptorPool _imguiPool = VK_NULL_HANDLE;
 };

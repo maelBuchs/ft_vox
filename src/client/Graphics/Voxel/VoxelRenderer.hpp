@@ -28,7 +28,6 @@ class MeshBufferPool;
 class VulkanBuffer;
 class DescriptorAllocatorGrowable;
 class Renderer;
-struct MeshAllocation;
 
 class VoxelRenderer {
   public:
@@ -44,7 +43,6 @@ class VoxelRenderer {
     VoxelRenderer& operator=(VoxelRenderer&&) = delete;
 
     void initPipelines(VkImageView atlasView, VkSampler atlasSampler, int texturesPerRow);
-    void initTestChunk();
 
     /**
      * Update: Check for finished meshes and upload to GPU.
@@ -70,8 +68,18 @@ class VoxelRenderer {
      */
     [[nodiscard]] size_t getLoadedChunkCount() const { return _chunkDrawInfos.size(); }
 
+    /**
+     * Get mesh buffer pool usage (0.0 to 1.0).
+     * Returns the maximum of vertex and index buffer usage.
+     */
+    [[nodiscard]] float getMeshPoolUsage() const;
+
   private:
     void initMDI(VkImageView atlasView, VkSampler atlasSampler, int texturesPerRow);
+    void ensureBufferCapacity(uint32_t requiredChunks);
+
+    static constexpr uint32_t MAX_CHUNKS = 16384; // Initial maximum number of chunks that can be rendered
+    static constexpr float TYPICAL_MAX_VRAM_MB = 512.0f; // Assume 512MB as "100%" for UI display
 
     VulkanDevice& _device;
     MeshManager& _meshManager;
@@ -87,15 +95,13 @@ class VoxelRenderer {
 
     VkPipelineLayout _voxelPipelineLayout = VK_NULL_HANDLE;
 
-    std::unique_ptr<Chunk> _testChunk;
-
     // --- MDI Resources ---
     std::unique_ptr<MeshBufferPool> _meshPool;
 
     struct ChunkDrawInfo {
         glm::ivec3 chunkCoords{};
         glm::vec3 worldPosition{};
-        MeshAllocation mesh{};
+        ChunkMeshBuffers meshBuffers{}; // Per-chunk VMA-allocated buffers
     };
 
     std::vector<ChunkDrawInfo> _chunkDrawInfos;
@@ -107,6 +113,7 @@ class VoxelRenderer {
     AllocatedBuffer _indirectBuffer;
     AllocatedBuffer _chunkDataBuffer;
     AllocatedBuffer _atlasConfigBuffer; // Uniform buffer for atlas configuration
+    uint32_t _currentMaxChunks = MAX_CHUNKS; // Current capacity of indirect/chunk buffers
 
     std::vector<VkDrawIndexedIndirectCommand> _indirectCommands;
     std::vector<GPUChunkData> _chunkDrawData;
