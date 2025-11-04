@@ -6,24 +6,30 @@
 #include <memory>
 #include <mutex>
 #include <queue>
+#include <sys/types.h>
 #include <thread>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include <glm/glm.hpp>
+
+#include "server/World/WorldManager.hpp"
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/hash.hpp>
-
-#include "../Util/perlinNoise.hpp"
+#ifndef SEED
+#define SEED 42L
+#endif
+#include "../Util/Util.hpp"
 #include "common/World/ChunkMesh.hpp"
 #include "glm/fwd.hpp"
-
 #define GLM_ENABLE_EXPERIMENTAL
 #define RENDER_DISTANCE 6
 #define MAX_THREADS 2
+#define CHUNK_TO_WORLD(b, c) (((c) * Chunk::CHUNK_SIZE) + (b))
 
-enum class BiomeType : uint8_t { PLAINS, MOUNTAINS, OCEAN };
-
+enum class BiomeType : uint8_t { OCEAN, PLAINS, MOUNTAINS, NONE };
+enum class NoiseType { TEMPERATURE, HUMIDITY, CONTINENT, EROSION, WEIRDNESS, DEPTH };
 class Chunk;
 using chunkMap = std::unordered_map<glm::ivec3, std::unique_ptr<Chunk>>;
 
@@ -52,17 +58,77 @@ class Chunk {
     [[nodiscard]] bool isBlockSolid(int x, int y, int z) const;
     [[nodiscard]] bool isInBounds(int x, int y, int z) const;
     [[nodiscard]] int getIndex(int x, int y, int z) const;
-
+    // [[nodiscard]] uint8_t getBiomeDataAt(int x, int z) const {
+    //     int width = static_cast<int>(std::sqrt(_biomeData.size()));
+    //     if (x < 0 || x >= width || z < 0 || z >= width) {
+    //         return static_cast<uint8_t>(BiomeType::NONE);
+    //     }
+    //     return _biomeData[(z * width + x)];
+    // }
     // Chunk state
     [[nodiscard]] bool isEmpty() const { return _isEmpty; }
     void setEmpty(bool empty) { _isEmpty = empty; }
+
+    // TODO - Cleanup this crap
     glm::ivec3 getPosition() const { return position; }
+    [[nodiscard]] std::string getBiome() const {
+        switch (static_cast<BiomeType>(_biome)) {
+        case BiomeType::PLAINS:
+            return "Plains";
+        case BiomeType::MOUNTAINS:
+            return "Mountains";
+        case BiomeType::OCEAN:
+            return "Ocean";
+        default:
+            return "Unknown";
+        }
+    }
+    [[nodiscard]] float getNoise(int x, int z, NoiseType type) const {
+        int bx = CHUNK_TO_WORLD(x, position[0]);
+        int bz = CHUNK_TO_WORLD(z, position[2]);
+        switch (type) {
+        case NoiseType::TEMPERATURE:
+            return perlinNoise(bx, bz, NoiseConfig::TEMPERATURE);
+        case NoiseType::HUMIDITY:
+            return perlinNoise(bx, bz, NoiseConfig::HUMIDITY);
+        case NoiseType::CONTINENT:
+            return perlinNoise(bx, bz, NoiseConfig::CONTINENT);
+        case NoiseType::EROSION:
+            return perlinNoise(bx, bz, NoiseConfig::EROSION);
+        case NoiseType::WEIRDNESS:
+            return perlinNoise(bx, bz, NoiseConfig::WEIRDNESS);
+        case NoiseType::DEPTH:
+            return perlinNoise(bx, bz, NoiseConfig::DEPTH);
+        default:
+            return 0.0F;
+        }
+    }
+    [[nodiscard]] BiomeParams getNoiseParams(int x, int z) const {
+        int bx = CHUNK_TO_WORLD(x, position[0]);
+        int bz = CHUNK_TO_WORLD(z, position[2]);
+        BiomeParams biomeParams{};
+        biomeParams.temperature = perlinNoise(bx, bz, NoiseConfig::TEMPERATURE);
+        biomeParams.humidity = perlinNoise(bx, bz, NoiseConfig::HUMIDITY);
+        biomeParams.continent = perlinNoise(bx, bz, NoiseConfig::CONTINENT);
+        biomeParams.erosion = perlinNoise(bx, bz, NoiseConfig::EROSION);
+        biomeParams.weirdness = perlinNoise(bx, bz, NoiseConfig::WEIRDNESS);
+        biomeParams.depth = perlinNoise(bx, bz, NoiseConfig::DEPTH);
+        return biomeParams;
+    }
+    BiomeType getBiomeDataAt(int x, int z) const {
+        int width = static_cast<int>(std::sqrt(_biomeData.size()));
+        if (x < 0 || x >= width || z < 0 || z >= width) {
+            return BiomeType::NONE;
+        }
+        return _biomeData[(x * width + z)];
+    }
 
   private:
     glm::ivec3 position;
     std::array<uint8_t, VOLUME> _blocks;
     bool _isEmpty = true;
-
+    int8_t _biome = static_cast<int8_t>(BiomeType::PLAINS);
+    std::vector<BiomeType> _biomeData;
     void generateChunk();
     bool loadChunk();
     // void saveChunk();

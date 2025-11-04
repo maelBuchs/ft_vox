@@ -1,8 +1,9 @@
-#include "perlinNoise.hpp"
-
 #include <cmath>
+#include <cstddef>
 #include <numbers>
 #include <sys/stat.h>
+
+#include "Util.hpp"
 
 namespace {
 // Génère un vecteur gradient pseudo-aléatoire basé sur les coordonnées
@@ -61,28 +62,22 @@ float perlinValue(float x, float y, int64_t seed) {
 // Génère une matrice 2D de Perlin noise
 // octave : entre 1 et 10
 // persistence : entre 0 et 1
-std::vector<std::vector<float>> perlinNoise(int width, int height, float baseFrequency,
-                                            int64_t seed, int octaves, float persistence) {
-    std::vector<std::vector<float>> perlin(height, std::vector<float>(width));
+float perlinNoise(int x, int y, NoiseParams params) {
 
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            float amplitude = 1.0F;
-            float frequency = baseFrequency;
-            float noiseValue = 0.0F;
-            float maxValue = 0.0F; // Pour normalisation
+    float total = 0.0F;
+    float frequency = params.baseFrequency;
+    float amplitude = 1.0F;
+    float maxValue = 0.0F; // Pour normaliser le résultat
 
-            for (int o = 0; o < octaves; ++o) {
-                noiseValue += perlinValue(static_cast<float>(x) * frequency,
-                                          static_cast<float>(y) * frequency, seed) *
-                              amplitude;
-                maxValue += amplitude;
-                amplitude *= persistence;
-                frequency *= 2.0F;
-            }
+    for (int i = 0; i < params.octaves; ++i) {
+        total += perlinValue(static_cast<float>(x) * frequency, static_cast<float>(y) * frequency,
+                             params.seed + (static_cast<int64_t>(i) * 100)) *
+                 amplitude;
 
-            perlin[y][x] = noiseValue / maxValue; // Normalisation à [-1,1] approximatif
-        }
+        maxValue += amplitude;
+
+        amplitude *= params.persistence;
+        frequency *= 2.0F;
     }
-    return perlin;
+    return maxValue == 0 ? 0 : total / maxValue;
 }

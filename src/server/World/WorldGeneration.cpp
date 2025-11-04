@@ -6,6 +6,7 @@
 namespace {
 
 int getHeightValue(int bx, int bz) {
+    return 0;
     float bxF = static_cast<float>(bx);
     float bzF = static_cast<float>(bz);
 
@@ -48,8 +49,18 @@ void addSurface(Chunk* chunk) {
             }
             if (maxHeight + 3 >= CHUNK_TO_WORLD(0, chunk->getPosition()[1]) &&
                 maxHeight + 3 < CHUNK_TO_WORLD(Chunk::CHUNK_SIZE, chunk->getPosition()[1])) {
-                chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 2);
+                auto biome = static_cast<BiomeType>(chunk->getBiomeDataAt(bx, bz));
+                if (biome == BiomeType::PLAINS) {
+                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 2);
+                } else if (biome == BiomeType::MOUNTAINS) {
+                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 1);
+                } else if (biome == BiomeType::OCEAN) {
+                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 3);
+                } else if (biome == BiomeType::NONE) {
+                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 5);
+                }
             }
+
             if (chunk->getPosition()[1] == 0) {
                 chunk->setBlock(bx, 0, bz, 5);
             }
