@@ -283,6 +283,6 @@ void main() {
         // Add procedural stars here if desired
     }
 
-    vec3 encoded = pow(skyColor, vec3(1.0 / 2.2));
+    vec3 encoded = skyColor * vec3(1.0 / 2.2);
     outFragColor = vec4(encoded, 1.0);
 }

@@ -5,10 +5,11 @@
 #include <memory>
 #include <mutex>
 #include <thread>
-#include <tracy/Tracy.hpp>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+#include <tracy/Tracy.hpp>
 
 #include <glm/glm.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
@@ -103,6 +104,19 @@ class WorldManager {
      * @param excludeChunks Chunks to exclude from re-meshing (e.g., unloaded chunks)
      */
     void requestRemeshForAllChunks(const std::vector<glm::ivec3>& excludeChunks);
+
+    Chunk* getCurrentChunk(const glm::vec3& position) {
+        glm::ivec3 chunkPos = {static_cast<int>(std::floor(position[0] / 32)),
+                               static_cast<int>(std::floor(position[1] / 32)),
+                               static_cast<int>(std::floor(position[2] / 32))};
+
+        std::lock_guard<std::mutex> lock(_chunkMutex);
+        auto it = _loadedChunks.find(chunkPos);
+        if (it != _loadedChunks.end() && it->second) {
+            return it->second.get();
+        }
+        return nullptr; // Return nullptr if not found
+    }
 
   private:
     /**

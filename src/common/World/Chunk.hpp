@@ -71,8 +71,8 @@ class Chunk {
 
     // TODO - Cleanup this crap
     glm::ivec3 getPosition() const { return position; }
-    [[nodiscard]] std::string getBiome() const {
-        switch (static_cast<BiomeType>(_biome)) {
+    [[nodiscard]] std::string getBiome(glm::ivec3 pos) const {
+        switch (static_cast<BiomeType>(_biomeData[(pos.x * CHUNK_SIZE + pos.z)])) {
         case BiomeType::PLAINS:
             return "Plains";
         case BiomeType::MOUNTAINS:

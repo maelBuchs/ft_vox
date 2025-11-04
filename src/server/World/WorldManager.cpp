@@ -5,7 +5,7 @@
 
 #include <tracy/Tracy.hpp>
 
-#include "common/Util/perlinNoise.hpp"
+#include "common/Util/Util.hpp"
 
 #define SEED 42L
 

@@ -328,6 +328,10 @@ void App::run() {
         int minutes = static_cast<int>((_timeOfDay * 24.0F - hours) * 60.0F);
         ImGui::Text("Current Time: %02d:%02d", hours, minutes);
 
+        // auto currentChunk = _worldManager->getCurrentChunk(cameraPos);
+        // ImGui::Text("Biome: %s", currentChunk ? currentChunk->getBiome(cameraPos).c_str() :
+        // "N/A");
+
         ImGui::Separator();
         if (ImGui::Button("Quit")) {
             inputManager.setShouldQuit(true);

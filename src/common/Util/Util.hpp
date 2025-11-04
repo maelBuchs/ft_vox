@@ -10,7 +10,10 @@ struct NoiseParams {
     int octaves;
     float persistence;
 };
+#ifndef SEED
+
 constexpr int64_t SEED = 42L;
+#endif
 struct BiomeParams {
     float temperature;
     float humidity;
