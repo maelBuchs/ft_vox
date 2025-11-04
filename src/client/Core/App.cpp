@@ -23,6 +23,12 @@
 #include "server/World/WorldManager.hpp"
 #include "Window.hpp"
 
+#ifndef CHUNK_TO_WORLD
+
+#define CHUNK_TO_WORLD(b, c) (((c) * 32) + (b))
+#endif
+#define WORLD_TO_CHUNK(b) ((((b) % 32) + 32) % 32)
+
 App::App() {
     try {
         _blockRegistry = std::make_unique<BlockRegistry>();
@@ -328,9 +334,31 @@ void App::run() {
         int minutes = static_cast<int>((_timeOfDay * 24.0F - hours) * 60.0F);
         ImGui::Text("Current Time: %02d:%02d", hours, minutes);
 
-        // auto currentChunk = _worldManager->getCurrentChunk(cameraPos);
-        // ImGui::Text("Biome: %s", currentChunk ? currentChunk->getBiome(cameraPos).c_str() :
-        // "N/A");
+        auto currentChunk = _worldManager->getCurrentChunk(cameraPos);
+        auto currentBiomeData =
+            (currentChunk != nullptr)
+                ? currentChunk->getBiomeDataAt(WORLD_TO_CHUNK(static_cast<int>(cameraPos[0])),
+                                               WORLD_TO_CHUNK(static_cast<int>(cameraPos[2])))
+                : BiomeType::NONE;
+        std::string biomeName;
+        switch (currentBiomeData) {
+        case BiomeType::PLAINS:
+            biomeName = "Plains";
+            break;
+        case BiomeType::MOUNTAINS:
+            biomeName = "Mountains";
+            break;
+        case BiomeType::OCEAN:
+            biomeName = "Ocean";
+            break;
+        case BiomeType::NONE:
+            biomeName = "skill issue";
+            break;
+        default:
+            biomeName = "GOUGOUGAGAK";
+            break;
+        }
+        ImGui::Text("Biome: %s", biomeName.c_str());
 
         ImGui::Separator();
         if (ImGui::Button("Quit")) {

@@ -1,5 +1,6 @@
 #include <cmath>
 #include <cstdlib>
+
 #include <tracy/Tracy.hpp>
 
 #include "common/World/Chunk.hpp"
@@ -57,6 +58,8 @@ void addSurface(Chunk* chunk, const int heightMap[Chunk::CHUNK_SIZE][Chunk::CHUN
                     chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 3);
                 } else if (biome == BiomeType::NONE) {
                     chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 5);
+                } else {
+                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 5);
                 }
             }
 
@@ -78,7 +81,8 @@ std::shared_ptr<Chunk> WorldManager::generateChunk(const glm::ivec3& pos) {
 
     for (int bx = 0; bx < Chunk::CHUNK_SIZE; bx++) {
         for (int bz = 0; bz < Chunk::CHUNK_SIZE; bz++) {
-            heightMap[bx][bz] = getHeightValue(CHUNK_TO_WORLD(bx, pos[0]), CHUNK_TO_WORLD(bz, pos[2]));
+            heightMap[bx][bz] =
+                getHeightValue(CHUNK_TO_WORLD(bx, pos[0]), CHUNK_TO_WORLD(bz, pos[2]));
         }
     }
 
