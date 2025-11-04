@@ -24,9 +24,12 @@ struct ChunkPushConstants {
     float padding; // Align to 16 bytes
 };
 
-// GPU data for Multi-Draw Indirect rendering
+// GPU data for Multi-Draw Indirect rendering (HYBRID approach)
 // This will be stored in an SSBO and indexed by gl_DrawID
-struct GPUChunkData {
+// MUST match the shader struct in voxel.vert!
+struct alignas(16) GPUChunkData {
     glm::vec3 chunkWorldPos;
-    float padding; // Align to 16 bytes
+    uint32_t indexCount;
+    uint64_t vertexBufferAddress; // VkDeviceAddress for per-chunk vertex buffer
+    // Note: Index buffer is shared (mega buffer), so no address needed here
 };

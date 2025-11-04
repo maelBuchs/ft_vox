@@ -1,10 +1,10 @@
 #include "VulkanBuffer.hpp"
 
 #include <cstring>
+#include <iostream>
 #include <stdexcept>
 
 #include "VulkanDevice.hpp"
-
 
 VulkanBuffer::VulkanBuffer(VulkanDevice& device) : _device(device) {}
 
@@ -39,11 +39,54 @@ AllocatedBuffer VulkanBuffer::createBuffer(size_t size, VkBufferUsageFlags usage
         throw std::runtime_error("Failed to create buffer");
     }
 
+    // Track this allocation for leak detection
+    BufferAllocation tracked{.id = _nextBufferId++,
+                             .buffer = newBuffer.buffer,
+                             .allocation = newBuffer.allocation,
+                             .size = size,
+                             .purpose = "buffer"};
+
+    _activeAllocations[newBuffer.buffer] = tracked;
+    _totalVmaAllocations++;
+
     return newBuffer;
 }
 
 void VulkanBuffer::destroyBuffer(const AllocatedBuffer& buffer) {
+    // Validate buffer before destroying to prevent VMA corruption
+    if (buffer.buffer == VK_NULL_HANDLE || buffer.allocation == VK_NULL_HANDLE) {
+        std::cout << "[VulkanBuffer] WARNING: Attempted to destroy null buffer! (buffer="
+                  << buffer.buffer << ", allocation=" << buffer.allocation << ")\n";
+        return;
+    }
+
+    // Validate this buffer exists in our tracking
+    auto it = _activeAllocations.find(buffer.buffer);
+    if (it == _activeAllocations.end()) {
+        std::cout << "[VulkanBuffer] ERROR: Buffer " << buffer.buffer
+                  << " not found in tracking! This is a DOUBLE-FREE or CORRUPTED handle!\n";
+        std::cout << "[VulkanBuffer] Allocation handle: " << buffer.allocation << "\n";
+        std::cout << "[VulkanBuffer] This buffer will likely cause a VMA leak!\n";
+        return;
+    }
+
+    // Validate allocation handle matches what we tracked
+    const BufferAllocation& tracked = it->second;
+    if (tracked.allocation != buffer.allocation) {
+        std::cout << "[VulkanBuffer] CRITICAL ERROR: Allocation handle mismatch!\n";
+        std::cout << "  Buffer: " << buffer.buffer << " (tracked ID #" << tracked.id << ")\n";
+        std::cout << "  Expected allocation: " << tracked.allocation << "\n";
+        std::cout << "  Got allocation: " << buffer.allocation << "\n";
+        std::cout << "  Size: " << tracked.size << " bytes\n";
+        std::cout << "  THIS BUFFER WILL LEAK IN VMA!\n";
+        // Don't destroy - wrong handle will cause corruption
+        return;
+    }
+
+    // Destroy and remove from tracking
     vmaDestroyBuffer(_device.getAllocator(), buffer.buffer, buffer.allocation);
+    _activeAllocations.erase(it);
+    _totalVmaDeallocations++;
 }
 
 void VulkanBuffer::uploadToBuffer(const AllocatedBuffer& dst, const void* data, size_t size) {

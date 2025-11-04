@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <thread>
+#include <tracy/Tracy.hpp>
 #include <vector>
 
 #include "common/Protocol/Protocol.hpp"
@@ -55,6 +56,11 @@ class MeshingThread {
 
     // Texture ID resolver (captures renderer's texture atlas)
     TextureIdResolver _textureResolver;
+
+    // Pre-computed texture cache (built once, reused for all meshes)
+    // Structure: _textureCache[blockId * 3 + faceType] where faceType: 0=top, 1=bottom, 2=side
+    // DYNAMIC: Size determined by BlockRegistry at runtime
+    std::vector<uint32_t> _textureCache;
 
     // Thread control
     std::atomic<bool> _running{false};

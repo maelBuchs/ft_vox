@@ -1,5 +1,7 @@
 #include "ChunkMesh.hpp"
 
+#include <tracy/Tracy.hpp>
+
 namespace {
 // Helper function to pack a vertex's data into a uint32_t
 // Bit layout: [X:6][Y:6][Z:6][Normal:3][UV:2][Texture:7][AO:2]
@@ -33,7 +35,8 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                              const Chunk* neighborNorth, const Chunk* neighborSouth,
                              const Chunk* neighborEast, const Chunk* neighborWest,
                              const Chunk* neighborTop, const Chunk* neighborBottom,
-                             const TextureIdResolver& getTextureId) {
+                             const std::vector<uint32_t>& textureCache) {
+    ZoneScoped;
     vertices.clear();
     indices.clear();
 
@@ -41,101 +44,122 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
         return;
     }
 
-    for (int x = 0; x < Chunk::CHUNK_SIZE; x++) {
-        for (int y = 0; y < Chunk::CHUNK_SIZE; y++) {
-            for (int z = 0; z < Chunk::CHUNK_SIZE; z++) {
-                int blockId = static_cast<int>(mainChunk.getBlock(x, y, z));
+    // Pre-allocate capacity to avoid reallocations during mesh generation
+    // Average chunk has ~2000 faces, each face = 4 vertices + 6 indices
+    // This eliminates expensive vector reallocations in the hot path
+    vertices.reserve(8000); // 2000 faces * 4 vertices
+    indices.reserve(12000); // 2000 faces * 6 indices
 
-                // Skip air blocks or non-displayable blocks
-                if (blockId == Chunk::AIR_BLOCK_ID || !registry.isDisplayable(blockId)) {
-                    continue;
-                }
+    // Texture cache is now passed in - built once at MeshingThread initialization!
 
-                // North (+Z)
-                bool isNorthSolid =
-                    (z == Chunk::CHUNK_SIZE - 1)
-                        ? (neighborNorth != nullptr && neighborNorth->isBlockSolid(x, y, 0))
-                        : mainChunk.isBlockSolid(x, y, z + 1);
-                if (!isNorthSolid) {
-                    addFace(FaceDirection::North, x, y, z, blockId, vertices, indices, registry,
-                            getTextureId, mainChunk);
-                }
+    int faceCount = 0;
 
-                // South (-Z)
-                bool isSouthSolid = (z == 0)
-                                        ? (neighborSouth != nullptr &&
-                                           neighborSouth->isBlockSolid(x, y, Chunk::CHUNK_SIZE - 1))
-                                        : mainChunk.isBlockSolid(x, y, z - 1);
-                if (!isSouthSolid) {
-                    addFace(FaceDirection::South, x, y, z, blockId, vertices, indices, registry,
-                            getTextureId, mainChunk);
-                }
+    // Zone the entire block iteration to see if face culling is the bottleneck
+    {
+        ZoneScopedN("Iterate Blocks & Cull");
 
-                // East (+X)
-                bool isEastSolid =
-                    (x == Chunk::CHUNK_SIZE - 1)
-                        ? (neighborEast != nullptr && neighborEast->isBlockSolid(0, y, z))
-                        : mainChunk.isBlockSolid(x + 1, y, z);
-                if (!isEastSolid) {
-                    addFace(FaceDirection::East, x, y, z, blockId, vertices, indices, registry,
-                            getTextureId, mainChunk);
-                }
+        for (int x = 0; x < Chunk::CHUNK_SIZE; x++) {
+            for (int y = 0; y < Chunk::CHUNK_SIZE; y++) {
+                for (int z = 0; z < Chunk::CHUNK_SIZE; z++) {
+                    int blockId = static_cast<int>(mainChunk.getBlock(x, y, z));
 
-                // West (-X)
-                bool isWestSolid = (x == 0)
-                                       ? (neighborWest != nullptr &&
-                                          neighborWest->isBlockSolid(Chunk::CHUNK_SIZE - 1, y, z))
-                                       : mainChunk.isBlockSolid(x - 1, y, z);
-                if (!isWestSolid) {
-                    addFace(FaceDirection::West, x, y, z, blockId, vertices, indices, registry,
-                            getTextureId, mainChunk);
-                }
+                    // Skip air blocks or non-displayable blocks
+                    if (blockId == Chunk::AIR_BLOCK_ID || !registry.isDisplayable(blockId)) {
+                        continue;
+                    }
 
-                // Top (+Y)
-                bool isTopSolid =
-                    (y == Chunk::CHUNK_SIZE - 1)
-                        ? (neighborTop != nullptr && neighborTop->isBlockSolid(x, 0, z))
-                        : mainChunk.isBlockSolid(x, y + 1, z);
-                if (!isTopSolid) {
-                    addFace(FaceDirection::Top, x, y, z, blockId, vertices, indices, registry,
-                            getTextureId, mainChunk);
-                }
+                    // North (+Z)
+                    bool isNorthSolid =
+                        (z == Chunk::CHUNK_SIZE - 1)
+                            ? (neighborNorth != nullptr && neighborNorth->isBlockSolid(x, y, 0))
+                            : mainChunk.isBlockSolid(x, y, z + 1);
+                    if (!isNorthSolid) {
+                        addFace(FaceDirection::North, x, y, z, blockId, vertices, indices,
+                                textureCache, mainChunk);
+                        faceCount++;
+                    }
 
-                // Bottom (-Y)
-                bool isBottomSolid =
-                    (y == 0) ? (neighborBottom != nullptr &&
-                                neighborBottom->isBlockSolid(x, Chunk::CHUNK_SIZE - 1, z))
-                             : mainChunk.isBlockSolid(x, y - 1, z);
-                if (!isBottomSolid) {
-                    addFace(FaceDirection::Bottom, x, y, z, blockId, vertices, indices, registry,
-                            getTextureId, mainChunk);
+                    // South (-Z)
+                    bool isSouthSolid =
+                        (z == 0) ? (neighborSouth != nullptr &&
+                                    neighborSouth->isBlockSolid(x, y, Chunk::CHUNK_SIZE - 1))
+                                 : mainChunk.isBlockSolid(x, y, z - 1);
+                    if (!isSouthSolid) {
+                        addFace(FaceDirection::South, x, y, z, blockId, vertices, indices,
+                                textureCache, mainChunk);
+                    }
+
+                    // East (+X)
+                    bool isEastSolid =
+                        (x == Chunk::CHUNK_SIZE - 1)
+                            ? (neighborEast != nullptr && neighborEast->isBlockSolid(0, y, z))
+                            : mainChunk.isBlockSolid(x + 1, y, z);
+                    if (!isEastSolid) {
+                        addFace(FaceDirection::East, x, y, z, blockId, vertices, indices,
+                                textureCache, mainChunk);
+                    }
+
+                    // West (-X)
+                    bool isWestSolid =
+                        (x == 0) ? (neighborWest != nullptr &&
+                                    neighborWest->isBlockSolid(Chunk::CHUNK_SIZE - 1, y, z))
+                                 : mainChunk.isBlockSolid(x - 1, y, z);
+                    if (!isWestSolid) {
+                        addFace(FaceDirection::West, x, y, z, blockId, vertices, indices,
+                                textureCache, mainChunk);
+                    }
+
+                    // Top (+Y)
+                    bool isTopSolid =
+                        (y == Chunk::CHUNK_SIZE - 1)
+                            ? (neighborTop != nullptr && neighborTop->isBlockSolid(x, 0, z))
+                            : mainChunk.isBlockSolid(x, y + 1, z);
+                    if (!isTopSolid) {
+                        addFace(FaceDirection::Top, x, y, z, blockId, vertices, indices,
+                                textureCache, mainChunk);
+                    }
+
+                    // Bottom (-Y)
+                    bool isBottomSolid =
+                        (y == 0) ? (neighborBottom != nullptr &&
+                                    neighborBottom->isBlockSolid(x, Chunk::CHUNK_SIZE - 1, z))
+                                 : mainChunk.isBlockSolid(x, y - 1, z);
+                    if (!isBottomSolid) {
+                        addFace(FaceDirection::Bottom, x, y, z, blockId, vertices, indices,
+                                textureCache, mainChunk);
+                    }
                 }
             }
-        }
+        } // End Iterate Blocks & Cull zone
     }
+
+    // Track metrics
+    TracyPlot("Faces Per Chunk", static_cast<int64_t>(faceCount));
+    TracyPlot("Vertices Per Chunk", static_cast<int64_t>(vertices.size()));
+    TracyPlot("Indices Per Chunk", static_cast<int64_t>(indices.size()));
 
     // Mesh generation complete
 }
 
 void ChunkMesh::addFace(FaceDirection direction, int x, int y, int z, int blockId,
                         std::vector<VoxelVertex>& vertices, std::vector<uint32_t>& indices,
-                        const BlockRegistry& registry, const TextureIdResolver& getTextureId,
-                        const Chunk& chunk) {
-    std::string faceName;
+                        const std::vector<uint32_t>& textureCache, const Chunk& chunk) {
+    // Fast texture lookup from cache - no expensive string operations!
+    // faceType: 0=top, 1=bottom, 2=side
+    // Flat indexing: textureCache[blockId * 3 + faceType]
+    int faceType;
     switch (direction) {
     case FaceDirection::Top:
-        faceName = "top";
+        faceType = 0;
         break;
     case FaceDirection::Bottom:
-        faceName = "bottom";
+        faceType = 1;
         break;
     default:
-        faceName = "side";
+        faceType = 2; // side
         break;
     }
-
-    std::string texturePath = registry.getTexturePath(blockId, faceName);
-    uint32_t textureId = getTextureId(texturePath);
+    uint32_t textureId = textureCache[blockId * 3 + faceType];
 
     auto baseIndex = static_cast<uint32_t>(vertices.size());
     uint32_t px = static_cast<uint32_t>(x);
@@ -151,6 +175,7 @@ void ChunkMesh::addFace(FaceDirection direction, int x, int y, int z, int blockI
     uint32_t v2 = 0;
     uint32_t v3 = 0;
 
+    // AO calculation and vertex packing section
     switch (direction) {
     case FaceDirection::East: // +X
         normalId = 0;
@@ -292,6 +317,7 @@ void ChunkMesh::addFace(FaceDirection direction, int x, int y, int z, int blockI
         break;
     }
 
+    // Buffer operations - pushing to vectors
     // Flip quad diagonal to fix AO artifacts
     if (ao[0] + ao[2] > ao[1] + ao[3]) {
         vertices.push_back(v0);

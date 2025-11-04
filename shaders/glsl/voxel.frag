@@ -11,8 +11,10 @@ layout(location = 0) out vec4 outFragColor;
 
 layout(set = 0, binding = 1) uniform sampler2D textureAtlas;
 
-const int TEXTURES_PER_ROW = 3;
-const float TEXTURE_TILE_SIZE = 1.0 / float(TEXTURES_PER_ROW);
+// Atlas configuration passed from C++
+layout(set = 0, binding = 2) uniform AtlasConfig {
+    int texturesPerRow;
+} atlasConfig;
 
 // Hardcoded ID for grass top texture (must match load order in C++)
 const uint GRASS_TOP_TEXTURE_ID = 2u;
@@ -27,13 +29,17 @@ const uint SOUTH_ID = 5u;
 
 void main() {
     // Calculate the UV offset for the correct tile in the atlas
-    float tileX = float(inTextureId % uint(TEXTURES_PER_ROW));
-    float tileY = float(inTextureId / uint(TEXTURES_PER_ROW));
+    // Use dynamic value from uniform instead of hardcoded constant
+    uint texturesPerRow = uint(atlasConfig.texturesPerRow);
+    float tileSizeInAtlas = 1.0 / float(texturesPerRow);
 
-    vec2 tileOffset = vec2(tileX, tileY) * TEXTURE_TILE_SIZE;
+    float tileX = float(inTextureId % texturesPerRow);
+    float tileY = float(inTextureId / texturesPerRow);
+
+    vec2 tileOffset = vec2(tileX, tileY) * tileSizeInAtlas;
 
     // Scale the face's local UVs and apply the offset
-    vec2 finalUV = tileOffset + (inUV * TEXTURE_TILE_SIZE);
+    vec2 finalUV = tileOffset + (inUV * tileSizeInAtlas);
 
     // Sample the color from the texture atlas
     vec4 textureColor = texture(textureAtlas, finalUV);

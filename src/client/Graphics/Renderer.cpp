@@ -1,5 +1,6 @@
 #include "Renderer.hpp"
 
+#include <chrono>
 #include <cmath>
 #include <fstream>
 #include <iostream>
@@ -12,6 +13,9 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
+
+#include <tracy/Tracy.hpp>
+#include <tracy/TracyVulkan.hpp>
 
 #include "../Core/Window.hpp"
 #include "../Game/Camera.hpp"
@@ -49,8 +53,8 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
     VkExtent2D swapchainExtent = _swapchain->getSwapchainExtent();
     _renderContext->createDrawImages(swapchainExtent);
 
-    // Register draw and depth images cleanup in main deletion queue
-    _mainDeletionQueue.push([this]() { _renderContext->destroyDrawImages(); });
+    // NOTE: Draw/depth images are NOT added to deletion queue because they can be
+    // recreated during window resize. We destroy them manually in the destructor.
 
     // Create semaphores for each swapchain image
     size_t swapchainImageCount = _swapchain->getSwapchainImages().size();
@@ -80,7 +84,8 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
     std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes = {
         {.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .ratio = 1.0F},
         {.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .ratio = 1.0F},
-        {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .ratio = 1.0F}};
+        {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .ratio = 1.0F},
+        {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .ratio = 1.0F}};
 
     _globalDescriptorAllocator.init(_device.getDevice(), 10, sizes);
     _mainDeletionQueue.push(
@@ -95,7 +100,8 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
     _voxelRenderer = std::make_unique<VoxelRenderer>(
         device, *_meshManager, registry, *_renderContext, *_commandExecutor, *_bufferManager,
         _globalDescriptorAllocator, *this, _finishedMeshQueue);
-    _voxelRenderer->initPipelines(_textureAtlas.imageView, _textureAtlasSampler);
+    _voxelRenderer->initPipelines(_textureAtlas.imageView, _textureAtlasSampler,
+                                  _atlasTexturesPerRow);
 
     // Initialize sky rendering pipeline
     initSkyPipeline();
@@ -104,8 +110,45 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
 }
 
 Renderer::~Renderer() {
-    vkDeviceWaitIdle(_device.getDevice());
+    auto startTime = std::chrono::high_resolution_clock::now();
+    std::cout << "[Renderer] Destructor start\n";
 
+    // Wait once at the start - this covers all GPU work from rendering
+    auto t1 = std::chrono::high_resolution_clock::now();
+    vkDeviceWaitIdle(_device.getDevice());
+    auto t2 = std::chrono::high_resolution_clock::now();
+    std::cout << "[Renderer] vkDeviceWaitIdle took: "
+              << std::chrono::duration<double, std::milli>(t2 - t1).count() << "ms\n";
+
+    // Destroy all objects that hold VMA allocations FIRST
+    // This must happen before VulkanDevice is destroyed (which owns the VMA allocator)
+
+    // 1. Destroy ImGui FIRST (it creates VMA buffers internally)
+    ImGui_ImplVulkan_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
+    ImGui::DestroyContext();
+
+    // No need to wait again - we already waited above
+
+    if (_imguiPool != VK_NULL_HANDLE) {
+        vkDestroyDescriptorPool(_device.getDevice(), _imguiPool, nullptr);
+    }
+
+    // 2. Destroy VoxelRenderer (frees all chunk vertex buffers)
+    auto t3 = std::chrono::high_resolution_clock::now();
+    _voxelRenderer.reset();
+    auto t4 = std::chrono::high_resolution_clock::now();
+    std::cout << "[Renderer] VoxelRenderer cleanup took: "
+              << std::chrono::duration<double, std::milli>(t4 - t3).count() << "ms\n";
+
+    // 3. Destroy MeshManager (no VMA allocations, but good to clean up early)
+    auto t5 = std::chrono::high_resolution_clock::now();
+    _meshManager.reset();
+    auto t6 = std::chrono::high_resolution_clock::now();
+    std::cout << "[Renderer] MeshManager cleanup took: "
+              << std::chrono::duration<double, std::milli>(t6 - t5).count() << "ms\n";
+
+    // 4. Free texture atlas (VMA image allocation - NOT in deletion queue)
     if (_textureAtlasSampler != VK_NULL_HANDLE) {
         vkDestroySampler(_device.getDevice(), _textureAtlasSampler, nullptr);
     }
@@ -116,29 +159,72 @@ Renderer::~Renderer() {
         vmaDestroyImage(_device.getAllocator(), _textureAtlas.image, _textureAtlas.allocation);
     }
 
+    // 5. Manually destroy draw/depth images (can be recreated during resize, not in deletion queue)
+    _renderContext->destroyDrawImages();
+
+    // 6. Flush deletion queue BEFORE destroying RenderContext
+    // This will destroy blue noise texture and sky pipeline (which are in the queue)
     _mainDeletionQueue.flush();
-    // Destroy managed objects first (in reverse order of creation)
-    // This ensures their internal deletion queues are flushed before the main queue
-    _voxelRenderer.reset();
-    _commandExecutor.reset();
+
+    // 7. Destroy RenderContext (deletion queue is now empty)
     _renderContext.reset();
+
+    // 8. Destroy remaining managed objects
+    _commandExecutor.reset();
     _frameManager.reset();
+
+    // 9. Finally, destroy buffer manager (no allocations should remain)
+    // Report any leaked buffers before destroying the buffer manager
+    const auto& activeAllocations = _bufferManager->getActiveAllocations();
+
+    if (!activeAllocations.empty()) {
+        std::cout << "[Renderer] WARNING: " << activeAllocations.size()
+                  << " LEAKED BUFFERS DETECTED:\n";
+        for (const auto& [vkBuffer, tracked] : activeAllocations) {
+            std::cout << "  Buffer ID #" << tracked.id << ": VkBuffer=" << tracked.buffer
+                      << ", VmaAlloc=" << tracked.allocation << ", size=" << tracked.size
+                      << " bytes"
+                      << ", purpose=" << tracked.purpose << "\n";
+        }
+    }
+
+    _bufferManager.reset();
+
+    auto endTime = std::chrono::high_resolution_clock::now();
+    std::cout << "[Renderer] Total destructor time: "
+              << std::chrono::duration<double, std::milli>(endTime - startTime).count() << "ms\n";
 }
 
-void Renderer::updateMeshes() {
+void Renderer::updateMeshes(const glm::ivec3& cameraChunkPos, int maxLoadDistance) {
     // Process finished mesh data from worker threads
     // This uploads mesh data to GPU buffers (fast operation, non-blocking)
-    _voxelRenderer->update();
+    // Only accepts meshes within maxLoadDistance to prevent "ghost chunks"
+    _voxelRenderer->update(cameraChunkPos, maxLoadDistance);
 }
 
 void Renderer::draw(float timeOfDay) {
+    ZoneScoped;
+
+    // Track memory usage in Tracy
+    {
+        // VRAM usage
+        auto vramStats = _device.getVRAMStats();
+        TracyPlot("VRAM Used (MB)", static_cast<int64_t>(vramStats.usedBytes / (1024 * 1024)));
+        TracyPlot("VRAM Budget (MB)", static_cast<int64_t>(vramStats.budgetBytes / (1024 * 1024)));
+        TracyPlot("VRAM Allocations", static_cast<int64_t>(vramStats.allocationCount));
+
+        // RAM usage (system memory)
+        TracyPlot("Loaded Chunks", static_cast<int64_t>(_voxelRenderer->getLoadedChunkCount()));
+        TracyPlot("Mesh Pool Usage (%)",
+                  static_cast<int64_t>(_voxelRenderer->getMeshPoolUsage() * 100.0F));
+    }
 
     // Get current frame from FrameManager
     auto& currentFrame = _frameManager->getCurrentFrame();
 
     // Wait for the previous frame to finish
     VkResult ret = vkWaitForFences(_device.getDevice(), 1, &currentFrame._renderFence, VK_TRUE,
-                                   VULKAN_TIMEOUT_NS);
+                                   CommandExecutor::VULKAN_TIMEOUT_NS);
     checkVkResult(ret, "Failed to wait for fence");
 
     currentFrame._deletionQueue.flush();
@@ -157,14 +243,14 @@ void Renderer::draw(float timeOfDay) {
     uint32_t swapchainImageIndex = 0;
     auto semaphoreIndex =
         static_cast<uint32_t>(_frameManager->getFrameNumber() % _swapchainSemaphores.size());
-    ret =
-        vkAcquireNextImageKHR(_device.getDevice(), _swapchain->getSwapchain(), VULKAN_TIMEOUT_NS,
-                              _swapchainSemaphores[semaphoreIndex], nullptr, &swapchainImageIndex);
+    ret = vkAcquireNextImageKHR(
+        _device.getDevice(), _swapchain->getSwapchain(), CommandExecutor::VULKAN_TIMEOUT_NS,
+        _swapchainSemaphores[semaphoreIndex], nullptr, &swapchainImageIndex);
     checkVkResult(ret, "Failed to acquire next image");
 
     if (_imagesInFlight[swapchainImageIndex] != VK_NULL_HANDLE) {
         ret = vkWaitForFences(_device.getDevice(), 1, &_imagesInFlight[swapchainImageIndex],
-                              VK_TRUE, VULKAN_TIMEOUT_NS);
+                              VK_TRUE, CommandExecutor::VULKAN_TIMEOUT_NS);
         checkVkResult(ret, "Failed to wait for in-flight image fence");
     }
     _imagesInFlight[swapchainImageIndex] = currentFrame._renderFence;
@@ -181,6 +267,8 @@ void Renderer::draw(float timeOfDay) {
 
     ret = vkBeginCommandBuffer(commandBuffer, &cmdBeginInfo);
     checkVkResult(ret, "Failed to begin command buffer");
+
+    TracyVkCollect(_device.getTracyCtx(), commandBuffer);
 
     // Get images from RenderContext
     const RenderContext::AllocatedImage& drawImage = _renderContext->getDrawImage();
@@ -200,23 +288,35 @@ void Renderer::draw(float timeOfDay) {
     }
 
     // Render sky first (will fill the background)
-    drawSky(commandBuffer, timeOfDay);
+    {
+        TracyVkZone(_device.getTracyCtx(), commandBuffer, "Sky Rendering");
+        drawSky(commandBuffer, timeOfDay);
+    }
 
     // Render voxel geometry using VoxelRenderer
-    _voxelRenderer->drawVoxels(commandBuffer, *_camera, _wireframeMode);
+    {
+        TracyVkZone(_device.getTracyCtx(), commandBuffer, "Voxel Rendering");
+        _voxelRenderer->drawVoxels(commandBuffer, *_camera, _wireframeMode);
+    }
 
-    // Transition draw image to TRANSFER_SRC for copying to swapchain
-    _commandExecutor->transitionImage(commandBuffer, drawImage.image,
-                                      VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                                      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    // Copy draw image to swapchain
+    VkImage swapchainImage;
+    {
+        TracyVkZone(_device.getTracyCtx(), commandBuffer, "Copy to Swapchain");
 
-    VkImage swapchainImage = _swapchain->getSwapchainImages().at(swapchainImageIndex);
-    _commandExecutor->transitionImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_UNDEFINED,
-                                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        // Transition draw image to TRANSFER_SRC for copying to swapchain
+        _commandExecutor->transitionImage(commandBuffer, drawImage.image,
+                                          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                          VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
-    _commandExecutor->copyImageToImage(commandBuffer, drawImage.image, swapchainImage,
-                                       {drawImage.extent.width, drawImage.extent.height},
-                                       _swapchain->getSwapchainExtent());
+        swapchainImage = _swapchain->getSwapchainImages().at(swapchainImageIndex);
+        _commandExecutor->transitionImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_UNDEFINED,
+                                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+        _commandExecutor->copyImageToImage(commandBuffer, drawImage.image, swapchainImage,
+                                           {drawImage.extent.width, drawImage.extent.height},
+                                           _swapchain->getSwapchainExtent());
+    }
 
     _commandExecutor->transitionImage(commandBuffer, swapchainImage,
                                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -239,7 +339,10 @@ void Renderer::draw(float timeOfDay) {
 
     vkCmdBeginRendering(commandBuffer, &renderInfo);
 
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
+    {
+        TracyVkZone(_device.getTracyCtx(), commandBuffer, "ImGui Rendering");
+        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
+    }
 
     vkCmdEndRendering(commandBuffer);
 
@@ -348,9 +451,7 @@ void Renderer::initImGui() {
         .poolSizeCount = static_cast<uint32_t>(std::size(pool_sizes)),
         .pPoolSizes = pool_sizes.data()};
 
-    VkDescriptorPool imguiPool = VK_NULL_HANDLE;
-
-    if (vkCreateDescriptorPool(_device.getDevice(), &pool_info, nullptr, &imguiPool) !=
+    if (vkCreateDescriptorPool(_device.getDevice(), &pool_info, nullptr, &_imguiPool) !=
         VK_SUCCESS) {
         throw std::runtime_error("Failed to create ImGui descriptor pool");
     }
@@ -365,7 +466,7 @@ void Renderer::initImGui() {
     init_info.Device = _device.getDevice();
     init_info.QueueFamily = _device.getGraphicsQueueFamily();
     init_info.Queue = _device.getQueue();
-    init_info.DescriptorPool = imguiPool;
+    init_info.DescriptorPool = _imguiPool;
     init_info.MinImageCount = 3;
     init_info.ImageCount = 3;
     init_info.UseDynamicRendering = true;
@@ -379,23 +480,25 @@ void Renderer::initImGui() {
 
     ImGui_ImplVulkan_Init(&init_info);
 
-    _mainDeletionQueue.push([this, imguiPool]() {
-        ImGui_ImplVulkan_Shutdown();
-        ImGui_ImplSDL3_Shutdown();
-        ImGui::DestroyContext();
-        vkDestroyDescriptorPool(_device.getDevice(), imguiPool, nullptr);
-    });
+    // NOTE: ImGui is NOT added to deletion queue because it needs to be destroyed
+    // before VMA allocator is destroyed (ImGui creates buffers using VMA)
 }
 
 void Renderer::updateFPS(float deltaTime) {
     _frameTimeAccumulator += deltaTime;
     _frameCount++;
 
+    // Track frame time in Tracy (every frame)
+    TracyPlot("Frame Time (ms)", static_cast<int64_t>(deltaTime * 1000.0F));
+
     // Update FPS every 0.5 seconds
     if (_frameTimeAccumulator >= 0.5F) {
         _fps = static_cast<float>(_frameCount) / _frameTimeAccumulator;
         _frameTimeAccumulator = 0.0F;
         _frameCount = 0;
+
+        // Track FPS in Tracy
+        TracyPlot("FPS", static_cast<int64_t>(_fps));
     }
 }
 
@@ -414,11 +517,31 @@ uint32_t Renderer::getTextureId(const std::string& path) {
     return id;
 }
 
-void Renderer::loadTextureAtlas() {
-    std::cout << "Loading texture atlas...\n";
+void Renderer::rebuildMeshPool(const std::vector<glm::ivec3>& unloadedChunks) {
+    if (_voxelRenderer) {
+        _voxelRenderer->rebuildMeshPool(unloadedChunks);
+    }
+}
 
+size_t Renderer::getLoadedChunkCount() const {
+    if (_voxelRenderer) {
+        return _voxelRenderer->getLoadedChunkCount();
+    }
+    return 0;
+}
+
+float Renderer::getMeshPoolUsage() const {
+    if (_voxelRenderer) {
+        return _voxelRenderer->getMeshPoolUsage();
+    }
+    return 0.0f;
+}
+
+void Renderer::loadTextureAtlas() {
     // 1. Discover all unique texture paths from the BlockRegistry
-    for (int i = 0; i < MAX_BLOCKS; ++i) {
+    // DYNAMIC: Uses actual block count from JSON
+    size_t blockCount = _blockRegistry.getBlockCount();
+    for (size_t i = 0; i < blockCount; ++i) {
         std::string path;
         path = _blockRegistry.getTexturePath(i, "all");
         if (!path.empty())
@@ -449,8 +572,6 @@ void Renderer::loadTextureAtlas() {
         throw std::runtime_error("No textures found to build atlas.");
     }
 
-    std::cout << "Found " << uniqueTexturePaths.size() << " unique textures\n";
-
     // 2. Load all images into CPU memory using stb_image
     struct ImageData {
         int width, height, channels;
@@ -477,7 +598,6 @@ void Renderer::loadTextureAtlas() {
             throw std::runtime_error("All block textures must be square and same dimensions! " +
                                      path);
         }
-        std::cout << "  Loaded: " << path << " (" << img.width << "x" << img.height << ")\n";
         loadedImages.push_back(img);
     }
 
@@ -489,9 +609,6 @@ void Renderer::loadTextureAtlas() {
     const int atlasWidth = _atlasTexturesPerRow * atlasDimension;
     const int atlasHeight = _atlasTexturesPerRow * atlasDimension;
     const VkDeviceSize atlasTotalSize = static_cast<VkDeviceSize>(atlasWidth) * atlasHeight * 4;
-
-    std::cout << "Creating atlas: " << atlasWidth << "x" << atlasHeight << " ("
-              << _atlasTexturesPerRow << "x" << _atlasTexturesPerRow << " tiles)\n";
 
     AllocatedBuffer stagingBuffer = _bufferManager->createStagingBuffer(atlasTotalSize);
 
@@ -614,13 +731,9 @@ void Renderer::loadTextureAtlas() {
     if (ret != VK_SUCCESS) {
         throw std::runtime_error("Failed to create texture atlas sampler");
     }
-
-    std::cout << "Texture atlas loaded successfully!\n";
 }
 
 void Renderer::loadBlueNoiseTexture() {
-    std::cout << "Loading blue noise texture...\n";
-
     // 1. Load pixels from disk
     int width, height, channels;
     stbi_uc* pixels = stbi_load("../../assets/textures/blue_noise/LDR_LLL1_0.png", &width, &height,
@@ -724,13 +837,9 @@ void Renderer::loadBlueNoiseTexture() {
         vmaDestroyImage(_device.getAllocator(), _blueNoiseTexture.image,
                         _blueNoiseTexture.allocation);
     });
-
-    std::cout << "Blue noise texture loaded successfully!\n";
 }
 
 void Renderer::initSkyPipeline() {
-    std::cout << "Initializing sky rendering pipeline...\n";
-
     // Load sky shaders
     std::ifstream vertFile("shaders/sky.vert.spv", std::ios::ate | std::ios::binary);
     std::ifstream fragFile("shaders/sky.frag.spv", std::ios::ate | std::ios::binary);
@@ -986,8 +1095,6 @@ void Renderer::initSkyPipeline() {
         vkDestroyPipelineLayout(_device.getDevice(), _skyPipelineLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device.getDevice(), _skyDescriptorSetLayout, nullptr);
     });
-
-    std::cout << "Sky pipeline initialized successfully!\n";
 }
 
 void Renderer::drawSky(VkCommandBuffer cmd, float timeOfDay) {

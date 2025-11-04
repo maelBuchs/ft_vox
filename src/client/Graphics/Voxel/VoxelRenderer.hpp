@@ -28,7 +28,6 @@ class MeshBufferPool;
 class VulkanBuffer;
 class DescriptorAllocatorGrowable;
 class Renderer;
-struct MeshAllocation;
 
 class VoxelRenderer {
   public:
@@ -43,19 +42,44 @@ class VoxelRenderer {
     VoxelRenderer(VoxelRenderer&&) = delete;
     VoxelRenderer& operator=(VoxelRenderer&&) = delete;
 
-    void initPipelines(VkImageView atlasView, VkSampler atlasSampler);
-    void initTestChunk();
+    void initPipelines(VkImageView atlasView, VkSampler atlasSampler, int texturesPerRow);
 
     /**
      * Update: Check for finished meshes and upload to GPU.
      * Call this every frame BEFORE drawVoxels.
+     * @param cameraChunkPos Current camera chunk position for distance checks
+     * @param maxLoadDistance Maximum distance (in chunks) to accept new meshes
      */
-    void update();
+    void update(const glm::ivec3& cameraChunkPos, int maxLoadDistance);
 
     void drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wireframeMode);
 
+    /**
+     * Rebuild the entire mesh pool and clear all chunk meshes.
+     * Call this when chunks are unloaded to free VRAM.
+     * WARNING: This waits for GPU idle - may cause a frame hitch.
+     *
+     * @param unloadedChunks List of chunk positions that were unloaded from RAM
+     */
+    void rebuildMeshPool(const std::vector<glm::ivec3>& unloadedChunks);
+
+    /**
+     * Get the current number of chunks loaded in the renderer.
+     */
+    [[nodiscard]] size_t getLoadedChunkCount() const { return _chunkDrawInfos.size(); }
+
+    /**
+     * Get mesh buffer pool usage (0.0 to 1.0).
+     * Returns the maximum of vertex and index buffer usage.
+     */
+    [[nodiscard]] float getMeshPoolUsage() const;
+
   private:
-    void initMDI(VkImageView atlasView, VkSampler atlasSampler);
+    void initMDI(VkImageView atlasView, VkSampler atlasSampler, int texturesPerRow);
+    void ensureBufferCapacity(uint32_t requiredChunks);
+
+    static constexpr uint32_t MAX_CHUNKS = 16384; // Initial maximum number of chunks that can be rendered
+    static constexpr float TYPICAL_MAX_VRAM_MB = 512.0f; // Assume 512MB as "100%" for UI display
 
     VulkanDevice& _device;
     MeshManager& _meshManager;
@@ -71,15 +95,13 @@ class VoxelRenderer {
 
     VkPipelineLayout _voxelPipelineLayout = VK_NULL_HANDLE;
 
-    std::unique_ptr<Chunk> _testChunk;
-
     // --- MDI Resources ---
     std::unique_ptr<MeshBufferPool> _meshPool;
 
     struct ChunkDrawInfo {
         glm::ivec3 chunkCoords{};
         glm::vec3 worldPosition{};
-        MeshAllocation mesh{};
+        ChunkMeshBuffers meshBuffers{}; // Per-chunk VMA-allocated buffers
     };
 
     std::vector<ChunkDrawInfo> _chunkDrawInfos;
@@ -90,6 +112,8 @@ class VoxelRenderer {
 
     AllocatedBuffer _indirectBuffer;
     AllocatedBuffer _chunkDataBuffer;
+    AllocatedBuffer _atlasConfigBuffer; // Uniform buffer for atlas configuration
+    uint32_t _currentMaxChunks = MAX_CHUNKS; // Current capacity of indirect/chunk buffers
 
     std::vector<VkDrawIndexedIndirectCommand> _indirectCommands;
     std::vector<GPUChunkData> _chunkDrawData;
