@@ -74,7 +74,7 @@ void main() {
 
     // Apply lighting, directional brightness, and ambient occlusion
     vec3 finalOutputColor = finalColor * lighting * faceBrightness * inAO;
-    vec3 encoded = finalOutputColor * vec3(1.0 / 2.2);
+    vec3 encoded = pow(finalOutputColor, vec3(1.0 / 2.2));
     outFragColor = vec4(encoded, textureColor.a);
 
     // Note: Transparent fragment discarding disabled to avoid requiring

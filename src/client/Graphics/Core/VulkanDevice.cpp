@@ -65,6 +65,7 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
 
     VkPhysicalDeviceVulkan12Features features12{
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+        .drawIndirectCount = VK_TRUE,
         .descriptorIndexing = VK_TRUE,
         .bufferDeviceAddress = VK_TRUE};
 

@@ -141,6 +141,7 @@ file(GLOB_RECURSE SHADER_SOURCES
     "${CMAKE_SOURCE_DIR}/shaders/glsl/voxel.frag"
     "${CMAKE_SOURCE_DIR}/shaders/glsl/sky.vert"
     "${CMAKE_SOURCE_DIR}/shaders/glsl/sky.frag"
+    "${CMAKE_SOURCE_DIR}/shaders/glsl/frustum_cull.comp"
 )
 
 set(SPIRV_SHADERS "")

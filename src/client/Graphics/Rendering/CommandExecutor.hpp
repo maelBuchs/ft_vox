@@ -9,7 +9,7 @@ class RenderContext;
 
 class CommandExecutor {
   public:
-    static constexpr uint64_t VULKAN_TIMEOUT_NS = 1000000000; // 1 second
+    static constexpr uint64_t VULKAN_TIMEOUT_NS = 10000000000; // 10 seconds (handles heavy chunk loading)
 
     CommandExecutor(VulkanDevice& device, RenderContext& context);
     ~CommandExecutor() = default;

@@ -120,6 +120,19 @@ Renderer::~Renderer() {
     std::cout << "[Renderer] vkDeviceWaitIdle took: "
               << std::chrono::duration<double, std::milli>(t2 - t1).count() << "ms\n";
 
+    // CRITICAL: Explicitly wait for all frame fences to ensure VMA tracking is clear
+    // vkDeviceWaitIdle alone doesn't reset frame fence state, which VMA uses to track buffer usage
+    // NOTE: We DON'T reset fences here - let FrameManager destructor handle that
+    std::cout << "[Renderer] Synchronizing frame fences...\n";
+    for (size_t i = 0; i < FrameManager::FRAME_OVERLAP; i++) {
+        const auto& frame = _frameManager->getFrameData(i);
+        if (frame._renderFence != VK_NULL_HANDLE) {
+            vkWaitForFences(_device.getDevice(), 1, &frame._renderFence, VK_TRUE, UINT64_MAX);
+            // Don't reset here - FrameManager destructor will wait again and needs signaled fences
+        }
+    }
+    std::cout << "[Renderer] Frame fences synchronized\n";
+
     // Destroy all objects that hold VMA allocations FIRST
     // This must happen before VulkanDevice is destroyed (which owns the VMA allocator)
 
@@ -162,7 +175,11 @@ Renderer::~Renderer() {
     // 5. Manually destroy draw/depth images (can be recreated during resize, not in deletion queue)
     _renderContext->destroyDrawImages();
 
-    // 6. Flush deletion queue BEFORE destroying RenderContext
+    // 6. CRITICAL: Wait for GPU again before destroying pipeline layouts
+    // VoxelRenderer already waited, but sky pipeline might still be in use
+    vkDeviceWaitIdle(_device.getDevice());
+
+    // 7. Flush deletion queue BEFORE destroying RenderContext
     // This will destroy blue noise texture and sky pipeline (which are in the queue)
     _mainDeletionQueue.flush();
 
