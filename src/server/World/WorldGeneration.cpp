@@ -146,6 +146,16 @@ std::shared_ptr<Chunk> WorldManager::generateChunk(const glm::ivec3& pos) {
             }
         }
     }
+    for (int bx = 0; bx < Chunk::CHUNK_SIZE; bx++) {
+        for (int bz = 0; bz < Chunk::CHUNK_SIZE; bz++) {
+            int maxHeight = heightMap[bx][bz];
+            for (int by = 0; by < Chunk::CHUNK_SIZE; by++) {
+                if (CHUNK_TO_WORLD(by, pos[1]) < 80 && chunk->getBlock(bx, by, bz) == 0) {
+                    chunk->setBlock(bx, by, bz, 6); // Set block ID to 1 (solid block)
+                }
+            }
+        }
+    }
 
     // Add surface layers using same height map
     addSurface(chunk.get(), heightMap);

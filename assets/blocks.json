@@ -71,7 +71,7 @@
     "id": 6,
     "name": "water",
     "textures": {
-      "all": "../../assets/textures/block/stone.png"
+      "all": "../../assets/textures/block/water.png"
     },
     "tags": {
       "displayable": true,
