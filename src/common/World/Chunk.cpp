@@ -39,17 +39,15 @@ std::vector<BiomeType> determineBiome(int x, int z, Chunk& chunk) {
             int worldX = CHUNK_TO_WORLD(localX, chunk.getPosition().x);
             int worldZ = CHUNK_TO_WORLD(localZ, chunk.getPosition().z);
 
-            float temperature = perlinNoise(worldX, worldZ, NoiseConfig::TEMPERATURE);
+            float continent = perlinNoise(worldX, worldZ, NoiseConfig::CONTINENT);
 
             float humidity = perlinNoise(worldX, worldZ, NoiseConfig::HUMIDITY);
 
-            BiomeType biome;
-            if (temperature < 0.3f) {
-                biome = BiomeType::OCEAN;
-            } else if (temperature < 0.6f) {
-                biome = BiomeType::PLAINS;
+            BiomeType biome = BiomeType::NONE;
+            if (continent < 0) {
+                biome = BiomeType::NONE;
             } else {
-                biome = BiomeType::MOUNTAINS;
+                biome = BiomeType::PLAINS;
             }
 
             biomeData.push_back(biome);

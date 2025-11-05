@@ -79,5 +79,8 @@ float perlinNoise(int x, int y, NoiseParams params) {
         amplitude *= params.persistence;
         frequency *= 2.0F;
     }
-    return maxValue == 0 ? 0 : total / maxValue;
+    maxValue == 0 ? 0 : total / maxValue;
+    float normalized = maxValue == 0 ? 0 : total / maxValue;
+    // Remap de [0,1] à [-2,2]
+    return (normalized * 4.0f) - 2.0f;
 }

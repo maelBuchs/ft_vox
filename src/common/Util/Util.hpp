@@ -24,11 +24,11 @@ struct BiomeParams {
 };
 namespace NoiseConfig {
 constexpr NoiseParams TEMPERATURE{
-    .baseFrequency = 0.01F, .seed = SEED, .octaves = 4, .persistence = 0.5F};
+    .baseFrequency = 0.005F, .seed = SEED, .octaves = 4, .persistence = 0.5F};
 constexpr NoiseParams HUMIDITY{
-    .baseFrequency = 0.01F, .seed = SEED, .octaves = 4, .persistence = 0.5F};
+    .baseFrequency = 0.005F, .seed = SEED, .octaves = 4, .persistence = 0.5F};
 constexpr NoiseParams CONTINENT{
-    .baseFrequency = 0.005F, .seed = SEED, .octaves = 5, .persistence = 0.5F};
+    .baseFrequency = 0.01F, .seed = SEED, .octaves = 5, .persistence = 0.5F};
 constexpr NoiseParams EROSION{
     .baseFrequency = 0.02F, .seed = SEED, .octaves = 3, .persistence = 0.5F};
 constexpr NoiseParams WEIRDNESS{
