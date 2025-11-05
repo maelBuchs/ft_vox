@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -14,6 +15,7 @@
 #include "client/Game/Camera.hpp"
 #include "client/Graphics/Core/VulkanDevice.hpp"
 #include "client/Graphics/Renderer.hpp"
+#include "common/Util/Util.hpp"
 #include "common/World/BlockRegistry.hpp"
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
@@ -359,7 +361,20 @@ void App::run() {
             break;
         }
         ImGui::Text("Biome: %s", biomeName.c_str());
-
+        if (currentChunk != nullptr) {
+            auto currentBlockNoise =
+                currentChunk->getNoiseParams(WORLD_TO_CHUNK(static_cast<int>(cameraPos[0])),
+                                             WORLD_TO_CHUNK(static_cast<int>(cameraPos[2])));
+            char noiseText[256];
+            std::snprintf(noiseText, sizeof(noiseText),
+                          "T = %.3f, H = %.3f, C = %.3f, E = %.3f, W = %.3f, D = %.3f",
+                          currentBlockNoise.temperature, currentBlockNoise.humidity,
+                          currentBlockNoise.continent, currentBlockNoise.erosion,
+                          currentBlockNoise.weirdness, currentBlockNoise.depth);
+            ImGui::TextUnformatted(noiseText);
+        } else {
+            ImGui::TextUnformatted("Out Of Boundaries");
+        }
         ImGui::Separator();
         if (ImGui::Button("Quit")) {
             inputManager.setShouldQuit(true);
