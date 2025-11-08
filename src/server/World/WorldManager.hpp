@@ -17,6 +17,7 @@
 
 #include "common/Protocol/Protocol.hpp"
 #include "common/Util/ThreadSafeQueue.hpp"
+#include "common/Util/Util.hpp"
 #include "common/World/Chunk.hpp"
 
 #define SEED 42L
@@ -118,6 +119,8 @@ class WorldManager {
         return nullptr; // Return nullptr if not found
     }
 
+    tk::spline& getHeightSpline() { return _heightSpline; }
+
   private:
     /**
      * Generation worker thread main loop.
@@ -135,7 +138,7 @@ class WorldManager {
      * Generate a chunk at the given position.
      * Uses Perlin noise for terrain generation.
      */
-    static std::shared_ptr<Chunk> generateChunk(const glm::ivec3& pos);
+    std::shared_ptr<Chunk> generateChunk(const glm::ivec3& pos);
 
     /**
      * Get a chunk from cache or return nullptr if not loaded.
@@ -168,7 +171,7 @@ class WorldManager {
     std::atomic<bool> _running{false};
     std::vector<std::unique_ptr<std::thread>> _generationWorkers;
     std::unique_ptr<std::thread> _completionProcessor;
-    static constexpr int NUM_GENERATION_WORKERS = 4; // Parallel generation threads
+    static constexpr int kNUM_GENERATION_WORKERS = 4; // Parallel generation threads
 
     // Chunk storage and tracking (protected by mutex)
     mutable std::mutex _chunkMutex;
@@ -181,4 +184,7 @@ class WorldManager {
     // Performance instrumentation
     std::atomic<uint64_t> _totalChunksGenerated{0};
     std::atomic<uint64_t> _totalMeshingTasksEnqueued{0};
+
+    // World generation tools
+    tk::spline _heightSpline;
 };

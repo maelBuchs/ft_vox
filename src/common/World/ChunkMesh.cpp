@@ -64,7 +64,7 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                     int blockId = static_cast<int>(mainChunk.getBlock(x, y, z));
 
                     // Skip air blocks or non-displayable blocks
-                    if (blockId == Chunk::AIR_BLOCK_ID || !registry.isDisplayable(blockId)) {
+                    if (blockId == 0 || !registry.isDisplayable(blockId)) {
                         continue;
                     }
 
@@ -147,7 +147,7 @@ void ChunkMesh::addFace(FaceDirection direction, int x, int y, int z, int blockI
     // Fast texture lookup from cache - no expensive string operations!
     // faceType: 0=top, 1=bottom, 2=side
     // Flat indexing: textureCache[blockId * 3 + faceType]
-    int faceType;
+    int faceType = 0;
     switch (direction) {
     case FaceDirection::Top:
         faceType = 0;
@@ -159,7 +159,7 @@ void ChunkMesh::addFace(FaceDirection direction, int x, int y, int z, int blockI
         faceType = 2; // side
         break;
     }
-    uint32_t textureId = textureCache[blockId * 3 + faceType];
+    uint32_t textureId = textureCache[(blockId * 3) + faceType];
 
     auto baseIndex = static_cast<uint32_t>(vertices.size());
     uint32_t px = static_cast<uint32_t>(x);
@@ -167,7 +167,9 @@ void ChunkMesh::addFace(FaceDirection direction, int x, int y, int z, int blockI
     uint32_t pz = static_cast<uint32_t>(z);
     uint32_t normalId = 0;
 
-    bool s1, s2, c; // side1, side2, corner for AO
+    bool s1 = false;
+    bool s2 = false;
+    bool c = false; // side1, side2, corner for AO
     uint32_t ao[4]; // 0: BL, 1: BR, 2: TR, 3: TL
 
     uint32_t v0 = 0;

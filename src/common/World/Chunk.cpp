@@ -1,6 +1,7 @@
 #include "Chunk.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <random>
@@ -14,40 +15,43 @@
 #define NB_ADD_LAND 5
 
 using Matrix = std::vector<std::vector<uint32_t>>;
+namespace {
+// std::vector<uint8_t> matrixToBiomeData(const Matrix& biomeMap) {
+//     int width = biomeMap.size();
+//     int height = biomeMap[0].size();
+//     std::vector<uint8_t> biomeData;
+//     biomeData.reserve(width * height);
 
-std::vector<uint8_t> matrixToBiomeData(const Matrix& biomeMap) {
-    int width = biomeMap.size();
-    int height = biomeMap[0].size();
-    std::vector<uint8_t> biomeData;
-    biomeData.reserve(width * height);
+//     for (int x = 0; x < width; ++x) {
+//         for (int z = 0; z < height; ++z) {
+//             biomeData.push_back(static_cast<uint8_t>(biomeMap[x][z]));
+//         }
+//     }
 
-    for (int x = 0; x < width; ++x) {
-        for (int z = 0; z < height; ++z) {
-            biomeData.push_back(static_cast<uint8_t>(biomeMap[x][z]));
-        }
-    }
+//     return biomeData;
+// }
 
-    return biomeData;
-}
-
-std::vector<BiomeType> determineBiome(int x, int z, Chunk& chunk) {
+std::vector<BiomeType> determineBiome(Chunk& chunk) {
     std::vector<BiomeType> biomeData;
-    biomeData.reserve(Chunk::CHUNK_SIZE * Chunk::CHUNK_SIZE);
+    biomeData.reserve(static_cast<long>(Chunk::CHUNK_SIZE) * Chunk::CHUNK_SIZE);
 
     for (int localX = 0; localX < Chunk::CHUNK_SIZE; ++localX) {
         for (int localZ = 0; localZ < Chunk::CHUNK_SIZE; ++localZ) {
-            int worldX = CHUNK_TO_WORLD(localX, chunk.getPosition().x);
-            int worldZ = CHUNK_TO_WORLD(localZ, chunk.getPosition().z);
+            int worldX = CHUNK_TO_WORLD(localX, chunk.getPosition()[0]);
+            int worldZ = CHUNK_TO_WORLD(localZ, chunk.getPosition()[2]);
 
-            float continent = perlinNoise(worldX, worldZ, NoiseConfig::CONTINENT);
+            float continent = perlinNoise(worldX, worldZ, noise_config::kCONTINENT);
 
-            float humidity = perlinNoise(worldX, worldZ, NoiseConfig::HUMIDITY);
+            float humidity = perlinNoise(worldX, worldZ, noise_config::kHUMIDITY);
 
-            BiomeType biome = BiomeType::NONE;
+            BiomeType biome = BiomeType::kNONE;
             if (continent < 0) {
-                biome = BiomeType::NONE;
+                biome = BiomeType::kNONE;
             } else {
-                biome = BiomeType::PLAINS;
+                biome = BiomeType::kPLAINS;
+            }
+            if (BiomeType::kPLAINS == biome && humidity < -0.3F) {
+                biome = BiomeType::kMOUNTAINS;
             }
 
             biomeData.push_back(biome);
@@ -56,11 +60,12 @@ std::vector<BiomeType> determineBiome(int x, int z, Chunk& chunk) {
 
     return biomeData;
 }
+} // namespace
 
 Chunk::Chunk(int x, int y, int z) : position{x, y, z}, _blocks{}, _isEmpty(false) {
-    _blocks.fill(AIR_BLOCK_ID);
+    _blocks.fill(0);
 
-    _biomeData = determineBiome(x, z, *this);
+    _biomeData = determineBiome(*this);
     // if (!loadChunk()) {
     // generateChunk();
     // }
@@ -68,7 +73,7 @@ Chunk::Chunk(int x, int y, int z) : position{x, y, z}, _blocks{}, _isEmpty(false
 
 uint8_t Chunk::getBlock(int x, int y, int z) const {
     if (!isInBounds(x, y, z)) {
-        return AIR_BLOCK_ID;
+        return 0;
     }
     return _blocks.at(static_cast<decltype(_blocks)::size_type>(getIndex(x, y, z)));
 }
@@ -78,7 +83,7 @@ void Chunk::setBlock(int x, int y, int z, uint8_t blockId) {
         return;
     }
     _blocks.at(static_cast<decltype(_blocks)::size_type>(getIndex(x, y, z))) = blockId;
-    if (blockId != AIR_BLOCK_ID) {
+    if (blockId != 0) {
         _isEmpty = false;
     }
 }
@@ -87,13 +92,13 @@ bool Chunk::isBlockSolid(int x, int y, int z) const {
     if (!isInBounds(x, y, z)) {
         return false;
     }
-    return getBlock(x, y, z) != AIR_BLOCK_ID;
+    return getBlock(x, y, z) != 0;
 }
 
-bool Chunk::isInBounds(int x, int y, int z) const {
+bool Chunk::isInBounds(int x, int y, int z) {
     return x >= 0 && x < CHUNK_SIZE && y >= 0 && y < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE;
 }
 
-int Chunk::getIndex(int x, int y, int z) const {
+int Chunk::getIndex(int x, int y, int z) {
     return x + (y * CHUNK_SIZE) + (z * CHUNK_SIZE * CHUNK_SIZE);
 }

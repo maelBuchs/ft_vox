@@ -28,8 +28,15 @@
 #define MAX_THREADS 2
 #define CHUNK_TO_WORLD(b, c) (((c) * Chunk::CHUNK_SIZE) + (b))
 
-enum class BiomeType : uint8_t { OCEAN, PLAINS, MOUNTAINS, NONE };
-enum class NoiseType { TEMPERATURE, HUMIDITY, CONTINENT, EROSION, WEIRDNESS, DEPTH };
+enum class BiomeType : uint8_t { kOCEAN, kPLAINS, kMOUNTAINS, kNONE };
+enum class NoiseType : std::uint8_t {
+    kTEMPERATURE,
+    kHUMIDITY,
+    kCONTINENT,
+    kEROSION,
+    kWEIRDNESS,
+    kDEPTH
+};
 class Chunk;
 using chunkMap = std::unordered_map<glm::ivec3, std::unique_ptr<Chunk>>;
 
@@ -39,7 +46,6 @@ class Chunk {
   public:
     static constexpr int CHUNK_SIZE = 32;
     static constexpr int VOLUME = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
-    static constexpr uint8_t AIR_BLOCK_ID = 0;
 
     Chunk(int x, int y, int z);
     Chunk() = default;
@@ -56,12 +62,12 @@ class Chunk {
 
     // Helper functions
     [[nodiscard]] bool isBlockSolid(int x, int y, int z) const;
-    [[nodiscard]] bool isInBounds(int x, int y, int z) const;
-    [[nodiscard]] int getIndex(int x, int y, int z) const;
+    [[nodiscard]] static bool isInBounds(int x, int y, int z);
+    [[nodiscard]] static int getIndex(int x, int y, int z);
     // [[nodiscard]] uint8_t getBiomeDataAt(int x, int z) const {
     //     int width = static_cast<int>(std::sqrt(_biomeData.size()));
     //     if (x < 0 || x >= width || z < 0 || z >= width) {
-    //         return static_cast<uint8_t>(BiomeType::NONE);
+    //         return static_cast<uint8_t>(BiomeType::kNONE);
     //     }
     //     return _biomeData[(z * width + x)];
     // }
@@ -75,12 +81,12 @@ class Chunk {
         if (_biomeData.size() < 1) {
             return "N/A";
         }
-        switch (static_cast<BiomeType>(_biomeData[((pos.x * CHUNK_SIZE) + pos.z)])) {
-        case BiomeType::PLAINS:
+        switch (static_cast<BiomeType>(_biomeData[((pos[0] * CHUNK_SIZE) + pos[2])])) {
+        case BiomeType::kPLAINS:
             return "Plains";
-        case BiomeType::MOUNTAINS:
+        case BiomeType::kMOUNTAINS:
             return "Mountains";
-        case BiomeType::OCEAN:
+        case BiomeType::kOCEAN:
             return "Ocean";
         default:
             return "Unknown";
@@ -90,18 +96,18 @@ class Chunk {
         int bx = CHUNK_TO_WORLD(x, position[0]);
         int bz = CHUNK_TO_WORLD(z, position[2]);
         switch (type) {
-        case NoiseType::TEMPERATURE:
-            return perlinNoise(bx, bz, NoiseConfig::TEMPERATURE);
-        case NoiseType::HUMIDITY:
-            return perlinNoise(bx, bz, NoiseConfig::HUMIDITY);
-        case NoiseType::CONTINENT:
-            return perlinNoise(bx, bz, NoiseConfig::CONTINENT);
-        case NoiseType::EROSION:
-            return perlinNoise(bx, bz, NoiseConfig::EROSION);
-        case NoiseType::WEIRDNESS:
-            return perlinNoise(bx, bz, NoiseConfig::WEIRDNESS);
-        case NoiseType::DEPTH:
-            return perlinNoise(bx, bz, NoiseConfig::DEPTH);
+        case NoiseType::kTEMPERATURE:
+            return perlinNoise(bx, bz, noise_config::kTEMPERATURE);
+        case NoiseType::kHUMIDITY:
+            return perlinNoise(bx, bz, noise_config::kHUMIDITY);
+        case NoiseType::kCONTINENT:
+            return perlinNoise(bx, bz, noise_config::kCONTINENT);
+        case NoiseType::kEROSION:
+            return perlinNoise(bx, bz, noise_config::kEROSION);
+        case NoiseType::kWEIRDNESS:
+            return perlinNoise(bx, bz, noise_config::kWEIRDNESS);
+        case NoiseType::kDEPTH:
+            return perlinNoise(bx, bz, noise_config::kDEPTH);
         default:
             return 0.0F;
         }
@@ -110,27 +116,27 @@ class Chunk {
         int bx = CHUNK_TO_WORLD(x, position[0]);
         int bz = CHUNK_TO_WORLD(z, position[2]);
         BiomeParams biomeParams{};
-        biomeParams.temperature = perlinNoise(bx, bz, NoiseConfig::TEMPERATURE);
-        biomeParams.humidity = perlinNoise(bx, bz, NoiseConfig::HUMIDITY);
-        biomeParams.continent = perlinNoise(bx, bz, NoiseConfig::CONTINENT);
-        biomeParams.erosion = perlinNoise(bx, bz, NoiseConfig::EROSION);
-        biomeParams.weirdness = perlinNoise(bx, bz, NoiseConfig::WEIRDNESS);
-        biomeParams.depth = perlinNoise(bx, bz, NoiseConfig::DEPTH);
+        biomeParams.kTEMPERATURE = perlinNoise(bx, bz, noise_config::kTEMPERATURE);
+        biomeParams.humidity = perlinNoise(bx, bz, noise_config::kHUMIDITY);
+        biomeParams.continent = perlinNoise(bx, bz, noise_config::kCONTINENT);
+        biomeParams.erosion = perlinNoise(bx, bz, noise_config::kEROSION);
+        biomeParams.weirdness = perlinNoise(bx, bz, noise_config::kWEIRDNESS);
+        biomeParams.depth = perlinNoise(bx, bz, noise_config::kDEPTH);
         return biomeParams;
     }
     BiomeType getBiomeDataAt(int x, int z) const {
         int width = static_cast<int>(std::sqrt(_biomeData.size()));
         if (x < 0 || x >= width || z < 0 || z >= width) {
-            return BiomeType::NONE;
+            return BiomeType::kNONE;
         }
-        return _biomeData[(x * width + z)];
+        return _biomeData[((x * width) + z)];
     }
 
   private:
-    glm::ivec3 position;
-    std::array<uint8_t, VOLUME> _blocks;
+    glm::ivec3 position{};
+    std::array<uint8_t, VOLUME> _blocks{};
     bool _isEmpty = true;
-    int8_t _biome = static_cast<int8_t>(BiomeType::PLAINS);
+    int8_t _biome = static_cast<int8_t>(BiomeType::kPLAINS);
     std::vector<BiomeType> _biomeData;
     void generateChunk();
     bool loadChunk();

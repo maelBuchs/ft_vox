@@ -341,19 +341,19 @@ void App::run() {
             (currentChunk != nullptr)
                 ? currentChunk->getBiomeDataAt(WORLD_TO_CHUNK(static_cast<int>(cameraPos[0])),
                                                WORLD_TO_CHUNK(static_cast<int>(cameraPos[2])))
-                : BiomeType::NONE;
+                : BiomeType::kNONE;
         std::string biomeName;
         switch (currentBiomeData) {
-        case BiomeType::PLAINS:
+        case BiomeType::kPLAINS:
             biomeName = "Plains";
             break;
-        case BiomeType::MOUNTAINS:
+        case BiomeType::kMOUNTAINS:
             biomeName = "Mountains";
             break;
-        case BiomeType::OCEAN:
+        case BiomeType::kOCEAN:
             biomeName = "Ocean";
             break;
-        case BiomeType::NONE:
+        case BiomeType::kNONE:
             biomeName = "skill issue";
             break;
         default:
@@ -368,7 +368,7 @@ void App::run() {
             char noiseText[256];
             std::snprintf(noiseText, sizeof(noiseText),
                           "T = %.3f, H = %.3f, C = %.3f, E = %.3f, W = %.3f, D = %.3f",
-                          currentBlockNoise.temperature, currentBlockNoise.humidity,
+                          currentBlockNoise.kTEMPERATURE, currentBlockNoise.humidity,
                           currentBlockNoise.continent, currentBlockNoise.erosion,
                           currentBlockNoise.weirdness, currentBlockNoise.depth);
             ImGui::TextUnformatted(noiseText);
