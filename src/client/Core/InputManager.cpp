@@ -71,8 +71,13 @@ void InputManager::updateCamera(Camera& camera, float deltaTime) {
     if (_mouseDelta.x != 0.0F || _mouseDelta.y != 0.0F) {
         camera.processMouseMovement(_mouseDelta.x, -_mouseDelta.y);
     }
-
     // Process keyboard movement
+    if (isKeyPressed(SDL_SCANCODE_LALT)) {
+        camera.setSpeed(5.0F);
+    } else {
+        camera.setSpeed(1.0F);
+    }
+
     if (isKeyPressed(SDL_SCANCODE_W)) {
         camera.processKeyboard(CameraMovement::Forward, deltaTime);
     }
