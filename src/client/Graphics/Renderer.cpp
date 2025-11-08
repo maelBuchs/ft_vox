@@ -33,9 +33,9 @@
 #include "Voxel/VoxelRenderer.hpp"
 
 Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry,
-                   ThreadSafeQueue<MeshData>& finishedMeshQueue)
+                   std::vector<std::unique_ptr<ThreadSafeQueue<MeshData>>>& perThreadMeshQueues)
     : _window(window), _device(device), _blockRegistry(registry),
-      _finishedMeshQueue(finishedMeshQueue) {
+      _perThreadMeshQueues(perThreadMeshQueues) {
     try {
         _swapchain = std::make_unique<VulkanSwapchain>(window, device);
         _bufferManager = std::make_unique<VulkanBuffer>(device);
@@ -99,7 +99,7 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
     // Initialize voxel renderer
     _voxelRenderer = std::make_unique<VoxelRenderer>(
         device, *_meshManager, registry, *_renderContext, *_commandExecutor, *_bufferManager,
-        _globalDescriptorAllocator, *this, _finishedMeshQueue);
+        _globalDescriptorAllocator, *this, _perThreadMeshQueues);
     _voxelRenderer->initPipelines(_textureAtlas.imageView, _textureAtlasSampler,
                                   _atlasTexturesPerRow);
 
@@ -552,6 +552,14 @@ float Renderer::getMeshPoolUsage() const {
         return _voxelRenderer->getMeshPoolUsage();
     }
     return 0.0f;
+}
+
+// PHASE 1: Expose frame number for double-buffered resources
+uint64_t Renderer::getFrameNumber() const {
+    if (_frameManager) {
+        return _frameManager->getFrameNumber();
+    }
+    return 0;
 }
 
 void Renderer::loadTextureAtlas() {

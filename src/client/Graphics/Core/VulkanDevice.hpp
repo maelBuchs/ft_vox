@@ -26,6 +26,14 @@ class VulkanDevice {
     [[nodiscard]] VmaAllocator getAllocator() const { return _allocator; }
     [[nodiscard]] TracyVkCtx getTracyCtx() const { return _tracyCtx; }
 
+    // PHASE 2: Async transfer queue support
+    [[nodiscard]] bool hasAsyncTransferQueue() const { return _hasAsyncTransfer; }
+    [[nodiscard]] VkQueue getTransferQueue() const { return _transferQueue; }
+    [[nodiscard]] uint32_t getTransferQueueFamily() const { return _transferQueueFamily; }
+
+    // Mesh shader support query
+    [[nodiscard]] bool supportsMeshShaders() const { return _meshShaderSupported; }
+
     // Get current VRAM usage statistics
     struct VRAMStats {
         uint64_t usedBytes;
@@ -46,4 +54,10 @@ class VulkanDevice {
     VkCommandPool _tracyCommandPool;
     VkCommandBuffer _tracyCommandBuffer;
     TracyVkCtx _tracyCtx;
+    bool _meshShaderSupported;
+
+    // PHASE 2: Async transfer queue
+    bool _hasAsyncTransfer;
+    VkQueue _transferQueue;
+    uint32_t _transferQueueFamily;
 };

@@ -69,7 +69,8 @@ class App {
     // Communication queues (owned by App, passed by reference to workers)
     ThreadSafeQueue<ChunkRequest> _chunkRequestQueue;
     ThreadSafeQueue<GenerationTask> _meshingTaskQueue;
-    ThreadSafeQueue<MeshData> _finishedMeshQueue;
+    // PER-THREAD mesh queues to eliminate lock contention (each thread gets its own queue)
+    std::vector<std::unique_ptr<ThreadSafeQueue<MeshData>>> _perThreadMeshQueues;
     ThreadSafeQueue<MeshingComplete> _meshingCompleteQueue;
 
     // Configurable chunk load radius (in chunks)

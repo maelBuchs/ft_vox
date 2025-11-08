@@ -85,6 +85,10 @@ class MeshBufferPool {
     [[nodiscard]] VkDeviceSize getIndexBufferCapacity() const { return _currentIndexBufferSize; }
     [[nodiscard]] float getMemoryUsage() const;
 
+    // PHASE 6: Public staging buffer pool API for all buffer types
+    enum class StagingType { Vertex, Index, Generic };
+    AllocatedBuffer acquireStagingBuffer(VkDeviceSize requiredSize, StagingType type);
+
   private:
     VulkanDevice& _device;
     VulkanBuffer& _bufferManager;
@@ -136,5 +140,44 @@ class MeshBufferPool {
     void processPendingIndexFrees();
     void ensureIndexBufferCapacity(
         uint32_t requiredIndices,
+        const std::function<void(std::function<void(VkCommandBuffer)>&&)>& immediateSubmit);
+
+    // ========================================================================
+    // PHASE 3: BATCHED UPLOAD SYSTEM
+    // ========================================================================
+    // Instead of immediate submits per chunk, queue all uploads and submit once
+    struct PendingUpload {
+        AllocatedBuffer stagingVertex;
+        AllocatedBuffer stagingIndex;
+        VkBuffer dstVertexBuffer;
+        VkBuffer dstIndexBuffer;
+        VkDeviceSize vertexSize;
+        VkDeviceSize indexSize;
+        uint32_t indexOffset; // Offset in mega index buffer
+    };
+    std::vector<PendingUpload> _pendingUploads;
+
+    // ========================================================================
+    // PHASE 4: STAGING BUFFER POOL (eliminates create/destroy overhead)
+    // ========================================================================
+    struct StagingBuffer {
+        AllocatedBuffer buffer;
+        VkDeviceSize size;
+        uint32_t frameDelay = 0; // 0 = available, >0 = in use (frames until recyclable)
+    };
+    std::vector<StagingBuffer> _stagingVertexPool;
+    std::vector<StagingBuffer> _stagingIndexPool;
+    std::vector<StagingBuffer> _stagingGenericPool; // PHASE 6: For chunk metadata and other uploads
+
+    static constexpr VkDeviceSize STAGING_BUFFER_SIZE_VERTEX = 128 * 1024;  // 128KB per buffer
+    static constexpr VkDeviceSize STAGING_BUFFER_SIZE_INDEX = 64 * 1024;    // 64KB per buffer
+    static constexpr VkDeviceSize STAGING_BUFFER_SIZE_GENERIC = 16 * 1024;  // 16KB per buffer (PHASE 6)
+
+    // Mark staging buffers as recyclable after frame delay
+    void updateStagingPools();
+
+  public:
+    // PHASE 3: Submit all pending uploads in a single batch
+    void submitPendingUploads(
         const std::function<void(std::function<void(VkCommandBuffer)>&&)>& immediateSubmit);
 };

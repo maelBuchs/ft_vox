@@ -101,11 +101,13 @@ std::array<glm::vec4, 6> Camera::getFrustumPlanes(const glm::mat4& projection) c
         }
     }
 
-    // CRITICAL: Negate all planes for correct orientation with GLM
-    // Testing shows we need negation for proper culling behavior
+    // Don't negate - test if this fixes the grid pattern issue
+    // The shader will need to test: distance < -radius instead of distance > radius
+    /*
     for (auto& plane : planes) {
         plane = -plane;
     }
+    */
 
     return planes;
 }

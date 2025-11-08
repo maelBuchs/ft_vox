@@ -35,9 +35,15 @@ App::App() {
         _window = std::make_unique<Window>(WIDTH, HEIGHT, WINDOW_TITLE);
         _vulkanDevice = std::make_unique<VulkanDevice>(_window->getSDLWindow());
 
-        // Create renderer, passing the finished mesh queue
+        // Create per-thread mesh queues (eliminates lock contention!)
+        _perThreadMeshQueues.reserve(NUM_MESHING_WORKERS);
+        for (int i = 0; i < NUM_MESHING_WORKERS; ++i) {
+            _perThreadMeshQueues.push_back(std::make_unique<ThreadSafeQueue<MeshData>>());
+        }
+
+        // Create renderer, passing all per-thread mesh queues
         _renderer = std::make_unique<Renderer>(*_window, *_vulkanDevice, *_blockRegistry,
-                                               _finishedMeshQueue);
+                                               _perThreadMeshQueues);
 
         // Initialize worker threads for async chunk loading
         _worldManager = std::make_unique<WorldManager>(_chunkRequestQueue, _meshingTaskQueue,
@@ -49,10 +55,11 @@ App::App() {
         };
 
         // Create multiple meshing workers for parallel processing
+        // Each worker gets its OWN queue to eliminate contention
         _meshingThreads.reserve(NUM_MESHING_WORKERS);
         for (int i = 0; i < NUM_MESHING_WORKERS; ++i) {
             _meshingThreads.push_back(std::make_unique<MeshingThread>(
-                _meshingTaskQueue, _finishedMeshQueue, _meshingCompleteQueue, *_blockRegistry,
+                _meshingTaskQueue, *_perThreadMeshQueues[i], _meshingCompleteQueue, *_blockRegistry,
                 textureResolver));
         }
 

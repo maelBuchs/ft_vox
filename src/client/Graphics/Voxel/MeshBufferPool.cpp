@@ -4,11 +4,19 @@
 #include <iostream>
 #include <stdexcept>
 
+#include <tracy/Tracy.hpp>
+
 #include "../Core/VulkanBuffer.hpp"
 #include "../Core/VulkanDevice.hpp"
 
-// Initial mega index buffer size: 128 million indices (512MB) - will grow dynamically if needed
-constexpr VkDeviceSize INITIAL_INDEX_BUFFER_SIZE = 128ull * 1024 * 1024 * sizeof(uint32_t);
+// PHASE 1 FIX: Increased from 512MB (128M indices) to 2GB (512M indices)
+// For extreme view distances (40k+ chunks @ avg 8k triangles each):
+//   - 40k chunks * 8k triangles * 3 indices = 960M indices = 3.8GB needed
+//   - Pre-allocating 2GB reduces resize frequency from 4+ resizes to 1-2
+//   - Each resize causes GPU stall (vkWaitForFences during buffer copy) = frame stutter
+//   - Trade-off: Higher VRAM usage (2GB) for stable FPS on high-end GPUs
+// TODO (Phase 3): Replace with async transfer queue to eliminate stutter entirely
+constexpr VkDeviceSize INITIAL_INDEX_BUFFER_SIZE = 512ull * 1024 * 1024 * sizeof(uint32_t); // 2GB
 
 MeshBufferPool::MeshBufferPool(VulkanDevice& device, VulkanBuffer& bufferManager)
     : _device(device), _bufferManager(bufferManager) {
@@ -17,7 +25,8 @@ MeshBufferPool::MeshBufferPool(VulkanDevice& device, VulkanBuffer& bufferManager
     _currentIndexBufferSize = INITIAL_INDEX_BUFFER_SIZE;
     _indexBuffer = _bufferManager.createBuffer(
         _currentIndexBufferSize,
-        VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         VMA_MEMORY_USAGE_GPU_ONLY);
 }
 
@@ -26,6 +35,21 @@ MeshBufferPool::~MeshBufferPool() {
 
     // Flush any remaining deletion queue (should be empty if VoxelRenderer cleaned up properly)
     flushDeletionQueue();
+
+    // PHASE 4: Destroy all pooled staging buffers
+    for (auto& staging : _stagingVertexPool) {
+        _bufferManager.destroyBuffer(staging.buffer);
+    }
+    for (auto& staging : _stagingIndexPool) {
+        _bufferManager.destroyBuffer(staging.buffer);
+    }
+    // PHASE 6: Destroy generic pool
+    for (auto& staging : _stagingGenericPool) {
+        _bufferManager.destroyBuffer(staging.buffer);
+    }
+    _stagingVertexPool.clear();
+    _stagingIndexPool.clear();
+    _stagingGenericPool.clear();
 
     // Destroy mega index buffer
     if (_indexBuffer.buffer != VK_NULL_HANDLE) {
@@ -40,6 +64,7 @@ MeshBufferPool::~MeshBufferPool() {
 ChunkMeshBuffers MeshBufferPool::allocateChunkBuffers(
     std::span<uint32_t> indices, std::span<uint32_t> vertices,
     const std::function<void(std::function<void(VkCommandBuffer)>&&)>& immediateSubmit) {
+    ZoneScopedN("MeshBufferPool::allocateChunkBuffers");
 
     const size_t vertexSize = vertices.size_bytes();
     const size_t indexSize = indices.size_bytes();
@@ -107,44 +132,34 @@ ChunkMeshBuffers MeshBufferPool::allocateChunkBuffers(
     chunkBuffers.firstIndex = indexOffset;
 
     // ========================================================================
-    // UPLOAD DATA TO GPU via staging buffers
-    // CRITICAL: Use try-catch to ensure staging buffers are ALWAYS destroyed
+    // PHASE 4: ACQUIRE FROM STAGING BUFFER POOL (reuse instead of create/destroy)
     // ========================================================================
-    AllocatedBuffer stagingVertex = _bufferManager.createStagingBuffer(vertexSize);
-    AllocatedBuffer stagingIndex = _bufferManager.createStagingBuffer(indexSize);
+    AllocatedBuffer stagingVertex = acquireStagingBuffer(vertexSize, StagingType::Vertex);
+    AllocatedBuffer stagingIndex = acquireStagingBuffer(indexSize, StagingType::Index);
 
     try {
         _bufferManager.uploadToBuffer(stagingVertex, vertices.data(), vertexSize);
         _bufferManager.uploadToBuffer(stagingIndex, indices.data(), indexSize);
 
-        // Copy staging -> GPU in a single command buffer
-        immediateSubmit([&](VkCommandBuffer cmd) {
-            // Copy vertex data to per-chunk buffer
-            VkBufferCopy vertexCopy{};
-            vertexCopy.srcOffset = 0;
-            vertexCopy.dstOffset = 0;
-            vertexCopy.size = vertexSize;
-            vkCmdCopyBuffer(cmd, stagingVertex.buffer, chunkBuffers.vertexBuffer.buffer, 1,
-                            &vertexCopy);
+        // PHASE 3: Queue for batched upload instead of immediate submit
+        PendingUpload upload{
+            .stagingVertex = stagingVertex,
+            .stagingIndex = stagingIndex,
+            .dstVertexBuffer = chunkBuffers.vertexBuffer.buffer,
+            .dstIndexBuffer = _indexBuffer.buffer,
+            .vertexSize = vertexSize,
+            .indexSize = indexSize,
+            .indexOffset = indexOffset
+        };
+        _pendingUploads.push_back(upload);
 
-            // Copy index data to mega buffer at allocated offset
-            VkBufferCopy indexCopy{};
-            indexCopy.srcOffset = 0;
-            indexCopy.dstOffset = indexOffset * sizeof(uint32_t);
-            indexCopy.size = indexSize;
-            vkCmdCopyBuffer(cmd, stagingIndex.buffer, _indexBuffer.buffer, 1, &indexCopy);
-        });
-
-        // Clean up staging buffers (success path)
-        _bufferManager.destroyBuffer(stagingVertex);
-        _bufferManager.destroyBuffer(stagingIndex);
+        // NOTE: Staging buffers will be destroyed in submitPendingUploads()
 
     } catch (...) {
-        // CRITICAL: Clean up staging buffers before re-throwing exception
-        _bufferManager.destroyBuffer(stagingVertex);
-        _bufferManager.destroyBuffer(stagingIndex);
+        // PHASE 4: Staging buffers are pooled - mark as available instead of destroying
+        // (They will be recycled on next updateStagingPools call)
 
-        // Also clean up the vertex buffer we created
+        // Clean up the vertex buffer we created
         _bufferManager.destroyBuffer(chunkBuffers.vertexBuffer);
 
         // Rollback index allocation
@@ -170,6 +185,7 @@ ChunkMeshBuffers MeshBufferPool::allocateChunkBuffers(
 }
 
 void MeshBufferPool::freeChunkBuffers(const ChunkMeshBuffers& buffers) {
+    ZoneScopedN("MeshBufferPool::freeChunkBuffers");
     if (buffers.vertexBuffer.buffer == VK_NULL_HANDLE) {
         return; // Already freed or never allocated
     }
@@ -204,6 +220,7 @@ void MeshBufferPool::freeChunkBuffers(const ChunkMeshBuffers& buffers) {
 }
 
 void MeshBufferPool::processDeletionQueue() {
+    ZoneScopedN("MeshBufferPool::processDeletionQueue");
     // Decrement frame delay and delete vertex buffers that are ready
     for (auto it = _deletionQueue.begin(); it != _deletionQueue.end();) {
         it->frameDelay--;
@@ -219,6 +236,9 @@ void MeshBufferPool::processDeletionQueue() {
 
     // Also process pending index range frees
     processPendingIndexFrees();
+
+    // PHASE 4: Update staging buffer pools (recycle buffers after GPU is done)
+    updateStagingPools();
 }
 
 void MeshBufferPool::flushDeletionQueue() {
@@ -311,7 +331,8 @@ void MeshBufferPool::ensureIndexBufferCapacity(
     uint32_t requiredIndices,
     const std::function<void(std::function<void(VkCommandBuffer)>&&)>& immediateSubmit) {
 
-    const VkDeviceSize requiredBytes = static_cast<VkDeviceSize>(requiredIndices) * sizeof(uint32_t);
+    const VkDeviceSize requiredBytes =
+        static_cast<VkDeviceSize>(requiredIndices) * sizeof(uint32_t);
 
     // Check if we need to resize
     if (requiredBytes <= _currentIndexBufferSize) {
@@ -332,7 +353,8 @@ void MeshBufferPool::ensureIndexBufferCapacity(
     // Create new larger buffer
     AllocatedBuffer newIndexBuffer = _bufferManager.createBuffer(
         newCapacity,
-        VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         VMA_MEMORY_USAGE_GPU_ONLY);
 
     // Copy existing data from old buffer to new buffer
@@ -357,7 +379,8 @@ void MeshBufferPool::ensureIndexBufferCapacity(
 
 void MeshBufferPool::destroyAllChunkBuffers(const std::vector<ChunkMeshBuffers>& buffers) {
     // Fast shutdown path - destroy all buffers immediately (GPU already idle)
-    std::cout << "[MeshBufferPool] Fast destroying " << buffers.size() << " chunk vertex buffers...\n";
+    std::cout << "[MeshBufferPool] Fast destroying " << buffers.size()
+              << " chunk vertex buffers...\n";
     auto start = std::chrono::high_resolution_clock::now();
 
     size_t destroyedCount = 0;
@@ -399,4 +422,148 @@ float MeshBufferPool::getMemoryUsage() const {
     // Return total GPU memory usage in MB (vertices + indices)
     const size_t totalBytes = _totalVertexMemory + _totalIndexMemory;
     return static_cast<float>(totalBytes) / (1024.0f * 1024.0f);
+}
+
+// ============================================================================
+// PHASE 4: STAGING BUFFER POOL IMPLEMENTATION
+// ============================================================================
+
+// PHASE 6: Updated to support 3 pool types (Vertex, Index, Generic)
+AllocatedBuffer MeshBufferPool::acquireStagingBuffer(VkDeviceSize requiredSize, StagingType type) {
+    ZoneScopedN("MeshBufferPool::acquireStagingBuffer");
+
+    // Select the appropriate pool and size based on type
+    std::vector<StagingBuffer>* pool;
+    VkDeviceSize poolBufferSize;
+
+    switch (type) {
+        case StagingType::Vertex:
+            pool = &_stagingVertexPool;
+            poolBufferSize = STAGING_BUFFER_SIZE_VERTEX;
+            break;
+        case StagingType::Index:
+            pool = &_stagingIndexPool;
+            poolBufferSize = STAGING_BUFFER_SIZE_INDEX;
+            break;
+        case StagingType::Generic:
+            pool = &_stagingGenericPool;
+            poolBufferSize = STAGING_BUFFER_SIZE_GENERIC;
+            break;
+    }
+
+    // Try to find an available buffer that's large enough
+    for (auto& staging : *pool) {
+        if (staging.frameDelay == 0 && staging.size >= requiredSize) {
+            // Found a reusable buffer!
+            staging.frameDelay = FrameManager::FRAME_OVERLAP; // Mark as in-use
+            return staging.buffer;
+        }
+    }
+
+    // No suitable buffer found - create a new one
+    // Use the larger of requiredSize or poolBufferSize for better reuse
+    const VkDeviceSize allocSize = std::max(requiredSize, poolBufferSize);
+
+    AllocatedBuffer newBuffer = _bufferManager.createBuffer(
+        allocSize,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+    // Add to pool for future reuse
+    pool->push_back(StagingBuffer{
+        .buffer = newBuffer,
+        .size = allocSize,
+        .frameDelay = FrameManager::FRAME_OVERLAP
+    });
+
+    return newBuffer;
+}
+
+void MeshBufferPool::updateStagingPools() {
+    ZoneScopedN("MeshBufferPool::updateStagingPools");
+
+    // Decrement frame delay for all in-use staging buffers
+    for (auto& staging : _stagingVertexPool) {
+        if (staging.frameDelay > 0) {
+            staging.frameDelay--;
+        }
+    }
+
+    for (auto& staging : _stagingIndexPool) {
+        if (staging.frameDelay > 0) {
+            staging.frameDelay--;
+        }
+    }
+
+    // PHASE 6: Handle generic pool
+    for (auto& staging : _stagingGenericPool) {
+        if (staging.frameDelay > 0) {
+            staging.frameDelay--;
+        }
+    }
+
+    // Optional: Clean up excess buffers if pool grows too large (keep max 32 per type)
+    // This prevents unbounded memory growth while still maintaining good reuse
+    constexpr size_t MAX_POOL_SIZE = 32;
+
+    auto cleanupPool = [this](std::vector<StagingBuffer>& pool) {
+        if (pool.size() > MAX_POOL_SIZE) {
+            // Remove oldest available buffers (frameDelay == 0)
+            size_t removed = 0;
+            for (auto it = pool.begin(); it != pool.end() && pool.size() > MAX_POOL_SIZE;) {
+                if (it->frameDelay == 0) {
+                    _bufferManager.destroyBuffer(it->buffer);
+                    it = pool.erase(it);
+                    removed++;
+                } else {
+                    ++it;
+                }
+            }
+        }
+    };
+
+    cleanupPool(_stagingVertexPool);
+    cleanupPool(_stagingIndexPool);
+    cleanupPool(_stagingGenericPool); // PHASE 6
+}
+
+// PHASE 3: Submit all pending uploads in a single batch
+void MeshBufferPool::submitPendingUploads(
+    const std::function<void(std::function<void(VkCommandBuffer)>&&)>& immediateSubmit) {
+
+    if (_pendingUploads.empty()) {
+        return; // Nothing to upload
+    }
+
+    ZoneScopedN("MeshBufferPool::submitPendingUploads");
+
+    // PHASE 3+7: Batch all copy commands into a single command buffer
+    // Caller (VoxelRenderer) provides submit function (async transfer or immediate)
+    immediateSubmit([this](VkCommandBuffer cmd) {
+        for (const auto& upload : _pendingUploads) {
+            // Copy vertex data to per-chunk buffer
+            VkBufferCopy vertexCopy{};
+            vertexCopy.srcOffset = 0;
+            vertexCopy.dstOffset = 0;
+            vertexCopy.size = upload.vertexSize;
+            vkCmdCopyBuffer(cmd, upload.stagingVertex.buffer, upload.dstVertexBuffer, 1, &vertexCopy);
+
+            // Copy index data to mega buffer at allocated offset
+            VkBufferCopy indexCopy{};
+            indexCopy.srcOffset = 0;
+            indexCopy.dstOffset = upload.indexOffset * sizeof(uint32_t);
+            indexCopy.size = upload.indexSize;
+            vkCmdCopyBuffer(cmd, upload.stagingIndex.buffer, upload.dstIndexBuffer, 1, &indexCopy);
+        }
+    });
+
+    // PHASE 4: Staging buffers are NOT destroyed - they're pooled and will be recycled
+    // The frameDelay counter was already set in acquireStagingBuffer()
+    // updateStagingPools() will decrement the delay each frame and mark them available
+
+    size_t uploadCount = _pendingUploads.size();
+    _pendingUploads.clear();
+
+    std::cout << "[MeshBufferPool] PHASE 3+4: Batched " << uploadCount
+              << " uploads (staging buffers pooled)\n";
 }

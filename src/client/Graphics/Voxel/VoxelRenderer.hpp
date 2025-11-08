@@ -34,7 +34,7 @@ class VoxelRenderer {
     VoxelRenderer(VulkanDevice& device, MeshManager& meshManager, BlockRegistry& registry,
                   RenderContext& context, CommandExecutor& executor, VulkanBuffer& bufferManager,
                   DescriptorAllocatorGrowable& descriptorAllocator, Renderer& renderer,
-                  ThreadSafeQueue<MeshData>& finishedMeshQueue);
+                  std::vector<std::unique_ptr<ThreadSafeQueue<MeshData>>>& perThreadMeshQueues);
     ~VoxelRenderer();
 
     VoxelRenderer(const VoxelRenderer&) = delete;
@@ -77,6 +77,7 @@ class VoxelRenderer {
   private:
     void initMDI(VkImageView atlasView, VkSampler atlasSampler, int texturesPerRow);
     void initComputeCulling();
+    void initMeshShaderPipeline(VkImageView atlasView, VkSampler atlasSampler);
     void ensureBufferCapacity(uint32_t requiredChunks);
 
     static constexpr uint32_t MAX_CHUNKS =
@@ -94,8 +95,10 @@ class VoxelRenderer {
 
     Pipeline _voxelPipeline;
     Pipeline _voxelWireframePipeline;
+    Pipeline _meshShaderPipeline; // Task/mesh shader pipeline
 
     VkPipelineLayout _voxelPipelineLayout = VK_NULL_HANDLE;
+    VkPipelineLayout _meshShaderPipelineLayout = VK_NULL_HANDLE;
 
     // --- MDI Resources ---
     std::unique_ptr<MeshBufferPool> _meshPool;
@@ -109,24 +112,56 @@ class VoxelRenderer {
     std::vector<ChunkDrawInfo> _chunkDrawInfos;
     std::unordered_map<glm::ivec3, size_t> _chunkDrawLookup;
 
-    // Queue for receiving finished mesh data from meshing threads
-    ThreadSafeQueue<MeshData>& _finishedMeshQueue;
+    // Per-thread mesh queues for receiving finished mesh data (eliminates lock contention)
+    std::vector<std::unique_ptr<ThreadSafeQueue<MeshData>>>& _perThreadMeshQueues;
 
     AllocatedBuffer _indirectBuffer;
-    AllocatedBuffer _chunkDataBuffer;
+    // PHASE 1 OPTIMIZATION: Double-buffered chunk data for frame overlap (eliminates vkDeviceWaitIdle)
+    static constexpr uint32_t CHUNK_BUFFER_COUNT = 2; // Must match FrameManager::FRAME_OVERLAP
+    std::array<AllocatedBuffer, CHUNK_BUFFER_COUNT> _chunkDataBuffers;
     AllocatedBuffer _atlasConfigBuffer;      // Uniform buffer for atlas configuration
     uint32_t _currentMaxChunks = MAX_CHUNKS; // Current capacity of indirect/chunk buffers
 
     std::vector<VkDrawIndexedIndirectCommand> _indirectCommands;
     std::vector<GPUChunkData> _chunkDrawData;
+    bool _chunkDataDirty = true; // Track if chunk data needs GPU upload
+
+    // Max load distance for dynamic render distance culling
+    int _maxLoadDistance = 24; // Default to 24 chunks
+
+    // Upload throttling to reduce GPU overhead
+    uint32_t _dirtyChunkCount = 0;
+    std::chrono::steady_clock::time_point _lastUploadTime = std::chrono::steady_clock::now();
+    static constexpr uint32_t MIN_CHUNKS_FOR_UPLOAD = 32;      // Batch at least this many
+    static constexpr uint32_t MAX_MS_BETWEEN_UPLOADS = 16;     // Or upload every 16ms
+    static constexpr uint32_t MAX_MESHES_PER_BATCH = 256;      // Process max 256 meshes/frame
+
+    // PHASE 5: Per-chunk dirty tracking for incremental SSBO updates
+    std::vector<bool> _dirtyChunkIndices; // Tracks which specific chunks need upload
+    std::vector<uint32_t> _dirtyChunkList; // Compact list of dirty indices (for efficient iteration)
 
     // Descriptor set for chunk data SSBO
     VkDescriptorSetLayout _chunkSetLayout = VK_NULL_HANDLE;
-    VkDescriptorSet _chunkDescriptorSet = VK_NULL_HANDLE; // Points to _chunkDataBuffer (input)
+    // PHASE 1: Per-frame descriptor sets for double-buffered chunk data
+    std::array<VkDescriptorSet, CHUNK_BUFFER_COUNT> _chunkDescriptorSets = {}; // Points to _chunkDataBuffers[i] (input)
     VkDescriptorSet _culledChunkDescriptorSet =
         VK_NULL_HANDLE; // Points to _culledChunkDataBuffer (output)
 
-    // --- GPU Frustum Culling Resources ---
+    // Mesh shader pipeline resources
+    VkDescriptorSetLayout _meshShaderSetLayout =
+        VK_NULL_HANDLE; // Set 0: Camera, chunk data, index buffer
+    VkDescriptorSetLayout _meshShaderFragSetLayout =
+        VK_NULL_HANDLE;                                        // Set 1: Texture atlas for fragment
+    // PHASE 1: Per-frame descriptor sets for mesh shader (references double-buffered chunk data)
+    std::array<VkDescriptorSet, CHUNK_BUFFER_COUNT> _meshShaderDescriptorSets = {}; // Set 0 descriptor sets
+    VkDescriptorSet _meshShaderFragDescriptorSet = VK_NULL_HANDLE; // Set 1 descriptor set
+    Pipeline _meshShaderWireframePipeline; // Wireframe variant for debugging (F1 toggle)
+    AllocatedBuffer _cameraUniformBuffer;  // GPUCameraData UBO for task/mesh shaders
+    bool _useMeshShaders = false;          // Runtime toggle for mesh shader path
+    PFN_vkCmdDrawMeshTasksEXT _vkCmdDrawMeshTasksEXT = nullptr; // Extension function pointer
+    uint32_t _maxMeshWorkgroupsPerTask = 1; // Device limit for mesh workgroups per task workgroup
+
+    // --- GPU Frustum Culling Resources (DISABLED - incompatible with mesh shaders) ---
     Pipeline _frustumCullPipeline;
     VkPipelineLayout _frustumCullPipelineLayout = VK_NULL_HANDLE;
     VkDescriptorSetLayout _frustumCullSetLayout = VK_NULL_HANDLE;
@@ -148,11 +183,11 @@ class VoxelRenderer {
     // Statistics
     CullingStats _cullingStats{};
 
-    // GPU frustum culling is currently DISABLED because overhead > savings
-    // Current measurements: Culling takes 300μs/frame, but draw calls only take 13.8μs/frame
-    // Re-enable when rendering 1000+ chunks, not ~200 chunks
-    // Performance profile shows: indirect draw is extremely cheap on modern GPUs
-    bool _enableGPUCulling = false;          // DISABLED - overhead too high for chunk count
+    // GPU frustum culling is DISABLED - task shader does culling instead
+    // Compute shader path is fundamentally incompatible with mesh shader pipeline
+    // Task shader performs per-chunk culling before mesh shader dispatch
+    // For traditional path: overhead > savings (300μs culling vs 13.8μs draw)
+    bool _enableGPUCulling = false;          // DISABLED - mesh shaders use task shader culling
     bool _supportsDrawIndirectCount = false; // Runtime feature check
 
     // Frustum caching (avoid rebuilding/uploading every frame)

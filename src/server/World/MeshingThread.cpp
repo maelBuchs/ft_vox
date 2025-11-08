@@ -83,14 +83,20 @@ void MeshingThread::meshingThreadLoop() {
         std::vector<VoxelVertex> vertices;
         std::vector<uint32_t> indices;
 
-        ChunkMesh::generateMesh(*task.chunkData, _blockRegistry, vertices, indices,
-                                task.neighborNorth.get(), task.neighborSouth.get(),
-                                task.neighborEast.get(), task.neighborWest.get(),
-                                task.neighborTop.get(), task.neighborBottom.get(), _textureCache);
+        {
+            ZoneScopedN("ChunkMesh::generateMesh");
+            ChunkMesh::generateMesh(*task.chunkData, _blockRegistry, vertices, indices,
+                                    task.neighborNorth.get(), task.neighborSouth.get(),
+                                    task.neighborEast.get(), task.neighborWest.get(),
+                                    task.neighborTop.get(), task.neighborBottom.get(), _textureCache);
+        }
 
         // Always deliver the mesh result to the renderer, even when it's empty
-        MeshData meshData(task.chunkPosition, std::move(vertices), std::move(indices));
-        _meshQueue.push(std::move(meshData));
+        {
+            ZoneScopedN("Push to Mesh Queue");
+            MeshData meshData(task.chunkPosition, std::move(vertices), std::move(indices));
+            _meshQueue.push(std::move(meshData));
+        }
 
         // Always notify completion (even if mesh is empty)
         _completionQueue.push(MeshingComplete(task.chunkPosition));

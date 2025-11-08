@@ -37,7 +37,8 @@ void vmaDeallocationCallback(VmaAllocator allocator, uint32_t memoryType, VkDevi
 VulkanDevice::VulkanDevice(SDL_Window* window)
     : _instance(nullptr), _debugMessenger(nullptr), _surface(nullptr), _physicalDevice(nullptr),
       _device(nullptr), _graphicsQueue(nullptr), _allocator(nullptr), _tracyCommandPool(nullptr),
-      _tracyCommandBuffer(nullptr), _tracyCtx(nullptr) {
+      _tracyCommandBuffer(nullptr), _tracyCtx(nullptr), _meshShaderSupported(false),
+      _hasAsyncTransfer(false), _transferQueue(nullptr), _transferQueueFamily(UINT32_MAX) {
 
     vkb::InstanceBuilder instanceBuilder;
     auto instRet = instanceBuilder.set_app_name("ft_vox")
@@ -61,7 +62,8 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
     VkPhysicalDeviceVulkan13Features features13{
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
         .synchronization2 = VK_TRUE,
-        .dynamicRendering = VK_TRUE};
+        .dynamicRendering = VK_TRUE,
+        .maintenance4 = VK_TRUE}; // Required for LocalSizeId in mesh shaders
 
     VkPhysicalDeviceVulkan12Features features12{
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
@@ -97,28 +99,185 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
     const vkb::PhysicalDevice& vkbPhysicalDevice = physicalDeviceRet.value();
     _physicalDevice = vkbPhysicalDevice.physical_device;
 
-    vkb::DeviceBuilder deviceBuilder{vkbPhysicalDevice};
-    auto deviceRet = deviceBuilder.build();
+    // Check for mesh shader support
+    VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeatures{};
+    meshShaderFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT;
+    meshShaderFeatures.pNext = nullptr;
 
-    if (!deviceRet) {
-        throw std::runtime_error("Failed to create logical device: " + deviceRet.error().message());
+    VkPhysicalDeviceFeatures2 deviceFeatures2{};
+    deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    deviceFeatures2.pNext = &meshShaderFeatures;
+
+    vkGetPhysicalDeviceFeatures2(_physicalDevice, &deviceFeatures2);
+
+    // Enable mesh shaders if supported
+    _meshShaderSupported =
+        (meshShaderFeatures.taskShader == VK_TRUE && meshShaderFeatures.meshShader == VK_TRUE);
+
+    if (_meshShaderSupported) {
+        std::cout << "[VulkanDevice] Mesh shader support detected - creating device with mesh "
+                     "shader extension\\n";
+
+        // Reset mesh shader features for device creation
+        meshShaderFeatures.taskShader = VK_TRUE;
+        meshShaderFeatures.meshShader = VK_TRUE;
+        meshShaderFeatures.multiviewMeshShader = VK_FALSE;
+        meshShaderFeatures.primitiveFragmentShadingRateMeshShader = VK_FALSE;
+        meshShaderFeatures.meshShaderQueries = VK_FALSE;
+
+        // Get queue family indices
+        uint32_t queueFamilyCount = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(_physicalDevice, &queueFamilyCount, nullptr);
+        std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+        vkGetPhysicalDeviceQueueFamilyProperties(_physicalDevice, &queueFamilyCount,
+                                                 queueFamilies.data());
+
+        // PHASE 2: Find graphics and dedicated transfer queue families
+        uint32_t graphicsFamily = UINT32_MAX;
+        uint32_t transferFamily = UINT32_MAX;
+
+        for (uint32_t i = 0; i < queueFamilyCount; i++) {
+            if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                graphicsFamily = i;
+            }
+            // Look for dedicated transfer queue (transfer but NOT graphics)
+            if ((queueFamilies[i].queueFlags & VK_QUEUE_TRANSFER_BIT) &&
+                !(queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)) {
+                transferFamily = i;
+            }
+        }
+
+        if (graphicsFamily == UINT32_MAX) {
+            throw std::runtime_error("Failed to find graphics queue family");
+        }
+
+        // If no dedicated transfer queue, use graphics queue for transfers
+        if (transferFamily == UINT32_MAX) {
+            std::cout << "[VulkanDevice] No dedicated transfer queue found, using graphics queue\n";
+            transferFamily = graphicsFamily;
+        } else {
+            std::cout << "[VulkanDevice] Found dedicated transfer queue family: " << transferFamily << "\n";
+            _hasAsyncTransfer = true;
+        }
+
+        // PHASE 2: Create queue create infos for both queues
+        float queuePriorities[] = {1.0f, 1.0f};
+        std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+
+        // Graphics queue
+        VkDeviceQueueCreateInfo graphicsQueueInfo{};
+        graphicsQueueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        graphicsQueueInfo.queueFamilyIndex = graphicsFamily;
+        graphicsQueueInfo.queueCount = 1;
+        graphicsQueueInfo.pQueuePriorities = &queuePriorities[0];
+        queueCreateInfos.push_back(graphicsQueueInfo);
+
+        // Transfer queue (if different from graphics)
+        if (transferFamily != graphicsFamily) {
+            VkDeviceQueueCreateInfo transferQueueInfo{};
+            transferQueueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+            transferQueueInfo.queueFamilyIndex = transferFamily;
+            transferQueueInfo.queueCount = 1;
+            transferQueueInfo.pQueuePriorities = &queuePriorities[1];
+            queueCreateInfos.push_back(transferQueueInfo);
+        }
+
+        // Build extension list
+        std::vector<const char*> deviceExts = {
+            VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+            VK_EXT_MESH_SHADER_EXTENSION_NAME // ADD THIS!
+        };
+
+        // Build pNext chain
+        features13.pNext = &meshShaderFeatures;
+        features12.pNext = &features13;
+        features11.pNext = &features12;
+        deviceFeatures2.pNext = &features11;
+        deviceFeatures2.features = deviceFeatures;
+
+        VkDeviceCreateInfo createInfo{};
+        createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+        createInfo.pNext = &deviceFeatures2;
+        createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+        createInfo.pQueueCreateInfos = queueCreateInfos.data();
+        createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExts.size());
+        createInfo.ppEnabledExtensionNames = deviceExts.data();
+
+        VkResult result = vkCreateDevice(_physicalDevice, &createInfo, nullptr, &_device);
+        if (result != VK_SUCCESS) {
+            std::cout << "[VulkanDevice] WARN: Failed to create device with mesh shaders (error "
+                      << result << "), falling back\n";
+            _meshShaderSupported = false;
+        } else {
+            std::cout << "[VulkanDevice] Device created with VK_EXT_mesh_shader extension\n";
+            _graphicsQueueFamily = graphicsFamily;
+            _transferQueueFamily = transferFamily;
+            vkGetDeviceQueue(_device, graphicsFamily, 0, &_graphicsQueue);
+            vkGetDeviceQueue(_device, transferFamily, 0, &_transferQueue);
+            std::cout << "[VulkanDevice] Graphics queue family: " << graphicsFamily << "\n";
+            std::cout << "[VulkanDevice] Transfer queue family: " << transferFamily << "\n";
+        }
     }
 
-    const vkb::Device& vkbDevice = deviceRet.value();
-    _device = vkbDevice.device;
+    // If mesh shaders failed or not supported, use vk-bootstrap
+    if (!_meshShaderSupported) {
+        std::cout << "[VulkanDevice] Creating device without mesh shaders\\n";
+        vkb::DeviceBuilder deviceBuilder{vkbPhysicalDevice};
+        auto deviceRet = deviceBuilder.build();
 
-    auto queueRet = vkbDevice.get_queue(vkb::QueueType::graphics);
-    if (!queueRet) {
-        throw std::runtime_error("Failed to get graphics queue: " + queueRet.error().message());
-    }
-    _graphicsQueue = queueRet.value();
+        if (!deviceRet) {
+            throw std::runtime_error("Failed to create logical device: " +
+                                     deviceRet.error().message());
+        }
 
-    auto queueFamilyRet = vkbDevice.get_queue_index(vkb::QueueType::graphics);
-    if (!queueFamilyRet) {
-        throw std::runtime_error("Failed to get graphics queue family index: " +
-                                 queueFamilyRet.error().message());
+        const vkb::Device& vkbDevice = deviceRet.value();
+        _device = vkbDevice.device;
+
+        auto queueRet = vkbDevice.get_queue(vkb::QueueType::graphics);
+        if (!queueRet) {
+            throw std::runtime_error("Failed to get graphics queue: " + queueRet.error().message());
+        }
+        _graphicsQueue = queueRet.value();
+
+        auto queueFamilyRet = vkbDevice.get_queue_index(vkb::QueueType::graphics);
+        if (!queueFamilyRet) {
+            throw std::runtime_error("Failed to get graphics queue family index: " +
+                                     queueFamilyRet.error().message());
+        }
+        _graphicsQueueFamily = queueFamilyRet.value();
+
+        // PHASE 2: Try to get transfer queue (fallback path)
+        auto transferQueueRet = vkbDevice.get_queue(vkb::QueueType::transfer);
+        auto transferFamilyRet = vkbDevice.get_queue_index(vkb::QueueType::transfer);
+
+        if (transferQueueRet && transferFamilyRet) {
+            _transferQueue = transferQueueRet.value();
+            _transferQueueFamily = transferFamilyRet.value();
+            _hasAsyncTransfer = (_transferQueueFamily != _graphicsQueueFamily);
+            std::cout << "[VulkanDevice] Transfer queue family: " << _transferQueueFamily
+                      << ((_hasAsyncTransfer) ? " (dedicated)" : " (shared with graphics)") << "\n";
+        } else {
+            // Fallback: use graphics queue for transfers
+            _transferQueue = _graphicsQueue;
+            _transferQueueFamily = _graphicsQueueFamily;
+            _hasAsyncTransfer = false;
+            std::cout << "[VulkanDevice] Using graphics queue for transfers\n";
+        }
     }
-    _graphicsQueueFamily = queueFamilyRet.value();
+
+    // Debug: Try to load the mesh shader function pointer to verify extension is enabled
+    if (_meshShaderSupported) {
+        auto testFnPtr = vkGetDeviceProcAddr(_device, "vkCmdDrawMeshTasksEXT");
+        if (testFnPtr == nullptr) {
+            std::cout
+                << "[VulkanDevice] WARNING: vkCmdDrawMeshTasksEXT function pointer is NULL\\n";
+            std::cout << "[VulkanDevice] This means VK_EXT_mesh_shader extension is NOT enabled\\n";
+            std::cout << "[VulkanDevice] Disabling mesh shader support\\n";
+            _meshShaderSupported = false;
+        } else {
+            std::cout << "[VulkanDevice] SUCCESS: vkCmdDrawMeshTasksEXT function pointer loaded\\n";
+        }
+    }
 
     // Setup VMA device memory callbacks for Tracy profiling
     VmaDeviceMemoryCallbacks vmaCallbacks{};
