@@ -4,6 +4,7 @@
 #include <chrono>
 #include <memory>
 #include <mutex>
+#include <random>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
@@ -19,8 +20,6 @@
 #include "common/Util/ThreadSafeQueue.hpp"
 #include "common/Util/Util.hpp"
 #include "common/World/Chunk.hpp"
-
-#define SEED 42L
 
 #define CHUNK_TO_WORLD(b, c) (((c) * Chunk::CHUNK_SIZE) + (b))
 
@@ -118,7 +117,7 @@ class WorldManager {
         }
         return nullptr; // Return nullptr if not found
     }
-
+    int64_t getSeed() const { return kSEED; }
     tk::spline& getHeightSpline() { return _heightSpline; }
 
   private:
@@ -187,4 +186,5 @@ class WorldManager {
 
     // World generation tools
     tk::spline _heightSpline;
+    const int64_t kSEED = std::random_device{}();
 };

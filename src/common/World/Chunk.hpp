@@ -17,16 +17,17 @@
 #include "server/World/WorldManager.hpp"
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/hash.hpp>
-#ifndef SEED
-#define SEED 42L
-#endif
+
 #include "../Util/Util.hpp"
 #include "common/World/ChunkMesh.hpp"
 #include "glm/fwd.hpp"
+#include "server//World/WorldManager.hpp"
 #define GLM_ENABLE_EXPERIMENTAL
 #define RENDER_DISTANCE 6
 #define MAX_THREADS 2
 #define CHUNK_TO_WORLD(b, c) (((c) * Chunk::CHUNK_SIZE) + (b))
+
+class WorldManager;
 
 enum class BiomeType : uint8_t { kOCEAN, kPLAINS, kMOUNTAINS, kNONE };
 enum class NoiseType : std::uint8_t {
@@ -47,7 +48,7 @@ class Chunk {
     static constexpr int CHUNK_SIZE = 32;
     static constexpr int VOLUME = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
 
-    Chunk(int x, int y, int z);
+    Chunk(int x, int y, int z, WorldManager& worldManager);
     Chunk() = default;
     ~Chunk() = default;
 
@@ -97,17 +98,17 @@ class Chunk {
         int bz = CHUNK_TO_WORLD(z, position[2]);
         switch (type) {
         case NoiseType::kTEMPERATURE:
-            return perlinNoise(bx, bz, noise_config::kTEMPERATURE);
+            return perlinNoise(bx, bz, noise_config::kTEMPERATURE, kSEED);
         case NoiseType::kHUMIDITY:
-            return perlinNoise(bx, bz, noise_config::kHUMIDITY);
+            return perlinNoise(bx, bz, noise_config::kHUMIDITY, kSEED);
         case NoiseType::kCONTINENT:
-            return perlinNoise(bx, bz, noise_config::kCONTINENT);
+            return perlinNoise(bx, bz, noise_config::kCONTINENT, kSEED);
         case NoiseType::kEROSION:
-            return perlinNoise(bx, bz, noise_config::kEROSION);
+            return perlinNoise(bx, bz, noise_config::kEROSION, kSEED);
         case NoiseType::kWEIRDNESS:
-            return perlinNoise(bx, bz, noise_config::kWEIRDNESS);
+            return perlinNoise(bx, bz, noise_config::kWEIRDNESS, kSEED);
         case NoiseType::kDEPTH:
-            return perlinNoise(bx, bz, noise_config::kDEPTH);
+            return perlinNoise(bx, bz, noise_config::kDEPTH, kSEED);
         default:
             return 0.0F;
         }
@@ -116,12 +117,12 @@ class Chunk {
         int bx = CHUNK_TO_WORLD(x, position[0]);
         int bz = CHUNK_TO_WORLD(z, position[2]);
         BiomeParams biomeParams{};
-        biomeParams.kTEMPERATURE = perlinNoise(bx, bz, noise_config::kTEMPERATURE);
-        biomeParams.humidity = perlinNoise(bx, bz, noise_config::kHUMIDITY);
-        biomeParams.continent = perlinNoise(bx, bz, noise_config::kCONTINENT);
-        biomeParams.erosion = perlinNoise(bx, bz, noise_config::kEROSION);
-        biomeParams.weirdness = perlinNoise(bx, bz, noise_config::kWEIRDNESS);
-        biomeParams.depth = perlinNoise(bx, bz, noise_config::kDEPTH);
+        biomeParams.kTEMPERATURE = perlinNoise(bx, bz, noise_config::kTEMPERATURE, kSEED);
+        biomeParams.humidity = perlinNoise(bx, bz, noise_config::kHUMIDITY, kSEED);
+        biomeParams.continent = perlinNoise(bx, bz, noise_config::kCONTINENT, kSEED);
+        biomeParams.erosion = perlinNoise(bx, bz, noise_config::kEROSION, kSEED);
+        biomeParams.weirdness = perlinNoise(bx, bz, noise_config::kWEIRDNESS, kSEED);
+        biomeParams.depth = perlinNoise(bx, bz, noise_config::kDEPTH, kSEED);
         return biomeParams;
     }
     BiomeType getBiomeDataAt(int x, int z) const {
@@ -140,5 +141,6 @@ class Chunk {
     std::vector<BiomeType> _biomeData;
     void generateChunk();
     bool loadChunk();
+    int64_t kSEED = 42L;
     // void saveChunk();
 };

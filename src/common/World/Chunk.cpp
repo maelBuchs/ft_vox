@@ -11,6 +11,7 @@
 #include "common/Util/Util.hpp"
 #include "glm/detail/qualifier.hpp"
 #include "glm/fwd.hpp"
+#include "server/World/WorldManager.hpp"
 
 #define NB_ADD_LAND 5
 
@@ -31,7 +32,7 @@ namespace {
 //     return biomeData;
 // }
 
-std::vector<BiomeType> determineBiome(Chunk& chunk) {
+std::vector<BiomeType> determineBiome(Chunk& chunk, int64_t seed) {
     std::vector<BiomeType> biomeData;
     biomeData.reserve(static_cast<long>(Chunk::CHUNK_SIZE) * Chunk::CHUNK_SIZE);
 
@@ -40,9 +41,8 @@ std::vector<BiomeType> determineBiome(Chunk& chunk) {
             int worldX = CHUNK_TO_WORLD(localX, chunk.getPosition()[0]);
             int worldZ = CHUNK_TO_WORLD(localZ, chunk.getPosition()[2]);
 
-            float continent = perlinNoise(worldX, worldZ, noise_config::kCONTINENT);
-
-            float humidity = perlinNoise(worldX, worldZ, noise_config::kHUMIDITY);
+            float continent = perlinNoise(worldX, worldZ, noise_config::kCONTINENT, seed);
+            float humidity = perlinNoise(worldX, worldZ, noise_config::kHUMIDITY, seed);
 
             BiomeType biome = BiomeType::kNONE;
             if (continent < 0) {
@@ -62,10 +62,11 @@ std::vector<BiomeType> determineBiome(Chunk& chunk) {
 }
 } // namespace
 
-Chunk::Chunk(int x, int y, int z) : position{x, y, z}, _blocks{}, _isEmpty(false) {
+Chunk::Chunk(int x, int y, int z, WorldManager& worldManager)
+    : position{x, y, z}, _isEmpty(false), kSEED(worldManager.getSeed()) {
     _blocks.fill(0);
 
-    _biomeData = determineBiome(*this);
+    _biomeData = determineBiome(*this, kSEED);
     // if (!loadChunk()) {
     // generateChunk();
     // }

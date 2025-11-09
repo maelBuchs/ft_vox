@@ -7,7 +7,6 @@
 
 #include "common/Util/Util.hpp"
 
-#define SEED 42L
 #ifndef CHUNK_TO_WORLD
 #define CHUNK_TO_WORLD(b, c) ((c) * Chunk::CHUNK_SIZE + (b))
 #endif
@@ -18,9 +17,11 @@ WorldManager::WorldManager(ThreadSafeQueue<ChunkRequest>& requestQueue,
     std::vector<double> x;
     std::vector<double> y;
     // x = {-1.0, -0.8, -0.5, -0.3, 0.1, 0.3, 0.5, 0.7, 0.8, 0.9, 1.0};
-    // y = {20, 31, 45, 60, 70, 80, 119, 137, 148, 200, 255};
-    x = {-1.0, -0.8, -0.5, -0.3, 0.0, 0.1, 0.5, 0.7, 0.75, 0.8, 1.0};
-    y = {20, 31, 35, 40, 60, 65, 90, 137, 248, 350, 400};
+    // // y = {20, 31, 45, 60, 70, 80, 119, 137, 148, 200, 255};
+    // x = {-1.0, -0.8, -0.5, -0.3, 0.0, 0.1, 0.5, 0.7, 0.75, 0.8, 1.0, 1.2};
+    // y = {20, 31, 35, 40, 50, 65, 69, 90, 100, 150, 200, 255};
+    x = {-1.0, -0.8, -0.5, -0.3, 0.0, 0.5, 0.7, 0.75, 0.8, 1.0, 1.2};
+    y = {20, 31, 35, 40, 50, 69, 90, 100, 130, 220, 255};
     _heightSpline.set_points(x, y, tk::spline::cspline);
 }
 

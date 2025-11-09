@@ -62,16 +62,16 @@ float perlinValue(float x, float y, int64_t seed) {
 // Génère une matrice 2D de Perlin noise
 // octave : entre 1 et 10
 // persistence : entre 0 et 1
-float perlinNoise(int x, int y, NoiseParams params) {
+float perlinNoise(int x, int y, NoiseParams params, int64_t seed) {
 
     float total = 0.0F;
     float frequency = params.baseFrequency;
     float amplitude = 1.0F;
-    float maxValue = 0.0F; // Pour normaliser le résultat
+    float maxValue = 0.0F; // Pour normaliser le résulta
 
     for (int i = 0; i < params.octaves; ++i) {
         total += perlinValue(static_cast<float>(x) * frequency, static_cast<float>(y) * frequency,
-                             params.seed + (static_cast<int64_t>(i) * 100)) *
+                             seed + (static_cast<int64_t>(i) * 100)) *
                  amplitude;
 
         maxValue += amplitude;
