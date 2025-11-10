@@ -67,6 +67,10 @@ push;
 // Returns true if sphere intersects or is inside frustum
 // NOTE: Only tests first 5 planes (skips far plane at index 5)
 bool testSphereFrustum(vec3 center, float radius) {
+    // Margin to prevent precision issues and minor pop-in
+    const float margin = radius * 0.15; // 15% extra margin
+    float expandedRadius = radius + margin;
+
     // Test against first 5 planes (left, right, top, bottom, near)
     // Skip far plane (index 5) - it's numerically unstable with distant far planes
     // Distance culling handles far-chunk rejection instead
@@ -74,10 +78,9 @@ bool testSphereFrustum(vec3 center, float radius) {
         vec4 plane = frustum.planes[i];
         float distance = dot(plane.xyz, center) + plane.w;
 
-        // Planes are negated in CPU code, so they point OUTWARD
-        // Negative distance = inside, positive = outside
-        // Sphere is culled if center is more than radius distance OUTSIDE (positive)
-        if (distance > radius) {
+        // Planes point INWARD - negative distance means outside frustum
+        // Sphere is culled if center is more than radius distance outside
+        if (distance < -expandedRadius) {
             return false;
         }
     }
@@ -88,6 +91,11 @@ bool testSphereFrustum(vec3 center, float radius) {
 // Returns true if AABB intersects or is inside frustum
 // NOTE: Only tests first 5 planes (skips far plane at index 5)
 bool testAABBFrustum(vec3 minPoint, vec3 maxPoint) {
+    // Margin to prevent precision issues and minor pop-in
+    const float margin = push.chunkSize * 0.08; // 8% chunk size margin
+    vec3 expandedMin = minPoint - vec3(margin);
+    vec3 expandedMax = maxPoint + vec3(margin);
+
     // Test against first 5 planes (left, right, top, bottom, near)
     // Skip far plane (index 5) - it's numerically unstable with distant far planes
     // Distance culling handles far-chunk rejection instead
@@ -95,16 +103,15 @@ bool testAABBFrustum(vec3 minPoint, vec3 maxPoint) {
         vec4 plane = frustum.planes[i];
         vec3 normal = plane.xyz;
 
-        // Find the "negative vertex" (corner furthest along outward normal)
-        // Since planes point outward (negated), this is the furthest corner
-        vec3 nVertex;
-        nVertex.x = (normal.x >= 0.0) ? maxPoint.x : minPoint.x;
-        nVertex.y = (normal.y >= 0.0) ? maxPoint.y : minPoint.y;
-        nVertex.z = (normal.z >= 0.0) ? maxPoint.z : minPoint.z;
+        // Find FURTHEST vertex to plane (p-vertex) for inward-pointing planes
+        vec3 pVertex;
+        pVertex.x = (normal.x >= 0.0) ? expandedMax.x : expandedMin.x;
+        pVertex.y = (normal.y >= 0.0) ? expandedMax.y : expandedMin.y;
+        pVertex.z = (normal.z >= 0.0) ? expandedMax.z : expandedMin.z;
 
-        // If furthest vertex is outside (positive), entire AABB is outside
-        float distance = dot(normal, nVertex) + plane.w;
-        if (distance > 0.0) {
+        // If furthest vertex is outside (negative distance), entire AABB is outside
+        float distance = dot(normal, pVertex) + plane.w;
+        if (distance < 0.0) {
             return false;
         }
     }

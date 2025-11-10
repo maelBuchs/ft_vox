@@ -68,8 +68,8 @@ bool testDistanceCulling(vec3 chunkCenter) {
 
 // Sphere-frustum test (fast approximate test)
 bool testSphereFrustum(vec3 center, float radius) {
-    // Minimal margin to prevent precision issues
-    const float margin = radius * 0.1; // 10% extra margin
+    // Margin to prevent precision issues and minor pop-in
+    const float margin = radius * 0.15; // 15% extra margin
     float expandedRadius = radius + margin;
 
     // Test against first 5 planes (skip far plane at index 5)
@@ -88,24 +88,24 @@ bool testSphereFrustum(vec3 center, float radius) {
 
 // AABB-frustum test (more accurate)
 bool testAABBFrustum(vec3 minPoint, vec3 maxPoint) {
-    // Minimal margin to prevent precision issues
-    const float margin = push.chunkSize * 0.05; // 5% chunk size margin
+    // Margin to prevent precision issues and minor pop-in
+    const float margin = push.chunkSize * 0.08; // 8% chunk size margin
     vec3 expandedMin = minPoint - vec3(margin);
     vec3 expandedMax = maxPoint + vec3(margin);
 
     // Test against first 5 planes (skip far plane at index 5)
-    // Planes point INWARD - we test the closest vertex to each plane
+    // Planes point INWARD - we test the furthest vertex (p-vertex) to each plane
     for (int i = 0; i < 5; i++) {
         vec4 plane = camera.planes[i];
         vec3 normal = plane.xyz;
 
-        // Find CLOSEST vertex to plane (not furthest) for inward-pointing planes
+        // Find FURTHEST vertex to plane (p-vertex) for inward-pointing planes
         vec3 pVertex;
-        pVertex.x = (normal.x < 0.0) ? expandedMax.x : expandedMin.x;
-        pVertex.y = (normal.y < 0.0) ? expandedMax.y : expandedMin.y;
-        pVertex.z = (normal.z < 0.0) ? expandedMax.z : expandedMin.z;
+        pVertex.x = (normal.x >= 0.0) ? expandedMax.x : expandedMin.x;
+        pVertex.y = (normal.y >= 0.0) ? expandedMax.y : expandedMin.y;
+        pVertex.z = (normal.z >= 0.0) ? expandedMax.z : expandedMin.z;
 
-        // If closest vertex is outside (negative distance), entire AABB is outside
+        // If furthest vertex is outside (negative distance), entire AABB is outside
         float distance = dot(normal, pVertex) + plane.w;
         if (distance < 0.0) {
             return false;
