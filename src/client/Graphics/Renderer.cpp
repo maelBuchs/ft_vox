@@ -49,14 +49,9 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
     _renderContext = std::make_unique<RenderContext>(device);
     _commandExecutor = std::make_unique<CommandExecutor>(device, *_renderContext);
 
-    // Create draw and depth images
     VkExtent2D swapchainExtent = _swapchain->getSwapchainExtent();
     _renderContext->createDrawImages(swapchainExtent);
 
-    // NOTE: Draw/depth images are NOT added to deletion queue because they can be
-    // recreated during window resize. We destroy them manually in the destructor.
-
-    // Create semaphores for each swapchain image
     size_t swapchainImageCount = _swapchain->getSwapchainImages().size();
     _swapchainSemaphores.resize(swapchainImageCount);
     _renderSemaphores.resize(swapchainImageCount);
@@ -96,72 +91,37 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
     loadTextureAtlas();
     loadBlueNoiseTexture();
 
-    // Initialize voxel renderer
     _voxelRenderer = std::make_unique<VoxelRenderer>(
         device, *_meshManager, registry, *_renderContext, *_commandExecutor, *_bufferManager,
         _globalDescriptorAllocator, *this, _perThreadMeshQueues);
     _voxelRenderer->initPipelines(_textureAtlas.imageView, _textureAtlasSampler,
                                   _atlasTexturesPerRow);
 
-    // Initialize sky rendering pipeline
     initSkyPipeline();
 
     initImGui();
 }
 
 Renderer::~Renderer() {
-    auto startTime = std::chrono::high_resolution_clock::now();
-    std::cout << "[Renderer] Destructor start\n";
-
-    // Wait once at the start - this covers all GPU work from rendering
-    auto t1 = std::chrono::high_resolution_clock::now();
     vkDeviceWaitIdle(_device.getDevice());
-    auto t2 = std::chrono::high_resolution_clock::now();
-    std::cout << "[Renderer] vkDeviceWaitIdle took: "
-              << std::chrono::duration<double, std::milli>(t2 - t1).count() << "ms\n";
 
-    // CRITICAL: Explicitly wait for all frame fences to ensure VMA tracking is clear
-    // vkDeviceWaitIdle alone doesn't reset frame fence state, which VMA uses to track buffer usage
-    // NOTE: We DON'T reset fences here - let FrameManager destructor handle that
-    std::cout << "[Renderer] Synchronizing frame fences...\n";
     for (size_t i = 0; i < FrameManager::FRAME_OVERLAP; i++) {
         const auto& frame = _frameManager->getFrameData(i);
         if (frame._renderFence != VK_NULL_HANDLE) {
             vkWaitForFences(_device.getDevice(), 1, &frame._renderFence, VK_TRUE, UINT64_MAX);
-            // Don't reset here - FrameManager destructor will wait again and needs signaled fences
         }
     }
-    std::cout << "[Renderer] Frame fences synchronized\n";
 
-    // Destroy all objects that hold VMA allocations FIRST
-    // This must happen before VulkanDevice is destroyed (which owns the VMA allocator)
-
-    // 1. Destroy ImGui FIRST (it creates VMA buffers internally)
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
-
-    // No need to wait again - we already waited above
 
     if (_imguiPool != VK_NULL_HANDLE) {
         vkDestroyDescriptorPool(_device.getDevice(), _imguiPool, nullptr);
     }
 
-    // 2. Destroy VoxelRenderer (frees all chunk vertex buffers)
-    auto t3 = std::chrono::high_resolution_clock::now();
     _voxelRenderer.reset();
-    auto t4 = std::chrono::high_resolution_clock::now();
-    std::cout << "[Renderer] VoxelRenderer cleanup took: "
-              << std::chrono::duration<double, std::milli>(t4 - t3).count() << "ms\n";
-
-    // 3. Destroy MeshManager (no VMA allocations, but good to clean up early)
-    auto t5 = std::chrono::high_resolution_clock::now();
     _meshManager.reset();
-    auto t6 = std::chrono::high_resolution_clock::now();
-    std::cout << "[Renderer] MeshManager cleanup took: "
-              << std::chrono::duration<double, std::milli>(t6 - t5).count() << "ms\n";
-
-    // 4. Free texture atlas (VMA image allocation - NOT in deletion queue)
     if (_textureAtlasSampler != VK_NULL_HANDLE) {
         vkDestroySampler(_device.getDevice(), _textureAtlasSampler, nullptr);
     }
@@ -172,50 +132,18 @@ Renderer::~Renderer() {
         vmaDestroyImage(_device.getAllocator(), _textureAtlas.image, _textureAtlas.allocation);
     }
 
-    // 5. Manually destroy draw/depth images (can be recreated during resize, not in deletion queue)
     _renderContext->destroyDrawImages();
 
-    // 6. CRITICAL: Wait for GPU again before destroying pipeline layouts
-    // VoxelRenderer already waited, but sky pipeline might still be in use
     vkDeviceWaitIdle(_device.getDevice());
 
-    // 7. Flush deletion queue BEFORE destroying RenderContext
-    // This will destroy blue noise texture and sky pipeline (which are in the queue)
     _mainDeletionQueue.flush();
-
-    // 7. Destroy RenderContext (deletion queue is now empty)
     _renderContext.reset();
-
-    // 8. Destroy remaining managed objects
     _commandExecutor.reset();
     _frameManager.reset();
-
-    // 9. Finally, destroy buffer manager (no allocations should remain)
-    // Report any leaked buffers before destroying the buffer manager
-    const auto& activeAllocations = _bufferManager->getActiveAllocations();
-
-    if (!activeAllocations.empty()) {
-        std::cout << "[Renderer] WARNING: " << activeAllocations.size()
-                  << " LEAKED BUFFERS DETECTED:\n";
-        for (const auto& [vkBuffer, tracked] : activeAllocations) {
-            std::cout << "  Buffer ID #" << tracked.id << ": VkBuffer=" << tracked.buffer
-                      << ", VmaAlloc=" << tracked.allocation << ", size=" << tracked.size
-                      << " bytes"
-                      << ", purpose=" << tracked.purpose << "\n";
-        }
-    }
-
     _bufferManager.reset();
-
-    auto endTime = std::chrono::high_resolution_clock::now();
-    std::cout << "[Renderer] Total destructor time: "
-              << std::chrono::duration<double, std::milli>(endTime - startTime).count() << "ms\n";
 }
 
 void Renderer::updateMeshes(const glm::ivec3& cameraChunkPos, int maxLoadDistance) {
-    // Process finished mesh data from worker threads
-    // This uploads mesh data to GPU buffers (fast operation, non-blocking)
-    // Only accepts meshes within maxLoadDistance to prevent "ghost chunks"
     _voxelRenderer->update(cameraChunkPos, maxLoadDistance);
 }
 
@@ -496,9 +424,6 @@ void Renderer::initImGui() {
         &swapchainFormat;
 
     ImGui_ImplVulkan_Init(&init_info);
-
-    // NOTE: ImGui is NOT added to deletion queue because it needs to be destroyed
-    // before VMA allocator is destroyed (ImGui creates buffers using VMA)
 }
 
 void Renderer::updateFPS(float deltaTime) {
@@ -554,7 +479,6 @@ float Renderer::getMeshPoolUsage() const {
     return 0.0f;
 }
 
-// PHASE 1: Expose frame number for double-buffered resources
 uint64_t Renderer::getFrameNumber() const {
     if (_frameManager) {
         return _frameManager->getFrameNumber();

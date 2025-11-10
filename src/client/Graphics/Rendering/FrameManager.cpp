@@ -12,10 +12,6 @@ FrameManager::FrameManager(VulkanDevice& device) : _device(device), _frameNumber
 }
 
 FrameManager::~FrameManager() {
-    std::cout << "[FrameManager] Destructor start - waiting for in-flight frames...\n";
-
-    // CRITICAL: Wait for all in-flight frames before cleanup
-    // This ensures command buffers are no longer in use and VMA tracking is clear
     for (size_t i = 0; i < FRAME_OVERLAP; i++) {
         auto& frame = _frameData[i];
         if (frame._renderFence != VK_NULL_HANDLE) {
@@ -27,15 +23,10 @@ FrameManager::~FrameManager() {
         }
     }
 
-    std::cout << "[FrameManager] All frames synchronized, flushing deletion queues...\n";
-
-    // Now safe to flush deletion queues
     for (auto& frame : _frameData) {
         frame._deletionQueue.flush();
     }
     _frameDeletionQueue.flush();
-
-    std::cout << "[FrameManager] Cleanup complete\n";
 }
 
 FrameManager::FrameData& FrameManager::getCurrentFrame() {

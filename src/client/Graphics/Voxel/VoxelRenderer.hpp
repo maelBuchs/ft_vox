@@ -81,7 +81,7 @@ class VoxelRenderer {
     void ensureBufferCapacity(uint32_t requiredChunks);
 
     static constexpr uint32_t MAX_CHUNKS =
-        16384; // Initial maximum number of chunks that can be rendered
+        2048; // Initial maximum number of chunks (grows dynamically via ensureBufferCapacity)
     static constexpr float TYPICAL_MAX_VRAM_MB = 512.0f; // Assume 512MB as "100%" for UI display
 
     VulkanDevice& _device;
@@ -116,7 +116,6 @@ class VoxelRenderer {
     std::vector<std::unique_ptr<ThreadSafeQueue<MeshData>>>& _perThreadMeshQueues;
 
     AllocatedBuffer _indirectBuffer;
-    // PHASE 1 OPTIMIZATION: Double-buffered chunk data for frame overlap (eliminates vkDeviceWaitIdle)
     static constexpr uint32_t CHUNK_BUFFER_COUNT = 2; // Must match FrameManager::FRAME_OVERLAP
     std::array<AllocatedBuffer, CHUNK_BUFFER_COUNT> _chunkDataBuffers;
     AllocatedBuffer _atlasConfigBuffer;      // Uniform buffer for atlas configuration
@@ -136,13 +135,17 @@ class VoxelRenderer {
     static constexpr uint32_t MAX_MS_BETWEEN_UPLOADS = 16;     // Or upload every 16ms
     static constexpr uint32_t MAX_MESHES_PER_BATCH = 256;      // Process max 256 meshes/frame
 
-    // PHASE 5: Per-chunk dirty tracking for incremental SSBO updates
+    uint32_t _adaptiveMinChunks = MIN_CHUNKS_FOR_UPLOAD;       // Adjusts between 8-64
+    uint32_t _adaptiveMaxMs = MAX_MS_BETWEEN_UPLOADS;          // Adjusts between 8-32ms
+    uint32_t _adaptiveMaxMeshes = MAX_MESHES_PER_BATCH;        // Adjusts between 64-512
+    std::chrono::steady_clock::time_point _lastFrameTime = std::chrono::steady_clock::now();
+    float _avgFrameTimeMs = 16.67f; // Target 60 FPS
+
     std::vector<bool> _dirtyChunkIndices; // Tracks which specific chunks need upload
     std::vector<uint32_t> _dirtyChunkList; // Compact list of dirty indices (for efficient iteration)
 
     // Descriptor set for chunk data SSBO
     VkDescriptorSetLayout _chunkSetLayout = VK_NULL_HANDLE;
-    // PHASE 1: Per-frame descriptor sets for double-buffered chunk data
     std::array<VkDescriptorSet, CHUNK_BUFFER_COUNT> _chunkDescriptorSets = {}; // Points to _chunkDataBuffers[i] (input)
     VkDescriptorSet _culledChunkDescriptorSet =
         VK_NULL_HANDLE; // Points to _culledChunkDataBuffer (output)
@@ -152,7 +155,6 @@ class VoxelRenderer {
         VK_NULL_HANDLE; // Set 0: Camera, chunk data, index buffer
     VkDescriptorSetLayout _meshShaderFragSetLayout =
         VK_NULL_HANDLE;                                        // Set 1: Texture atlas for fragment
-    // PHASE 1: Per-frame descriptor sets for mesh shader (references double-buffered chunk data)
     std::array<VkDescriptorSet, CHUNK_BUFFER_COUNT> _meshShaderDescriptorSets = {}; // Set 0 descriptor sets
     VkDescriptorSet _meshShaderFragDescriptorSet = VK_NULL_HANDLE; // Set 1 descriptor set
     Pipeline _meshShaderWireframePipeline; // Wireframe variant for debugging (F1 toggle)
@@ -160,6 +162,9 @@ class VoxelRenderer {
     bool _useMeshShaders = false;          // Runtime toggle for mesh shader path
     PFN_vkCmdDrawMeshTasksEXT _vkCmdDrawMeshTasksEXT = nullptr; // Extension function pointer
     uint32_t _maxMeshWorkgroupsPerTask = 1; // Device limit for mesh workgroups per task workgroup
+
+    // Flag to defer index buffer resize descriptor updates to safe frame point
+    bool _indexBufferResizePending = false;
 
     // --- GPU Frustum Culling Resources (DISABLED - incompatible with mesh shaders) ---
     Pipeline _frustumCullPipeline;

@@ -4,6 +4,7 @@
 #include <deque>
 #include <mutex>
 #include <optional>
+#include <vector>
 
 /**
  * Thread-safe producer-consumer queue.
@@ -42,6 +43,33 @@ template <typename T> class ThreadSafeQueue {
         T item = std::move(_queue.front());
         _queue.pop_front();
         return item;
+    }
+
+    /**
+     * Bulk dequeue - pop up to maxItems items in a single lock acquisition.
+     * Returns the number of items actually popped (may be less than maxItems).
+     * This dramatically reduces lock contention when processing many items.
+     */
+    size_t try_pop_batch(std::vector<T>& outItems, size_t maxItems) {
+        std::lock_guard<std::mutex> lock(_mutex);
+
+        const size_t available = _queue.size();
+        const size_t toExtract = std::min(available, maxItems);
+
+        if (toExtract == 0) {
+            return 0;
+        }
+
+        // Reserve space to avoid reallocations
+        outItems.reserve(outItems.size() + toExtract);
+
+        // Move items from queue to output vector
+        for (size_t i = 0; i < toExtract; ++i) {
+            outItems.push_back(std::move(_queue.front()));
+            _queue.pop_front();
+        }
+
+        return toExtract;
     }
 
     /**

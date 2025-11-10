@@ -52,20 +52,19 @@ class Chunk {
 
     // Block access (using block IDs from BlockRegistry)
     [[nodiscard]] uint8_t getBlock(int x, int y, int z) const;
+
+    // Unsafe but fast - skips bounds checking (caller must guarantee x,y,z in [0,CHUNK_SIZE))
+    [[nodiscard]] inline uint8_t getBlockUnsafe(int x, int y, int z) const {
+        return _blocks[x + (y * CHUNK_SIZE) + (z * CHUNK_SIZE * CHUNK_SIZE)];
+    }
+
     void setBlock(int x, int y, int z, uint8_t blockId);
 
     // Helper functions
     [[nodiscard]] bool isBlockSolid(int x, int y, int z) const;
     [[nodiscard]] bool isInBounds(int x, int y, int z) const;
     [[nodiscard]] int getIndex(int x, int y, int z) const;
-    // [[nodiscard]] uint8_t getBiomeDataAt(int x, int z) const {
-    //     int width = static_cast<int>(std::sqrt(_biomeData.size()));
-    //     if (x < 0 || x >= width || z < 0 || z >= width) {
-    //         return static_cast<uint8_t>(BiomeType::NONE);
-    //     }
-    //     return _biomeData[(z * width + x)];
-    // }
-    // Chunk state
+
     [[nodiscard]] bool isEmpty() const { return _isEmpty; }
     void setEmpty(bool empty) { _isEmpty = empty; }
 
@@ -134,5 +133,4 @@ class Chunk {
     std::vector<BiomeType> _biomeData;
     void generateChunk();
     bool loadChunk();
-    // void saveChunk();
 };

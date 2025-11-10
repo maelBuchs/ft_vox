@@ -115,9 +115,6 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
         (meshShaderFeatures.taskShader == VK_TRUE && meshShaderFeatures.meshShader == VK_TRUE);
 
     if (_meshShaderSupported) {
-        std::cout << "[VulkanDevice] Mesh shader support detected - creating device with mesh "
-                     "shader extension\\n";
-
         // Reset mesh shader features for device creation
         meshShaderFeatures.taskShader = VK_TRUE;
         meshShaderFeatures.meshShader = VK_TRUE;
@@ -132,7 +129,6 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
         vkGetPhysicalDeviceQueueFamilyProperties(_physicalDevice, &queueFamilyCount,
                                                  queueFamilies.data());
 
-        // PHASE 2: Find graphics and dedicated transfer queue families
         uint32_t graphicsFamily = UINT32_MAX;
         uint32_t transferFamily = UINT32_MAX;
 
@@ -151,16 +147,12 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
             throw std::runtime_error("Failed to find graphics queue family");
         }
 
-        // If no dedicated transfer queue, use graphics queue for transfers
         if (transferFamily == UINT32_MAX) {
-            std::cout << "[VulkanDevice] No dedicated transfer queue found, using graphics queue\n";
             transferFamily = graphicsFamily;
         } else {
-            std::cout << "[VulkanDevice] Found dedicated transfer queue family: " << transferFamily << "\n";
             _hasAsyncTransfer = true;
         }
 
-        // PHASE 2: Create queue create infos for both queues
         float queuePriorities[] = {1.0f, 1.0f};
         std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
 
@@ -205,23 +197,16 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
 
         VkResult result = vkCreateDevice(_physicalDevice, &createInfo, nullptr, &_device);
         if (result != VK_SUCCESS) {
-            std::cout << "[VulkanDevice] WARN: Failed to create device with mesh shaders (error "
-                      << result << "), falling back\n";
             _meshShaderSupported = false;
         } else {
-            std::cout << "[VulkanDevice] Device created with VK_EXT_mesh_shader extension\n";
             _graphicsQueueFamily = graphicsFamily;
             _transferQueueFamily = transferFamily;
             vkGetDeviceQueue(_device, graphicsFamily, 0, &_graphicsQueue);
             vkGetDeviceQueue(_device, transferFamily, 0, &_transferQueue);
-            std::cout << "[VulkanDevice] Graphics queue family: " << graphicsFamily << "\n";
-            std::cout << "[VulkanDevice] Transfer queue family: " << transferFamily << "\n";
         }
     }
 
-    // If mesh shaders failed or not supported, use vk-bootstrap
     if (!_meshShaderSupported) {
-        std::cout << "[VulkanDevice] Creating device without mesh shaders\\n";
         vkb::DeviceBuilder deviceBuilder{vkbPhysicalDevice};
         auto deviceRet = deviceBuilder.build();
 
@@ -246,7 +231,6 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
         }
         _graphicsQueueFamily = queueFamilyRet.value();
 
-        // PHASE 2: Try to get transfer queue (fallback path)
         auto transferQueueRet = vkbDevice.get_queue(vkb::QueueType::transfer);
         auto transferFamilyRet = vkbDevice.get_queue_index(vkb::QueueType::transfer);
 
@@ -254,28 +238,17 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
             _transferQueue = transferQueueRet.value();
             _transferQueueFamily = transferFamilyRet.value();
             _hasAsyncTransfer = (_transferQueueFamily != _graphicsQueueFamily);
-            std::cout << "[VulkanDevice] Transfer queue family: " << _transferQueueFamily
-                      << ((_hasAsyncTransfer) ? " (dedicated)" : " (shared with graphics)") << "\n";
         } else {
-            // Fallback: use graphics queue for transfers
             _transferQueue = _graphicsQueue;
             _transferQueueFamily = _graphicsQueueFamily;
             _hasAsyncTransfer = false;
-            std::cout << "[VulkanDevice] Using graphics queue for transfers\n";
         }
     }
 
-    // Debug: Try to load the mesh shader function pointer to verify extension is enabled
     if (_meshShaderSupported) {
         auto testFnPtr = vkGetDeviceProcAddr(_device, "vkCmdDrawMeshTasksEXT");
         if (testFnPtr == nullptr) {
-            std::cout
-                << "[VulkanDevice] WARNING: vkCmdDrawMeshTasksEXT function pointer is NULL\\n";
-            std::cout << "[VulkanDevice] This means VK_EXT_mesh_shader extension is NOT enabled\\n";
-            std::cout << "[VulkanDevice] Disabling mesh shader support\\n";
             _meshShaderSupported = false;
-        } else {
-            std::cout << "[VulkanDevice] SUCCESS: vkCmdDrawMeshTasksEXT function pointer loaded\\n";
         }
     }
 
@@ -308,20 +281,9 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
 }
 
 VulkanDevice::~VulkanDevice() {
-    auto startTime = std::chrono::high_resolution_clock::now();
-    std::cout << "[VulkanDevice] Destructor start\n";
-
-    // CRITICAL: Wait for device idle BEFORE destroying Tracy or VMA
-    // This ensures all GPU operations complete before we free resources
-    auto t1 = std::chrono::high_resolution_clock::now();
     if (_device != nullptr) {
         vkDeviceWaitIdle(_device);
     }
-    auto t2 = std::chrono::high_resolution_clock::now();
-    std::cout << "[VulkanDevice] vkDeviceWaitIdle took: "
-              << std::chrono::duration<double, std::milli>(t2 - t1).count() << "ms\n";
-
-    auto t3 = std::chrono::high_resolution_clock::now();
     if (_tracyCtx != nullptr) {
         TracyVkDestroy(_tracyCtx);
     }
@@ -329,24 +291,12 @@ VulkanDevice::~VulkanDevice() {
     if (_tracyCommandPool != nullptr) {
         vkDestroyCommandPool(_device, _tracyCommandPool, nullptr);
     }
-    auto t4 = std::chrono::high_resolution_clock::now();
-    std::cout << "[VulkanDevice] Tracy cleanup took: "
-              << std::chrono::duration<double, std::milli>(t4 - t3).count() << "ms\n";
 
-    // No need to wait again - TracyVkDestroy doesn't queue GPU work
-
-    auto t5 = std::chrono::high_resolution_clock::now();
     if (_allocator != nullptr) {
-        // Dump VMA statistics before destroying to see what's still allocated
         VmaTotalStatistics stats;
         vmaCalculateStatistics(_allocator, &stats);
 
         if (stats.total.statistics.allocationCount > 0) {
-            std::cout << "[VulkanDevice] WARNING: " << stats.total.statistics.allocationCount
-                      << " VMA allocations still remain! These are leaked! ("
-                      << (stats.total.statistics.allocationBytes / 1024 / 1024) << " MB)\n";
-
-            // Dump JSON statistics to file for detailed analysis
             char* statsString = nullptr;
             vmaBuildStatsString(_allocator, &statsString, VK_TRUE);
             if (statsString != nullptr) {
@@ -354,7 +304,6 @@ VulkanDevice::~VulkanDevice() {
                 if (outFile.is_open()) {
                     outFile << statsString;
                     outFile.close();
-                    std::cout << "[VulkanDevice] Wrote detailed VMA stats to vma_leak_stats.json\n";
                 }
                 vmaFreeStatsString(_allocator, statsString);
             }
@@ -362,11 +311,6 @@ VulkanDevice::~VulkanDevice() {
 
         vmaDestroyAllocator(_allocator);
     }
-    auto t6 = std::chrono::high_resolution_clock::now();
-    std::cout << "[VulkanDevice] VMA allocator destruction took: "
-              << std::chrono::duration<double, std::milli>(t6 - t5).count() << "ms\n";
-
-    auto t7 = std::chrono::high_resolution_clock::now();
     if (_device != nullptr) {
         vkDestroyDevice(_device, nullptr);
     }
@@ -382,13 +326,6 @@ VulkanDevice::~VulkanDevice() {
     if (_instance != nullptr) {
         vkDestroyInstance(_instance, nullptr);
     }
-    auto t8 = std::chrono::high_resolution_clock::now();
-    std::cout << "[VulkanDevice] Vulkan cleanup took: "
-              << std::chrono::duration<double, std::milli>(t8 - t7).count() << "ms\n";
-
-    auto endTime = std::chrono::high_resolution_clock::now();
-    std::cout << "[VulkanDevice] Total destructor time: "
-              << std::chrono::duration<double, std::milli>(endTime - startTime).count() << "ms\n";
 }
 
 VulkanDevice::VRAMStats VulkanDevice::getVRAMStats() const {

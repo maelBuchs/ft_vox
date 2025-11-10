@@ -35,17 +35,14 @@ App::App() {
         _window = std::make_unique<Window>(WIDTH, HEIGHT, WINDOW_TITLE);
         _vulkanDevice = std::make_unique<VulkanDevice>(_window->getSDLWindow());
 
-        // Create per-thread mesh queues (eliminates lock contention!)
         _perThreadMeshQueues.reserve(NUM_MESHING_WORKERS);
         for (int i = 0; i < NUM_MESHING_WORKERS; ++i) {
             _perThreadMeshQueues.push_back(std::make_unique<ThreadSafeQueue<MeshData>>());
         }
 
-        // Create renderer, passing all per-thread mesh queues
         _renderer = std::make_unique<Renderer>(*_window, *_vulkanDevice, *_blockRegistry,
                                                _perThreadMeshQueues);
 
-        // Initialize worker threads for async chunk loading
         _worldManager = std::make_unique<WorldManager>(_chunkRequestQueue, _meshingTaskQueue,
                                                        _meshingCompleteQueue);
 
@@ -63,14 +60,10 @@ App::App() {
                 textureResolver));
         }
 
-        // Start worker threads
         _worldManager->start();
         for (auto& worker : _meshingThreads) {
             worker->start();
         }
-
-        std::cout << "[App] Async chunk loading system initialized with " << NUM_MESHING_WORKERS
-                  << " meshing workers\n";
     } catch (const std::exception& e) {
         std::cerr << "Failed to create window: " << e.what() << "\n";
         throw;
@@ -78,54 +71,22 @@ App::App() {
 }
 
 App::~App() {
-    auto startTime = std::chrono::high_resolution_clock::now();
-    std::cout << "[App] Destructor start\n";
-
-    // INSTANT USER FEEDBACK: Hide window immediately!
-    // This makes the shutdown feel instant to the user (<5ms)
-    // Cleanup continues invisibly in the background
     if (_window) {
         SDL_HideWindow(_window->getSDLWindow());
-        std::cout << "[App] Window hidden (instant user feedback)\n";
     }
 
-    // Stop worker threads before destroying other resources
-    auto t1 = std::chrono::high_resolution_clock::now();
     for (auto& worker : _meshingThreads) {
         if (worker) {
             worker->stop();
         }
     }
-    auto t2 = std::chrono::high_resolution_clock::now();
-    std::cout << "[App] Meshing threads stop took: "
-              << std::chrono::duration<double, std::milli>(t2 - t1).count() << "ms\n";
 
-    auto t3 = std::chrono::high_resolution_clock::now();
     if (_worldManager) {
         _worldManager->stop();
     }
-    auto t4 = std::chrono::high_resolution_clock::now();
-    std::cout << "[App] WorldManager stop took: "
-              << std::chrono::duration<double, std::milli>(t4 - t3).count() << "ms\n";
 
-    // CRITICAL: Explicitly destroy renderer and measure time
-    // This includes Renderer + VulkanDevice destruction (the main bottleneck)
-    auto t5 = std::chrono::high_resolution_clock::now();
     _renderer.reset();
-    auto t6 = std::chrono::high_resolution_clock::now();
-    std::cout << "[App] Renderer+VulkanDevice cleanup took: "
-              << std::chrono::duration<double, std::milli>(t6 - t5).count() << "ms\n";
-
-    // Measure window/SDL cleanup
-    auto t7 = std::chrono::high_resolution_clock::now();
     _window.reset();
-    auto t8 = std::chrono::high_resolution_clock::now();
-    std::cout << "[App] Window/SDL cleanup took: "
-              << std::chrono::duration<double, std::milli>(t8 - t7).count() << "ms\n";
-
-    auto endTime = std::chrono::high_resolution_clock::now();
-    std::cout << "[App] Total destructor time: "
-              << std::chrono::duration<double, std::milli>(endTime - startTime).count() << "ms\n";
 }
 
 void App::run() {
@@ -140,15 +101,11 @@ void App::run() {
     SDL_Event event;
 
     SDL_SetWindowRelativeMouseMode(_window->getSDLWindow(), true);
-    std::cout << "[APP] Camera controls: WASD to move, Mouse to look, ESC to quit\n";
-    std::cout << "[APP] Press F1 to toggle wireframe mode\n";
 
-    // Delta time tracking
     uint64_t lastTime = SDL_GetPerformanceCounter();
     const uint64_t perfFrequency = SDL_GetPerformanceFrequency();
 
     while (!inputManager.shouldQuit()) {
-        // Calculate delta time
         uint64_t currentTime = SDL_GetPerformanceCounter();
         float deltaTime =
             static_cast<float>(currentTime - lastTime) / static_cast<float>(perfFrequency);
@@ -156,30 +113,25 @@ void App::run() {
 
         inputManager.newFrame();
 
-        // Handle Escape to toggle UI mode
         if (inputManager.isEscapePressed()) {
             _uiMode = !_uiMode;
             SDL_SetWindowRelativeMouseMode(_window->getSDLWindow(), !_uiMode);
         }
 
         while (SDL_PollEvent(&event)) {
-            // Handle window resize
             if (event.type == SDL_EVENT_WINDOW_RESIZED ||
                 event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
                 _renderer->resizeSwapchain();
             }
 
-            // BONUS: Hide window immediately when quit is requested (even earlier than destructor)
             if (event.type == SDL_EVENT_QUIT) {
                 SDL_HideWindow(_window->getSDLWindow());
-                std::cout << "[App] Quit requested - window hidden immediately\n";
             }
 
             inputManager.processEvent(event);
             ImGui_ImplSDL3_ProcessEvent(&event);
         }
 
-        // Toggle wireframe mode with F1
         if (inputManager.isWireframeToggled()) {
             _renderer->setWireframeMode(!_renderer->isWireframeMode());
         }
@@ -190,8 +142,6 @@ void App::run() {
             inputManager.updateCamera(camera, deltaTime);
         }
 
-        // Request chunks around the camera (async)
-        // Convert camera position to chunk coordinates
         const glm::vec3 cameraPos = camera.getPosition();
         const float chunkSizeFloat = static_cast<float>(Chunk::CHUNK_SIZE);
         const int chunkX = static_cast<int>(std::floor(cameraPos.x / chunkSizeFloat));
@@ -204,8 +154,6 @@ void App::run() {
             enqueueChunkRequests(currentCenter);
         }
 
-        // === Chunk Unloading System ===
-        // Periodically check for chunks that are too far from camera and mark them for unloading
         _framesSinceUnloadCheck++;
         if (_framesSinceUnloadCheck >= UNLOAD_CHECK_INTERVAL) {
             _framesSinceUnloadCheck = 0;
@@ -214,12 +162,9 @@ void App::run() {
             const int unloadRadius =
                 static_cast<int>(static_cast<float>(_loadRadius) * _unloadDistanceMultiplier);
 
-            // Get all loaded chunks from WorldManager
             std::vector<glm::ivec3> loadedChunks = _worldManager->getLoadedChunkPositions();
 
-            // Update unload marks based on current camera position
             for (const glm::ivec3& chunkPos : loadedChunks) {
-                // Calculate offset from camera chunk position
                 const glm::ivec3 offset = chunkPos - currentCenter;
 
                 // Use Chebyshev distance (max of absolute values) - same as loading pattern
@@ -227,7 +172,6 @@ void App::run() {
                     std::max({std::abs(offset.x), std::abs(offset.y), std::abs(offset.z)});
 
                 if (chebyshevDistance > unloadRadius) {
-                    // Chunk is far away - mark for unload
                     _worldManager->markChunkForUnload(chunkPos);
                     _requestedChunks.erase(chunkPos); // Remove from requested set
                 } else if (chebyshevDistance <= _loadRadius) {
@@ -249,15 +193,9 @@ void App::run() {
                          static_cast<float>(loadedChunks.size()) >=
                      REBUILD_PERCENTAGE)) {
 
-                std::cout << "[App] Unloading " << totalMarkedForUnload
-                          << " chunks (load radius: " << _loadRadius
-                          << ", unload radius: " << unloadRadius << ")\n";
-
                 std::vector<glm::ivec3> unloadedChunks = _worldManager->unloadMarkedChunks();
                 if (!unloadedChunks.empty()) {
-                    // Remove unloaded chunks from renderer tracking
-                    // Note: This does NOT reset the mesh pool, so other chunks keep their
-                    // allocations
+                    // Note: This does NOT reset the mesh pool, so other chunks keep their allocations
                     _renderer->rebuildMeshPool(unloadedChunks);
 
                     // No need to re-mesh other chunks - they keep their existing mesh allocations
@@ -265,26 +203,22 @@ void App::run() {
             }
         }
 
-        // Update time of day
         _timeOfDay += _timeSpeed * deltaTime;
         if (_timeOfDay > 1.0F) {
-            _timeOfDay -= 1.0F; // Wrap around
+            _timeOfDay -= 1.0F;
         }
 
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
 
-        // ImGui UI for FPS and wireframe toggle
         ImGui::Begin("Debug Info", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
         ImGui::Text("FPS: %.1f", _renderer->getFPS());
         ImGui::Text("Frame Time: %.3f ms", deltaTime * 1000.0F);
         ImGui::Separator();
 
-        // Worker thread info
         ImGui::Text("Workers: %d meshing threads", NUM_MESHING_WORKERS);
 
-        // Queue statistics
         auto queueStats = _worldManager->getQueueStats();
         ImGui::Separator();
         ImGui::Text("Queue Statistics:");
@@ -311,12 +245,10 @@ void App::run() {
             _renderer->setWireframeMode(wireframeMode);
         }
 
-        // Runtime control for how many chunks to load in each direction
         if (ImGui::SliderInt("Chunk Load Radius", &_loadRadius, 1, 64)) {
             _needsRequestRefresh = true;
         }
 
-        // Chunk unloading controls
         ImGui::SliderFloat("Unload Distance Multiplier", &_unloadDistanceMultiplier, 1.5F, 4.0F);
         const int currentUnloadRadius =
             static_cast<int>(static_cast<float>(_loadRadius) * _unloadDistanceMultiplier);
@@ -336,7 +268,6 @@ void App::run() {
         }
         ImGui::SliderFloat("Time Speed", &_timeSpeed, 0.0F, 0.2F);
 
-        // Display time as readable format
         int hours = static_cast<int>(_timeOfDay * 24.0F);
         int minutes = static_cast<int>((_timeOfDay * 24.0F - hours) * 60.0F);
         ImGui::Text("Current Time: %02d:%02d", hours, minutes);
@@ -376,14 +307,10 @@ void App::run() {
 
         ImGui::Render();
 
-        // Process finished mesh data from worker threads (non-blocking)
-        // Pass current camera position and load radius to reject meshes that are too far
-        // Use unload radius to be more lenient - accept meshes up to unload distance
         const int acceptDistance =
             static_cast<int>(static_cast<float>(_loadRadius) * _unloadDistanceMultiplier);
         _renderer->updateMeshes(currentCenter, acceptDistance);
 
-        // Update FPS counter
         _renderer->updateFPS(deltaTime);
 
         _renderer->draw(_timeOfDay);
@@ -393,12 +320,9 @@ void App::run() {
 }
 
 void App::enqueueChunkRequests(const glm::ivec3& centerChunk) {
-    // If center changed, clean up distant chunks from _requestedChunks instead of clearing all
     if (centerChunk != _lastRequestedCenter) {
         _currentShellRadius = 0;
 
-        // Only remove chunks that are now far away (beyond unload distance)
-        // This keeps tracking of what's actually loaded
         const int unloadRadius =
             static_cast<int>(static_cast<float>(_loadRadius) * _unloadDistanceMultiplier);
         std::unordered_set<glm::ivec3> chunksToRemove;
@@ -408,7 +332,6 @@ void App::enqueueChunkRequests(const glm::ivec3& centerChunk) {
             const int chebyshevDistance =
                 std::max({std::abs(offset.x), std::abs(offset.y), std::abs(offset.z)});
 
-            // Remove from requested set if beyond unload radius
             if (chebyshevDistance > unloadRadius) {
                 chunksToRemove.insert(requestedPos);
             }
@@ -424,53 +347,41 @@ void App::enqueueChunkRequests(const glm::ivec3& centerChunk) {
         _lastLoadRadius = _loadRadius;
     }
 
-    // Throttle requests: only enqueue MAX_REQUESTS_PER_FRAME per frame
-    // Use breadth-first approach (shell-by-shell)
     int requestsThisFrame = 0;
 
     for (const glm::ivec3& offset : _chunkRequestOffsets) {
-        // Calculate shell radius
         int shellRadius = std::max({std::abs(offset.x), std::abs(offset.y), std::abs(offset.z)});
 
-        // Skip chunks from earlier shells (already requested)
         if (shellRadius < _currentShellRadius) {
             continue;
         }
 
-        // Move to next shell if we've exceeded frame budget
         if (shellRadius > _currentShellRadius) {
             if (requestsThisFrame >= MAX_REQUESTS_PER_FRAME) {
-                break; // Continue next frame
+                break;
             }
             _currentShellRadius = shellRadius;
         }
 
         const glm::ivec3 chunkPos = centerChunk + offset;
 
-        // Check current distance to ensure chunk is actually within range
         const glm::ivec3 distCheck = chunkPos - centerChunk;
         const int currentDistance =
             std::max({std::abs(distCheck.x), std::abs(distCheck.y), std::abs(distCheck.z)});
 
-        // Skip if beyond load radius (safety check)
         if (currentDistance > _loadRadius) {
             continue;
         }
 
-        // Skip if already in requested set (already loaded or in queue)
         if (_requestedChunks.find(chunkPos) != _requestedChunks.end()) {
             continue;
         }
 
-        // Enqueue the request
         if (chunkPos[1] >= 0) {
-            // CRITICAL FIX: Only unmark from unload queue if the chunk is NOT already loaded
-            // If it's already loaded, don't interfere with the unload system
+            // CRITICAL FIX: Only unmark from unload queue if chunk is NOT already loaded
             if (!_worldManager->isChunkLoaded(chunkPos)) {
-                // Chunk is not loaded yet, safe to unmark (in case it was marked before)
                 _worldManager->unmarkChunkForUnload(chunkPos);
 
-                // Enqueue request for generation
                 _chunkRequestQueue.push(ChunkRequest(chunkPos));
                 requestsThisFrame++;
             }
@@ -480,7 +391,7 @@ void App::enqueueChunkRequests(const glm::ivec3& centerChunk) {
         }
 
         if (requestsThisFrame >= MAX_REQUESTS_PER_FRAME) {
-            break; // Continue next frame
+            break;
         }
     }
 
@@ -504,8 +415,6 @@ void App::rebuildChunkOffsets(int radius) {
         }
     }
 
-    // Sort by shell radius (Chebyshev distance) for breadth-first loading
-    // Chunks in the same shell are sorted by squared Euclidean distance
     auto shellRadius = [](const glm::ivec3& offset) {
         return std::max({std::abs(offset.x), std::abs(offset.y), std::abs(offset.z)});
     };
@@ -519,9 +428,8 @@ void App::rebuildChunkOffsets(int radius) {
                   const int shellA = shellRadius(a);
                   const int shellB = shellRadius(b);
                   if (shellA != shellB) {
-                      return shellA < shellB; // Closer shells first
+                      return shellA < shellB;
                   }
-                  // Within same shell, sort by Euclidean distance
                   return squaredDistance(a) < squaredDistance(b);
               });
 }

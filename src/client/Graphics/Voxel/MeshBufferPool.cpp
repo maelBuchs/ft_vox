@@ -1,6 +1,7 @@
 #include "MeshBufferPool.hpp"
 
 #include <chrono>
+#include <cstring>
 #include <iostream>
 #include <stdexcept>
 
@@ -9,17 +10,105 @@
 #include "../Core/VulkanBuffer.hpp"
 #include "../Core/VulkanDevice.hpp"
 
-// PHASE 1 FIX: Increased from 512MB (128M indices) to 2GB (512M indices)
-// For extreme view distances (40k+ chunks @ avg 8k triangles each):
-//   - 40k chunks * 8k triangles * 3 indices = 960M indices = 3.8GB needed
-//   - Pre-allocating 2GB reduces resize frequency from 4+ resizes to 1-2
-//   - Each resize causes GPU stall (vkWaitForFences during buffer copy) = frame stutter
-//   - Trade-off: Higher VRAM usage (2GB) for stable FPS on high-end GPUs
-// TODO (Phase 3): Replace with async transfer queue to eliminate stutter entirely
-constexpr VkDeviceSize INITIAL_INDEX_BUFFER_SIZE = 512ull * 1024 * 1024 * sizeof(uint32_t); // 2GB
+// Start with conservative 64MB initial size and grow dynamically as needed
+// Typical startup loads ~500-1000 chunks (10-20MB of indices)
+// 64MB provides headroom without wasting 2GB upfront
+// Buffer grows automatically via ensureIndexBufferCapacity() when needed
+constexpr VkDeviceSize INITIAL_INDEX_BUFFER_SIZE = 16ull * 1024 * 1024 * sizeof(uint32_t);
+
+UploadRingBuffer::UploadRingBuffer(VulkanDevice& device, VulkanBuffer& bufferManager)
+    : _device(device), _bufferManager(bufferManager) {
+
+    // Create 64MB ring buffer with HOST_VISIBLE | HOST_COHERENT memory
+    _ringBuffer = _bufferManager.createBuffer(
+        RING_SIZE,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT, // Used as source for GPU transfers
+        VMA_MEMORY_USAGE_CPU_ONLY);       // CPU-writeable, auto-mapped by VMA
+
+    // Get persistently mapped pointer from VMA (automatically mapped)
+    _mappedPtr = _ringBuffer.info.pMappedData;
+    if (!_mappedPtr) {
+        throw std::runtime_error("[UploadRingBuffer] Failed to get mapped pointer from VMA");
+    }
+
+    for (auto& frame : _frameStates) {
+        frame.startOffset = 0;
+        frame.endOffset = 0;
+    }
+}
+
+UploadRingBuffer::~UploadRingBuffer() {
+    // VMA will automatically unmap when we destroy the buffer
+    _bufferManager.destroyBuffer(_ringBuffer);
+}
+
+UploadRingBuffer::Allocation UploadRingBuffer::allocate(VkDeviceSize size, uint32_t frameIndex) {
+    // Align size to 256 bytes (common buffer alignment requirement)
+    const VkDeviceSize alignment = 256;
+    const VkDeviceSize alignedSize = (size + alignment - 1) & ~(alignment - 1);
+
+    // Atomic fetch-add to get allocation offset (thread-safe!)
+    VkDeviceSize offset = _writeOffset.fetch_add(alignedSize, std::memory_order_relaxed);
+
+    // Check if we've wrapped around the ring
+    if (offset + alignedSize > RING_SIZE) {
+        // Ring buffer full - need to wait for GPU or increase size
+        // For now, throw error (should be rare with 64MB)
+        throw std::runtime_error(
+            "[UploadRingBuffer] Ring buffer overflow! Increase RING_SIZE or reduce batch size.");
+    }
+
+    // Update frame end offset
+    const uint32_t frameIdx = frameIndex % FRAME_COUNT;
+    _frameStates[frameIdx].endOffset = offset + alignedSize;
+
+    return Allocation{
+        .buffer = _ringBuffer.buffer,
+        .offset = offset,
+        .mappedPtr = static_cast<char*>(_mappedPtr) + offset,
+        .size = alignedSize
+    };
+}
+
+void UploadRingBuffer::frameComplete(uint32_t frameIndex) {
+    const uint32_t frameIdx = frameIndex % FRAME_COUNT;
+
+    // Reset write offset to start of completed frame
+    // This allows ring to wrap around and reuse memory
+    VkDeviceSize oldStart = _frameStates[frameIdx].startOffset;
+    VkDeviceSize oldEnd = _frameStates[frameIdx].endOffset;
+
+    // Mark this frame's region as free
+    _frameStates[frameIdx].startOffset = oldEnd;
+
+    // If this was the oldest frame, we can reset the ring
+    bool canReset = true;
+    for (const auto& frame : _frameStates) {
+        if (frame.startOffset != frame.endOffset) {
+            canReset = false;
+            break;
+        }
+    }
+
+    if (canReset) {
+        // All frames complete - reset ring to beginning
+        _writeOffset.store(0, std::memory_order_relaxed);
+        for (auto& frame : _frameStates) {
+            frame.startOffset = 0;
+            frame.endOffset = 0;
+        }
+    }
+}
+
+float UploadRingBuffer::getUtilization() const {
+    VkDeviceSize currentOffset = _writeOffset.load(std::memory_order_relaxed);
+    return static_cast<float>(currentOffset) / static_cast<float>(RING_SIZE);
+}
 
 MeshBufferPool::MeshBufferPool(VulkanDevice& device, VulkanBuffer& bufferManager)
     : _device(device), _bufferManager(bufferManager) {
+
+    _uploadRing = std::make_unique<UploadRingBuffer>(_device, _bufferManager);
 
     // Create mega index buffer (shared by all chunks) with initial capacity
     _currentIndexBufferSize = INITIAL_INDEX_BUFFER_SIZE;
@@ -31,19 +120,14 @@ MeshBufferPool::MeshBufferPool(VulkanDevice& device, VulkanBuffer& bufferManager
 }
 
 MeshBufferPool::~MeshBufferPool() {
-    auto start = std::chrono::high_resolution_clock::now();
-
-    // Flush any remaining deletion queue (should be empty if VoxelRenderer cleaned up properly)
     flushDeletionQueue();
 
-    // PHASE 4: Destroy all pooled staging buffers
     for (auto& staging : _stagingVertexPool) {
         _bufferManager.destroyBuffer(staging.buffer);
     }
     for (auto& staging : _stagingIndexPool) {
         _bufferManager.destroyBuffer(staging.buffer);
     }
-    // PHASE 6: Destroy generic pool
     for (auto& staging : _stagingGenericPool) {
         _bufferManager.destroyBuffer(staging.buffer);
     }
@@ -51,14 +135,9 @@ MeshBufferPool::~MeshBufferPool() {
     _stagingIndexPool.clear();
     _stagingGenericPool.clear();
 
-    // Destroy mega index buffer
     if (_indexBuffer.buffer != VK_NULL_HANDLE) {
         _bufferManager.destroyBuffer(_indexBuffer);
     }
-
-    auto end = std::chrono::high_resolution_clock::now();
-    std::cout << "[MeshBufferPool] Destructor took: "
-              << std::chrono::duration<double, std::milli>(end - start).count() << "ms\n";
 }
 
 ChunkMeshBuffers MeshBufferPool::allocateChunkBuffers(
@@ -79,9 +158,7 @@ ChunkMeshBuffers MeshBufferPool::allocateChunkBuffers(
     chunkBuffers.vertexCount = vertexCount;
     chunkBuffers.indexCount = indexCount;
 
-    // ========================================================================
-    // ALLOCATE PER-CHUNK VERTEX BUFFER via VMA
-    // ========================================================================
+    // Allocate per-chunk vertex buffer via VMA
     chunkBuffers.vertexBuffer = _bufferManager.createBuffer(
         vertexSize,
         VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
@@ -94,9 +171,7 @@ ChunkMeshBuffers MeshBufferPool::allocateChunkBuffers(
     vertexAddressInfo.buffer = chunkBuffers.vertexBuffer.buffer;
     chunkBuffers.vertexAddress = vkGetBufferDeviceAddress(_device.getDevice(), &vertexAddressInfo);
 
-    // ========================================================================
-    // ALLOCATE INDEX SUB-ALLOCATION in mega buffer (with free-list recycling)
-    // ========================================================================
+    // Allocate index sub-allocation in mega buffer (with free-list recycling)
     uint32_t indexOffset = 0;
     bool foundFreeRange = false;
 
@@ -123,6 +198,12 @@ ChunkMeshBuffers MeshBufferPool::allocateChunkBuffers(
     if (!foundFreeRange) {
         indexOffset = _indexOffset;
 
+        // Submit any pending uploads before resizing the buffer
+        // Otherwise pending uploads will reference the old (soon-to-be-destroyed) buffer
+        if (!_pendingUploads.empty()) {
+            submitPendingUploads(immediateSubmit);
+        }
+
         // Ensure we have enough capacity (will resize if needed)
         ensureIndexBufferCapacity(_indexOffset + indexCount, immediateSubmit);
 
@@ -131,35 +212,27 @@ ChunkMeshBuffers MeshBufferPool::allocateChunkBuffers(
 
     chunkBuffers.firstIndex = indexOffset;
 
-    // ========================================================================
-    // PHASE 4: ACQUIRE FROM STAGING BUFFER POOL (reuse instead of create/destroy)
-    // ========================================================================
-    AllocatedBuffer stagingVertex = acquireStagingBuffer(vertexSize, StagingType::Vertex);
-    AllocatedBuffer stagingIndex = acquireStagingBuffer(indexSize, StagingType::Index);
+    auto vertexAlloc = _uploadRing->allocate(vertexSize, _currentFrameIndex);
+    auto indexAlloc = _uploadRing->allocate(indexSize, _currentFrameIndex);
 
     try {
-        _bufferManager.uploadToBuffer(stagingVertex, vertices.data(), vertexSize);
-        _bufferManager.uploadToBuffer(stagingIndex, indices.data(), indexSize);
+        std::memcpy(vertexAlloc.mappedPtr, vertices.data(), vertexSize);
+        std::memcpy(indexAlloc.mappedPtr, indices.data(), indexSize);
 
-        // PHASE 3: Queue for batched upload instead of immediate submit
         PendingUpload upload{
-            .stagingVertex = stagingVertex,
-            .stagingIndex = stagingIndex,
+            .stagingVertex = AllocatedBuffer{vertexAlloc.buffer, {}, {}}, // Ring buffer handle
+            .stagingIndex = AllocatedBuffer{indexAlloc.buffer, {}, {}},   // Ring buffer handle
             .dstVertexBuffer = chunkBuffers.vertexBuffer.buffer,
             .dstIndexBuffer = _indexBuffer.buffer,
             .vertexSize = vertexSize,
             .indexSize = indexSize,
-            .indexOffset = indexOffset
+            .indexOffset = indexOffset,
+            .vertexSrcOffset = vertexAlloc.offset,
+            .indexSrcOffset = indexAlloc.offset
         };
         _pendingUploads.push_back(upload);
 
-        // NOTE: Staging buffers will be destroyed in submitPendingUploads()
-
     } catch (...) {
-        // PHASE 4: Staging buffers are pooled - mark as available instead of destroying
-        // (They will be recycled on next updateStagingPools call)
-
-        // Clean up the vertex buffer we created
         _bufferManager.destroyBuffer(chunkBuffers.vertexBuffer);
 
         // Rollback index allocation
@@ -190,7 +263,7 @@ void MeshBufferPool::freeChunkBuffers(const ChunkMeshBuffers& buffers) {
         return; // Already freed or never allocated
     }
 
-    // CRITICAL: Don't destroy immediately! GPU might still be using it.
+    // Don't destroy immediately - GPU might still be using it
     // Add to deletion queue and process after GPU is done
     _deletionQueue.push_back(DeletionEntry{.vertexBuffer = buffers.vertexBuffer,
                                            .vertexCount = buffers.vertexCount,
@@ -234,11 +307,11 @@ void MeshBufferPool::processDeletionQueue() {
         }
     }
 
-    // Also process pending index range frees
     processPendingIndexFrees();
 
-    // PHASE 4: Update staging buffer pools (recycle buffers after GPU is done)
     updateStagingPools();
+
+    _uploadRing->frameComplete(_currentFrameIndex);
 }
 
 void MeshBufferPool::flushDeletionQueue() {
@@ -342,13 +415,14 @@ void MeshBufferPool::ensureIndexBufferCapacity(
     // Calculate new capacity with 1.5x growth factor
     VkDeviceSize newCapacity = static_cast<VkDeviceSize>(requiredBytes * 1.5);
 
-    // Align to 256MB boundaries for cleaner allocation
     const VkDeviceSize alignment = 256ull * 1024 * 1024;
     newCapacity = ((newCapacity + alignment - 1) / alignment) * alignment;
 
-    std::cout << "[MeshBufferPool] Resizing mega index buffer from "
-              << (_currentIndexBufferSize / (1024 * 1024)) << " MB to "
-              << (newCapacity / (1024 * 1024)) << " MB\n";
+    vkDeviceWaitIdle(_device.getDevice());
+
+    // Store old buffer handle for copying
+    VkBuffer oldBuffer = _indexBuffer.buffer;
+    const VkDeviceSize bytesToCopy = static_cast<VkDeviceSize>(_indexOffset) * sizeof(uint32_t);
 
     // Create new larger buffer
     AllocatedBuffer newIndexBuffer = _bufferManager.createBuffer(
@@ -357,32 +431,40 @@ void MeshBufferPool::ensureIndexBufferCapacity(
             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         VMA_MEMORY_USAGE_GPU_ONLY);
 
+    // Verify buffer was created successfully
+    if (newIndexBuffer.buffer == VK_NULL_HANDLE) {
+        throw std::runtime_error("[MeshBufferPool] Failed to create resized index buffer");
+    }
+
     // Copy existing data from old buffer to new buffer
-    const VkDeviceSize bytesToCopy = static_cast<VkDeviceSize>(_indexOffset) * sizeof(uint32_t);
     if (bytesToCopy > 0) {
-        immediateSubmit([&](VkCommandBuffer cmd) {
+        // Capture buffer handles by value, not by reference to local variables
+        VkBuffer srcBuffer = oldBuffer;
+        VkBuffer dstBuffer = newIndexBuffer.buffer;
+
+        immediateSubmit([srcBuffer, dstBuffer, bytesToCopy](VkCommandBuffer cmd) {
             VkBufferCopy copyRegion{};
             copyRegion.srcOffset = 0;
             copyRegion.dstOffset = 0;
             copyRegion.size = bytesToCopy;
-            vkCmdCopyBuffer(cmd, _indexBuffer.buffer, newIndexBuffer.buffer, 1, &copyRegion);
+            vkCmdCopyBuffer(cmd, srcBuffer, dstBuffer, 1, &copyRegion);
         });
     }
 
-    // Destroy old buffer (safe now because copy is complete)
+    // Destroy old buffer (safe now because copy is complete and GPU is idle)
     _bufferManager.destroyBuffer(_indexBuffer);
 
     // Replace with new buffer
     _indexBuffer = newIndexBuffer;
     _currentIndexBufferSize = newCapacity;
+
+    // Notify listeners (e.g., VoxelRenderer) to update descriptor sets
+    if (_indexBufferResizeCallback) {
+        _indexBufferResizeCallback();
+    }
 }
 
 void MeshBufferPool::destroyAllChunkBuffers(const std::vector<ChunkMeshBuffers>& buffers) {
-    // Fast shutdown path - destroy all buffers immediately (GPU already idle)
-    std::cout << "[MeshBufferPool] Fast destroying " << buffers.size()
-              << " chunk vertex buffers...\n";
-    auto start = std::chrono::high_resolution_clock::now();
-
     size_t destroyedCount = 0;
     for (const auto& buf : buffers) {
         if (buf.vertexBuffer.buffer != VK_NULL_HANDLE) {
@@ -391,11 +473,6 @@ void MeshBufferPool::destroyAllChunkBuffers(const std::vector<ChunkMeshBuffers>&
         }
     }
 
-    auto end = std::chrono::high_resolution_clock::now();
-    std::cout << "[MeshBufferPool] Batch destroy took: "
-              << std::chrono::duration<double, std::milli>(end - start).count() << "ms\n";
-
-    // Update tracking counters to prevent leak warnings
     _totalFrees += destroyedCount;
     _allocatedChunks = 0;
     _totalVertexMemory = 0;
@@ -403,10 +480,7 @@ void MeshBufferPool::destroyAllChunkBuffers(const std::vector<ChunkMeshBuffers>&
 }
 
 void MeshBufferPool::resetIndexOffset() {
-    // CRITICAL: Only reset when no chunks are allocated!
     if (_allocatedChunks != 0) {
-        std::cout << "[MeshBufferPool] WARNING: Cannot reset index offset - " << _allocatedChunks
-                  << " chunks still allocated!\n";
         return;
     }
 
@@ -424,11 +498,6 @@ float MeshBufferPool::getMemoryUsage() const {
     return static_cast<float>(totalBytes) / (1024.0f * 1024.0f);
 }
 
-// ============================================================================
-// PHASE 4: STAGING BUFFER POOL IMPLEMENTATION
-// ============================================================================
-
-// PHASE 6: Updated to support 3 pool types (Vertex, Index, Generic)
 AllocatedBuffer MeshBufferPool::acquireStagingBuffer(VkDeviceSize requiredSize, StagingType type) {
     ZoneScopedN("MeshBufferPool::acquireStagingBuffer");
 
@@ -495,7 +564,6 @@ void MeshBufferPool::updateStagingPools() {
         }
     }
 
-    // PHASE 6: Handle generic pool
     for (auto& staging : _stagingGenericPool) {
         if (staging.frameDelay > 0) {
             staging.frameDelay--;
@@ -524,10 +592,9 @@ void MeshBufferPool::updateStagingPools() {
 
     cleanupPool(_stagingVertexPool);
     cleanupPool(_stagingIndexPool);
-    cleanupPool(_stagingGenericPool); // PHASE 6
+    cleanupPool(_stagingGenericPool);
 }
 
-// PHASE 3: Submit all pending uploads in a single batch
 void MeshBufferPool::submitPendingUploads(
     const std::function<void(std::function<void(VkCommandBuffer)>&&)>& immediateSubmit) {
 
@@ -537,33 +604,27 @@ void MeshBufferPool::submitPendingUploads(
 
     ZoneScopedN("MeshBufferPool::submitPendingUploads");
 
-    // PHASE 3+7: Batch all copy commands into a single command buffer
-    // Caller (VoxelRenderer) provides submit function (async transfer or immediate)
     immediateSubmit([this](VkCommandBuffer cmd) {
         for (const auto& upload : _pendingUploads) {
-            // Copy vertex data to per-chunk buffer
             VkBufferCopy vertexCopy{};
-            vertexCopy.srcOffset = 0;
+            vertexCopy.srcOffset = upload.vertexSrcOffset;
             vertexCopy.dstOffset = 0;
             vertexCopy.size = upload.vertexSize;
             vkCmdCopyBuffer(cmd, upload.stagingVertex.buffer, upload.dstVertexBuffer, 1, &vertexCopy);
 
-            // Copy index data to mega buffer at allocated offset
+            if (upload.dstIndexBuffer != _indexBuffer.buffer) {
+                throw std::runtime_error(
+                    "[MeshBufferPool] CRITICAL: Pending upload references stale index buffer! "
+                    "This should never happen - uploads should be flushed before resize.");
+            }
+
             VkBufferCopy indexCopy{};
-            indexCopy.srcOffset = 0;
+            indexCopy.srcOffset = upload.indexSrcOffset;
             indexCopy.dstOffset = upload.indexOffset * sizeof(uint32_t);
             indexCopy.size = upload.indexSize;
             vkCmdCopyBuffer(cmd, upload.stagingIndex.buffer, upload.dstIndexBuffer, 1, &indexCopy);
         }
     });
 
-    // PHASE 4: Staging buffers are NOT destroyed - they're pooled and will be recycled
-    // The frameDelay counter was already set in acquireStagingBuffer()
-    // updateStagingPools() will decrement the delay each frame and mark them available
-
-    size_t uploadCount = _pendingUploads.size();
     _pendingUploads.clear();
-
-    std::cout << "[MeshBufferPool] PHASE 3+4: Batched " << uploadCount
-              << " uploads (staging buffers pooled)\n";
 }

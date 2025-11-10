@@ -16,7 +16,6 @@ void Camera::processMouseMovement(float xoffset, float yoffset) {
     // Constrain pitch to prevent screen flip
     _pitch = std::clamp(_pitch, -MAX_PITCH, MAX_PITCH);
 
-    // Update Front, Right and Up Vectors using the updated Euler angles
     updateCameraVectors();
 }
 
@@ -57,7 +56,6 @@ void Camera::updateCameraVectors() {
     front.z = sin(glm::radians(_yaw)) * cos(glm::radians(_pitch));
     _front = glm::normalize(front);
 
-    // Recalculate the Up vector
     _up = _worldUp;
 }
 
@@ -100,14 +98,6 @@ std::array<glm::vec4, 6> Camera::getFrustumPlanes(const glm::mat4& projection) c
             plane /= length;
         }
     }
-
-    // Don't negate - test if this fixes the grid pattern issue
-    // The shader will need to test: distance < -radius instead of distance > radius
-    /*
-    for (auto& plane : planes) {
-        plane = -plane;
-    }
-    */
 
     return planes;
 }

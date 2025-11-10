@@ -56,7 +56,6 @@ class Renderer {
     [[nodiscard]] DescriptorAllocatorGrowable& getGlobalDescriptorAllocator() {
         return _globalDescriptorAllocator;
     }
-    // PHASE 1: Expose frame number for double-buffered resources
     [[nodiscard]] uint64_t getFrameNumber() const;
 
     [[nodiscard]] uint32_t getTextureId(const std::string& path);

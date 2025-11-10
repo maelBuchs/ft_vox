@@ -38,12 +38,8 @@ VoxelRenderer::VoxelRenderer(VulkanDevice& device, MeshManager& meshManager,
 }
 
 VoxelRenderer::~VoxelRenderer() {
-    auto startTime = std::chrono::high_resolution_clock::now();
-    std::cout << "[VoxelRenderer] Destructor start - " << _chunkDrawInfos.size()
-              << " chunks loaded\n";
-
-    // CRITICAL: Free all chunk vertex buffers BEFORE clearing vectors!
-    // VMA requires explicit deallocation before the allocator is destroyed.
+    // Free all chunk vertex buffers before clearing vectors
+    // VMA requires explicit deallocation before the allocator is destroyed
 
     // BUGFIX: Flush deletion queue FIRST to avoid double-free
     // This destroys any buffers that were queued for deletion but not yet processed
@@ -72,13 +68,7 @@ VoxelRenderer::~VoxelRenderer() {
     _chunkDrawInfos.clear();
     _chunkDrawLookup.clear();
 
-    std::cout << "[VoxelRenderer] Cleanup took: "
-              << std::chrono::duration<double, std::milli>(
-                     std::chrono::high_resolution_clock::now() - startTime)
-                     .count()
-              << "ms\n";
-
-    // CRITICAL: Wait for GPU to finish before destroying resources
+    // Wait for GPU to finish before destroying resources
     // This prevents "pipeline layout in use" validation errors
     // Even though FrameManager waits for fences, we add a safety check here
     vkDeviceWaitIdle(_device.getDevice());
@@ -91,8 +81,8 @@ VoxelRenderer::~VoxelRenderer() {
     // Clean up compute culling pipeline
     _frustumCullPipeline.cleanup(_device);
 
-    // CRITICAL: Wait again after pipeline destruction to ensure they're fully destroyed
-    // before destroying the layouts they reference. This prevents the layout leak.
+    // Wait again after pipeline destruction to ensure they're fully destroyed
+    // before destroying the layouts they reference. This prevents the layout leak
     vkDeviceWaitIdle(_device.getDevice());
 
     // Clean up owned pipeline layouts
@@ -127,7 +117,6 @@ VoxelRenderer::~VoxelRenderer() {
     if (_indirectBuffer.buffer != VK_NULL_HANDLE) {
         _bufferManager.destroyBuffer(_indirectBuffer);
     }
-    // PHASE 1: Clean up double-buffered chunk data buffers
     for (auto& buffer : _chunkDataBuffers) {
         if (buffer.buffer != VK_NULL_HANDLE) {
             _bufferManager.destroyBuffer(buffer);
@@ -163,6 +152,22 @@ void VoxelRenderer::initPipelines(VkImageView atlasView, VkSampler atlasSampler,
     // Initialize mesh shader pipeline if supported
     initMeshShaderPipeline(atlasView, atlasSampler);
 
+    // Set up callback to update mesh shader descriptors when index buffer is resized
+    if (_useMeshShaders) {
+        _meshPool->setIndexBufferResizeCallback([this]() {
+            _indexBufferResizePending = true;
+        });
+
+        // Write initial index buffer binding (Binding 2) now that mesh pool exists
+        for (uint32_t i = 0; i < CHUNK_BUFFER_COUNT; ++i) {
+            DescriptorWriter writer;
+            writer.writeBuffer(2, _meshPool->getIndexBuffer(),
+                              _meshPool->getIndexBufferCapacity(), 0,
+                              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+            writer.updateSet(_device.getDevice(), _meshShaderDescriptorSets[i]);
+        }
+    }
+
     // Update culled chunk descriptor set with atlas bindings (now that they exist)
     DescriptorWriter culledWriter;
     culledWriter.writeBuffer(0, _culledChunkDataBuffer.buffer,
@@ -174,8 +179,6 @@ void VoxelRenderer::initPipelines(VkImageView atlasView, VkSampler atlasSampler,
                              VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
     culledWriter.updateSet(_device.getDevice(), _culledChunkDescriptorSet);
 
-    // ===== Traditional Vertex/Fragment Pipeline (fallback for GPUs without mesh shader support)
-    // ===== Skip if mesh shaders are available - they use a different fragment shader layout
     if (!_useMeshShaders) {
         VkShaderModule voxelFragShader =
             Pipeline::loadShaderModule(_device, "shaders/voxel.frag.spv");
@@ -201,11 +204,7 @@ void VoxelRenderer::initPipelines(VkImageView atlasView, VkSampler atlasSampler,
             throw std::runtime_error("Failed to create voxel pipeline layout");
         }
 
-        // ========================================================================
-        // NO VERTEX INPUT BINDINGS - We use buffer device address!
-        // ========================================================================
         // Vertices are accessed via buffer_reference in the shader
-        // No traditional vertex input needed
         std::vector<VkVertexInputBindingDescription> noBindings{};
         std::vector<VkVertexInputAttributeDescription> noAttributes{};
 
@@ -248,9 +247,8 @@ void VoxelRenderer::initPipelines(VkImageView atlasView, VkSampler atlasSampler,
 
         vkDestroyShaderModule(_device.getDevice(), voxelFragShader, nullptr);
         vkDestroyShaderModule(_device.getDevice(), voxelVertexShader, nullptr);
-    } // End of traditional pipeline creation (only for non-mesh-shader GPUs)
+    }
 
-    // PHASE 1: Update mesh shader index buffer binding for all frame descriptor sets
     if (_useMeshShaders && _meshPool) {
         VkBuffer indexBuffer = _meshPool->getIndexBuffer();
         VkDeviceSize indexBufferSize = _meshPool->getIndexBufferCapacity();
@@ -261,8 +259,6 @@ void VoxelRenderer::initPipelines(VkImageView atlasView, VkSampler atlasSampler,
                                     VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
             indexWriter.updateSet(_device.getDevice(), _meshShaderDescriptorSets[i]);
         }
-
-        std::cout << "[VoxelRenderer] Mesh shader index buffer binding updated for all frames\n";
     }
 }
 
@@ -284,8 +280,6 @@ void VoxelRenderer::initMDI(VkImageView atlasView, VkSampler atlasSampler, int t
         VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-    // PHASE 1: Create double-buffered chunk data SSBOs (eliminates vkDeviceWaitIdle)
-    // Each frame uses its own buffer to avoid GPU-CPU race conditions
     for (uint32_t i = 0; i < CHUNK_BUFFER_COUNT; ++i) {
         _chunkDataBuffers[i] = _bufferManager.createBuffer(sizeof(GPUChunkData) * _currentMaxChunks,
                                                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
@@ -301,7 +295,6 @@ void VoxelRenderer::initMDI(VkImageView atlasView, VkSampler atlasSampler, int t
     // Upload texturesPerRow to the uniform buffer
     _bufferManager.uploadToBuffer(_atlasConfigBuffer, &texturesPerRow, sizeof(int));
 
-    // PHASE 1: Allocate per-frame descriptor sets for double-buffered chunk data
     for (uint32_t i = 0; i < CHUNK_BUFFER_COUNT; ++i) {
         _chunkDescriptorSets[i] =
             _descriptorAllocator.allocate(_device.getDevice(), _chunkSetLayout, nullptr);
@@ -321,9 +314,7 @@ void VoxelRenderer::initMDI(VkImageView atlasView, VkSampler atlasSampler, int t
 void VoxelRenderer::initComputeCulling() {
     ZoneScoped; // Tracy profiling
 
-    std::cout << "[VoxelRenderer] Initializing GPU frustum culling compute pipeline...\n";
-
-    // ===== 1. Create descriptor set layout for compute shader =====
+    // Create descriptor set layout for compute shader
     // Binding 0: Input chunk data (SSBO, read-only)
     // Binding 1: Frustum uniform data (UBO)
     // Binding 2: Output indirect commands (SSBO, write-only)
@@ -338,13 +329,11 @@ void VoxelRenderer::initComputeCulling() {
     _frustumCullSetLayout =
         computeLayoutBuilder.build(_device.getDevice(), VK_SHADER_STAGE_COMPUTE_BIT);
 
-    // ===== 2. Create push constant range =====
     VkPushConstantRange computePushRange{};
     computePushRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
     computePushRange.offset = 0;
     computePushRange.size = sizeof(ComputePushConstants);
 
-    // ===== 3. Build compute pipeline (builder creates the pipeline layout for us) =====
     ComputePipelineBuilder computeBuilder;
     computeBuilder.setShader("shaders/frustum_cull.comp.spv");
     computeBuilder.setDescriptorSetLayout(_frustumCullSetLayout);
@@ -352,19 +341,14 @@ void VoxelRenderer::initComputeCulling() {
 
     ComputePipelineBuilder::BuildResult buildResult = computeBuilder.build(_device);
 
-    // Store the builder's pipeline layout (no need to create it manually)
     _frustumCullPipelineLayout = buildResult.layout;
     _frustumCullPipeline.init(buildResult.pipeline, _frustumCullPipelineLayout);
 
-    // ===== 5. Create buffers =====
-    // Frustum uniform buffer (updated per frame with camera frustum)
     _frustumUniformBuffer = _bufferManager.createBuffer(sizeof(GPUFrustumData),
                                                         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
                                                             VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                                                         VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-    // Output indirect commands buffer (compute writes, graphics reads)
-    // Format: uint32_t drawCount + VkDrawIndexedIndirectCommand[]
     const size_t indirectBufferSize =
         sizeof(uint32_t) + (sizeof(VkDrawIndexedIndirectCommand) * _currentMaxChunks);
     _culledIndirectBuffer = _bufferManager.createBuffer(indirectBufferSize,
@@ -373,50 +357,37 @@ void VoxelRenderer::initComputeCulling() {
                                                             VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                                                         VMA_MEMORY_USAGE_GPU_ONLY);
 
-    // Output compacted chunk data buffer
     _culledChunkDataBuffer = _bufferManager.createBuffer(sizeof(GPUChunkData) * _currentMaxChunks,
                                                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
                                                              VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                                                          VMA_MEMORY_USAGE_GPU_ONLY);
 
-    // ===== 6. Allocate and write descriptor set =====
     _frustumCullDescriptorSet =
         _descriptorAllocator.allocate(_device.getDevice(), _frustumCullSetLayout, nullptr);
 
     DescriptorWriter computeWriter;
-    // Binding 0: Input chunk data (use frame 0's buffer for compute - compute path is disabled anyway)
     computeWriter.writeBuffer(0, _chunkDataBuffers[0].buffer, sizeof(GPUChunkData) * _currentMaxChunks,
                               0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-
-    // Binding 1: Frustum uniform data
     computeWriter.writeBuffer(1, _frustumUniformBuffer.buffer, sizeof(GPUFrustumData), 0,
                               VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-
-    // Binding 2: Output indirect commands
     computeWriter.writeBuffer(2, _culledIndirectBuffer.buffer, indirectBufferSize, 0,
                               VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-
-    // Binding 3: Output compacted chunk data
     computeWriter.writeBuffer(3, _culledChunkDataBuffer.buffer,
                               sizeof(GPUChunkData) * _currentMaxChunks, 0,
                               VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
     computeWriter.updateSet(_device.getDevice(), _frustumCullDescriptorSet);
 
-    // ===== 6.5. Create descriptor set for graphics pipeline to read culled chunk data =====
     _culledChunkDescriptorSet =
         _descriptorAllocator.allocate(_device.getDevice(), _chunkSetLayout, nullptr);
 
-    // Write descriptor set for culled chunk data (graphics will use this after compute culling)
     DescriptorWriter culledWriter;
     culledWriter.writeBuffer(0, _culledChunkDataBuffer.buffer,
                              sizeof(GPUChunkData) * _currentMaxChunks, 0,
                              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-    // Bindings 1 and 2 (texture atlas and config) are the same, need to copy from
-    // _chunkDescriptorSets[0] For now, we'll update them separately - TODO: optimize by reusing
+    // TODO: optimize by reusing descriptors
     culledWriter.updateSet(_device.getDevice(), _culledChunkDescriptorSet);
 
-    // ===== 7. Check if drawIndirectCount feature is supported =====
     VkPhysicalDeviceVulkan12Features supportedFeatures12{};
     supportedFeatures12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
 
@@ -427,14 +398,6 @@ void VoxelRenderer::initComputeCulling() {
     vkGetPhysicalDeviceFeatures2(_device.getPhysicalDevice(), &features2);
 
     _supportsDrawIndirectCount = (supportedFeatures12.drawIndirectCount == VK_TRUE);
-
-    if (_supportsDrawIndirectCount) {
-        std::cout << "[VoxelRenderer] drawIndirectCount feature: SUPPORTED\n";
-    } else {
-        std::cout << "[VoxelRenderer] WARNING: drawIndirectCount NOT supported - using fallback\n";
-    }
-
-    std::cout << "[VoxelRenderer] GPU frustum culling initialized successfully!\n";
 }
 
 void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atlasSampler) {
@@ -444,29 +407,20 @@ void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atla
     _cameraUniformBuffer.buffer = VK_NULL_HANDLE;
     _cameraUniformBuffer.allocation = VK_NULL_HANDLE;
 
-    // Check if mesh shaders are supported
     if (!_device.supportsMeshShaders()) {
-        std::cout << "[VoxelRenderer] Mesh shaders not supported - skipping mesh shader pipeline\n";
         _useMeshShaders = false;
         return;
     }
 
-    std::cout << "[VoxelRenderer] Initializing task/mesh shader pipeline...\n";
     _useMeshShaders = true;
 
-    // Load vkCmdDrawMeshTasksEXT function pointer
     _vkCmdDrawMeshTasksEXT = reinterpret_cast<PFN_vkCmdDrawMeshTasksEXT>(
         vkGetDeviceProcAddr(_device.getDevice(), "vkCmdDrawMeshTasksEXT"));
 
     if (_vkCmdDrawMeshTasksEXT == nullptr) {
-        std::cout << "[VoxelRenderer] ERROR: Failed to load vkCmdDrawMeshTasksEXT - extension may "
-                     "not be enabled\n";
-        std::cout << "[VoxelRenderer] Falling back to traditional rendering\n";
         _useMeshShaders = false;
         return;
     }
-
-    std::cout << "[VoxelRenderer] Successfully loaded vkCmdDrawMeshTasksEXT function pointer\n";
 
     VkPhysicalDeviceMeshShaderPropertiesEXT meshProps{};
     meshProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_EXT;
@@ -478,12 +432,6 @@ void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atla
     vkGetPhysicalDeviceProperties2(_device.getPhysicalDevice(), &deviceProps);
 
     _maxMeshWorkgroupsPerTask = std::max(meshProps.maxMeshWorkGroupCount[0], 1u);
-    std::cout << "[VoxelRenderer] Device supports " << _maxMeshWorkgroupsPerTask
-              << " mesh workgroups per task workgroup\n";
-
-    // ===== 1. Create descriptor set layouts =====
-    // Set 0: Mesh/task shader data (camera, chunk data, index buffer)
-    // Set 1: Fragment shader data (texture atlas) - create new layout
 
     DescriptorLayoutBuilder meshLayoutBuilder;
     meshLayoutBuilder.addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); // Camera UBO
@@ -501,14 +449,11 @@ void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atla
     _meshShaderFragSetLayout =
         fragLayoutBuilder.build(_device.getDevice(), VK_SHADER_STAGE_FRAGMENT_BIT);
 
-    // ===== 2. Create camera UBO =====
-    // Note: _cameraUniformBuffer is already initialized to null at the start of this function
     _cameraUniformBuffer = _bufferManager.createBuffer(sizeof(GPUCameraData),
                                                        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
                                                            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                                                        VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-    // ===== 3. Create push constant range for mesh shader =====
     struct MeshShaderPushConstants {
         uint32_t totalChunks;
         float chunkSize;
@@ -521,8 +466,6 @@ void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atla
     meshPushRange.offset = 0;
     meshPushRange.size = sizeof(MeshShaderPushConstants);
 
-    // ===== 4. Create pipeline layout =====
-    // Use both descriptor sets: set 0 for mesh data, set 1 for fragment shader (texture atlas)
     VkDescriptorSetLayout setLayouts[] = {_meshShaderSetLayout, _meshShaderFragSetLayout};
 
     VkPipelineLayoutCreateInfo meshLayoutInfo{};
@@ -537,12 +480,10 @@ void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atla
         throw std::runtime_error("Failed to create mesh shader pipeline layout");
     }
 
-    // ===== 5. Load shaders =====
     VkShaderModule taskShader = Pipeline::loadShaderModule(_device, "shaders/voxel.task.spv");
     VkShaderModule meshShader = Pipeline::loadShaderModule(_device, "shaders/voxel.mesh.spv");
     VkShaderModule fragShader = Pipeline::loadShaderModule(_device, "shaders/voxel.frag.spv");
 
-    // ===== 6. Build mesh shader pipeline =====
     const RenderContext::AllocatedImage& drawImage = _context.getDrawImage();
     const RenderContext::AllocatedImage& depthImage = _context.getDepthImage();
 
@@ -638,7 +579,7 @@ void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atla
 
     _meshShaderPipeline.init(meshPipeline, _meshShaderPipelineLayout);
 
-    // ===== 7. Create WIREFRAME variant for debugging (F1 toggle) =====
+    // Create WIREFRAME variant for debugging (F1 toggle)
     // Create a second pipeline with VK_POLYGON_MODE_LINE before destroying shader modules
     VkPipelineRasterizationStateCreateInfo wireframeRasterizer = rasterizer;
     wireframeRasterizer.polygonMode = VK_POLYGON_MODE_LINE; // WIREFRAME MODE
@@ -659,8 +600,6 @@ void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atla
     vkDestroyShaderModule(_device.getDevice(), meshShader, nullptr);
     vkDestroyShaderModule(_device.getDevice(), fragShader, nullptr);
 
-    // ===== 8. Create and update descriptor sets =====
-    // PHASE 1: Create per-frame descriptor sets for mesh shader (double-buffered chunk data)
     for (uint32_t i = 0; i < CHUNK_BUFFER_COUNT; ++i) {
         _meshShaderDescriptorSets[i] =
             _descriptorAllocator.allocate(_device.getDevice(), _meshShaderSetLayout, nullptr);
@@ -676,7 +615,6 @@ void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atla
         meshWriter.updateSet(_device.getDevice(), _meshShaderDescriptorSets[i]);
     }
 
-    // Set 1: Fragment shader data (texture atlas) - allocate and bind
     _meshShaderFragDescriptorSet =
         _descriptorAllocator.allocate(_device.getDevice(), _meshShaderFragSetLayout, nullptr);
 
@@ -686,11 +624,6 @@ void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atla
     fragWriter.writeBuffer(1, _atlasConfigBuffer.buffer, sizeof(int), 0,
                            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
     fragWriter.updateSet(_device.getDevice(), _meshShaderFragDescriptorSet);
-
-    std::cout << "[VoxelRenderer] Mesh shader pipeline initialized successfully!\n";
-    std::cout << "[VoxelRenderer] Mesh shader wireframe pipeline created for F1 debug toggle\n";
-    std::cout
-        << "[VoxelRenderer] NOTE: Index buffer binding will be updated after mesh pool init\n";
 }
 
 void VoxelRenderer::ensureBufferCapacity(uint32_t requiredChunks) {
@@ -699,30 +632,21 @@ void VoxelRenderer::ensureBufferCapacity(uint32_t requiredChunks) {
         return;
     }
 
-    // Calculate new capacity with 1.5x growth factor to reduce reallocation frequency
     uint32_t newCapacity = static_cast<uint32_t>(requiredChunks * 1.5f);
 
-    std::cout << "[VoxelRenderer] Resizing chunk buffers from " << _currentMaxChunks << " to "
-              << newCapacity << " chunks\n";
-
-    // NOTE: We must wait because we're about to destroy buffers that may be in use
     // TODO: Optimize by using a deletion queue instead of blocking
     vkDeviceWaitIdle(_device.getDevice());
 
-    // Destroy old buffers
     _bufferManager.destroyBuffer(_indirectBuffer);
-    // PHASE 1: Destroy all double-buffered chunk data buffers
     for (auto& buffer : _chunkDataBuffers) {
         _bufferManager.destroyBuffer(buffer);
     }
 
-    // Create new larger buffers
     _indirectBuffer = _bufferManager.createBuffer(
         sizeof(VkDrawIndexedIndirectCommand) * newCapacity,
         VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-    // PHASE 1: Create double-buffered chunk data buffers
     for (uint32_t i = 0; i < CHUNK_BUFFER_COUNT; ++i) {
         _chunkDataBuffers[i] = _bufferManager.createBuffer(sizeof(GPUChunkData) * newCapacity,
                                                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
@@ -730,7 +654,6 @@ void VoxelRenderer::ensureBufferCapacity(uint32_t requiredChunks) {
                                                        VMA_MEMORY_USAGE_CPU_TO_GPU);
     }
 
-    // PHASE 1: Update per-frame descriptor sets to bind the new chunk data buffers
     for (uint32_t i = 0; i < CHUNK_BUFFER_COUNT; ++i) {
         DescriptorWriter writer;
         writer.writeBuffer(0, _chunkDataBuffers[i].buffer, sizeof(GPUChunkData) * newCapacity, 0,
@@ -738,10 +661,17 @@ void VoxelRenderer::ensureBufferCapacity(uint32_t requiredChunks) {
         writer.updateSet(_device.getDevice(), _chunkDescriptorSets[i]);
     }
 
-    // Update current capacity
+    if (_useMeshShaders) {
+        for (uint32_t i = 0; i < CHUNK_BUFFER_COUNT; ++i) {
+            DescriptorWriter writer;
+            writer.writeBuffer(1, _chunkDataBuffers[i].buffer, sizeof(GPUChunkData) * newCapacity, 0,
+                               VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+            writer.updateSet(_device.getDevice(), _meshShaderDescriptorSets[i]);
+        }
+    }
+
     _currentMaxChunks = newCapacity;
 
-    // PHASE 5: Buffer was recreated, mark ALL chunks as dirty for re-upload
     _dirtyChunkIndices.clear();
     _dirtyChunkIndices.resize(_chunkDrawInfos.size(), true);
     _dirtyChunkList.clear();
@@ -754,28 +684,62 @@ void VoxelRenderer::ensureBufferCapacity(uint32_t requiredChunks) {
 
 void VoxelRenderer::update(const glm::ivec3& cameraChunkPos, int maxLoadDistance) {
     ZoneScoped;
-    // Store max load distance for render distance calculation
     _maxLoadDistance = maxLoadDistance;
 
-    // ===== FIX #2: BATCH PROCESSING =====
-    // Collect meshes from ALL per-thread queues in a single batch
-    // This reduces per-mesh overhead and allows better memory layout
+    {
+        const auto now = std::chrono::steady_clock::now();
+        const float frameTimeMs = std::chrono::duration<float, std::milli>(now - _lastFrameTime).count();
+        _lastFrameTime = now;
+
+        // Exponential moving average (smooth out spikes)
+        _avgFrameTimeMs = _avgFrameTimeMs * 0.95f + frameTimeMs * 0.05f;
+
+        // Calculate total pending meshes across all queues
+        size_t totalPending = 0;
+        for (const auto& queue : _perThreadMeshQueues) {
+            totalPending += queue->size();
+        }
+
+        // Adapt batch size based on performance and queue depth
+        if (_avgFrameTimeMs < 10.0f && totalPending > 500) {
+            // Running fast with large backlog - be aggressive
+            _adaptiveMaxMeshes = 512;
+            _adaptiveMinChunks = 8;
+            _adaptiveMaxMs = 8;
+        } else if (_avgFrameTimeMs < 16.67f && totalPending > 100) {
+            // Running at 60+ FPS with moderate backlog - increase throughput
+            _adaptiveMaxMeshes = 384;
+            _adaptiveMinChunks = 16;
+            _adaptiveMaxMs = 12;
+        } else if (_avgFrameTimeMs > 25.0f) {
+            // Running slow (<40 FPS) - reduce load
+            _adaptiveMaxMeshes = 128;
+            _adaptiveMinChunks = 64;
+            _adaptiveMaxMs = 24;
+        } else {
+            // Normal operation - use defaults
+            _adaptiveMaxMeshes = MAX_MESHES_PER_BATCH;
+            _adaptiveMinChunks = MIN_CHUNKS_FOR_UPLOAD;
+            _adaptiveMaxMs = MAX_MS_BETWEEN_UPLOADS;
+        }
+    }
+
     std::vector<MeshData> meshBatch;
-    meshBatch.reserve(MAX_MESHES_PER_BATCH);
+    meshBatch.reserve(_adaptiveMaxMeshes);
 
     {
         ZoneScopedN("Collect Mesh Batch from All Queues");
-        // Iterate through all per-thread queues
         for (auto& queue : _perThreadMeshQueues) {
-            while (meshBatch.size() < MAX_MESHES_PER_BATCH) {
-                auto meshOpt = queue->try_pop();
-                if (!meshOpt.has_value()) {
-                    break; // This queue is empty, move to next
-                }
-                meshBatch.push_back(std::move(meshOpt.value()));
+            const size_t remaining = _adaptiveMaxMeshes - meshBatch.size();
+            if (remaining == 0) {
+                break;
             }
-            if (meshBatch.size() >= MAX_MESHES_PER_BATCH) {
-                break; // Hit batch limit, process what we have
+
+            size_t extracted = queue->try_pop_batch(meshBatch, remaining);
+            (void)extracted;
+
+            if (meshBatch.size() >= _adaptiveMaxMeshes) {
+                break;
             }
         }
     }
@@ -786,7 +750,7 @@ void VoxelRenderer::update(const glm::ivec3& cameraChunkPos, int maxLoadDistance
         for (auto& meshData : meshBatch) {
             const glm::ivec3 chunkCoords = meshData.chunkPosition;
 
-            // CRITICAL: Check if chunk is still within acceptable distance
+            // Check if chunk is still within acceptable distance
             // If player has moved away, discard this mesh to prevent "ghost chunks"
             const glm::ivec3 offset = chunkCoords - cameraChunkPos;
             const int chebyshevDistance =
@@ -844,7 +808,6 @@ void VoxelRenderer::update(const glm::ivec3& cameraChunkPos, int maxLoadDistance
                 _chunkDataDirty = true;
                 _dirtyChunkCount++;
 
-                // PHASE 5: Mark this specific chunk as dirty for incremental upload
                 if (chunkIndex >= _dirtyChunkIndices.size()) {
                     _dirtyChunkIndices.resize(chunkIndex + 1, false);
                 }
@@ -882,7 +845,6 @@ void VoxelRenderer::update(const glm::ivec3& cameraChunkPos, int maxLoadDistance
                 _chunkDataDirty = true;
                 _dirtyChunkCount++;
 
-                // PHASE 5: Mark this specific chunk as dirty for incremental upload
                 if (chunkIndex >= _dirtyChunkIndices.size()) {
                     _dirtyChunkIndices.resize(chunkIndex + 1, false);
                 }
@@ -894,7 +856,6 @@ void VoxelRenderer::update(const glm::ivec3& cameraChunkPos, int maxLoadDistance
         }
     }
 
-    // PHASE 3: Submit all batched uploads in a single command buffer
     if (!meshBatch.empty()) {
         ZoneScopedN("Submit Batched Uploads");
         _meshPool->submitPendingUploads([this](std::function<void(VkCommandBuffer)>&& func) {
@@ -902,26 +863,21 @@ void VoxelRenderer::update(const glm::ivec3& cameraChunkPos, int maxLoadDistance
         });
     }
 
-    // ===== FIX #3: UPLOAD THROTTLING =====
-    // Only upload if we've accumulated enough changes OR enough time has passed
     const auto now = std::chrono::steady_clock::now();
     const auto msSinceLastUpload =
         std::chrono::duration_cast<std::chrono::milliseconds>(now - _lastUploadTime).count();
 
     const bool shouldUpload = _chunkDataDirty && _useMeshShaders &&
-                              (_dirtyChunkCount >= MIN_CHUNKS_FOR_UPLOAD ||
-                               msSinceLastUpload >= MAX_MS_BETWEEN_UPLOADS);
+                              (_dirtyChunkCount >= _adaptiveMinChunks ||
+                               msSinceLastUpload >= _adaptiveMaxMs);
 
     if (shouldUpload) {
         ZoneScopedN("Upload Chunk Data (GPU-Persistent)");
 
-        // PHASE 1 OPTIMIZATION: Double-buffered chunk data eliminates vkDeviceWaitIdle!
         const uint32_t frameIndex = static_cast<uint32_t>(_renderer.getFrameNumber() % CHUNK_BUFFER_COUNT);
 
-        // Ensure buffers are large enough for total chunk count
         ensureBufferCapacity(static_cast<uint32_t>(_chunkDrawInfos.size()));
 
-        // PHASE 5: Build full chunk data array (needed for shader indexing)
         _chunkDrawData.clear();
         _chunkDrawData.reserve(_chunkDrawInfos.size());
 
@@ -938,11 +894,9 @@ void VoxelRenderer::update(const glm::ivec3& cameraChunkPos, int maxLoadDistance
         }
 
         if (!_chunkDrawData.empty()) {
-            // PHASE 5: Upload only dirty chunks for efficiency
             if (!_dirtyChunkList.empty() && _dirtyChunkList.size() < _chunkDrawData.size()) {
                 ZoneScopedN("Upload Dirty Chunks Only");
 
-                // PHASE 6: Acquire staging buffer from pool instead of creating/destroying
                 const VkDeviceSize stagingSize = _dirtyChunkList.size() * sizeof(GPUChunkData);
                 AllocatedBuffer stagingBuffer = _meshPool->acquireStagingBuffer(
                     stagingSize, MeshBufferPool::StagingType::Generic);
@@ -975,20 +929,10 @@ void VoxelRenderer::update(const glm::ivec3& cameraChunkPos, int maxLoadDistance
                                         _chunkDataBuffers[frameIndex].buffer, 1, &copyRegion);
                     }
                 });
-
-                // PHASE 6: DON'T destroy staging buffer - pool manages it automatically!
-                // The buffer will be recycled after GPU is done (via updateStagingPools)
-
-                std::cout << "[VoxelRenderer] PHASE 5+6: Uploaded " << _dirtyChunkList.size()
-                          << " dirty chunks (pooled staging)\n";
             } else {
-                // Full upload (initial state or buffer resize)
                 ZoneScopedN("Upload All Chunks");
                 _bufferManager.uploadToBuffer(_chunkDataBuffers[frameIndex], _chunkDrawData.data(),
                                               _chunkDrawData.size() * sizeof(GPUChunkData));
-
-                std::cout << "[VoxelRenderer] Uploaded all " << _chunkDrawData.size()
-                          << " chunks (full update)\n";
             }
 
             // Clear dirty tracking
@@ -1009,11 +953,31 @@ void VoxelRenderer::update(const glm::ivec3& cameraChunkPos, int maxLoadDistance
 
 void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wireframeMode) {
     ZoneScopedN("VoxelRenderer::drawVoxels");
+
+    const uint32_t frameIndex = static_cast<uint32_t>(_renderer.getFrameNumber() % CHUNK_BUFFER_COUNT);
+    _meshPool->setCurrentFrameIndex(frameIndex);
+
     // Process deletion queue at the start of each frame
     // Buffers queued for deletion are now safe to destroy
     {
         ZoneScopedN("Process Deletion Queue");
         _meshPool->processDeletionQueue();
+    }
+
+    if (_indexBufferResizePending) {
+        ZoneScopedN("Process Index Buffer Resize");
+
+        vkDeviceWaitIdle(_device.getDevice());
+
+        for (uint32_t i = 0; i < CHUNK_BUFFER_COUNT; ++i) {
+            DescriptorWriter writer;
+            writer.writeBuffer(2, _meshPool->getIndexBuffer(),
+                              _meshPool->getIndexBufferCapacity(), 0,
+                              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+            writer.updateSet(_device.getDevice(), _meshShaderDescriptorSets[i]);
+        }
+
+        _indexBufferResizePending = false;
     }
 
     const RenderContext::AllocatedImage& drawImage = _context.getDrawImage();
@@ -1037,7 +1001,7 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
             chunkData.chunkWorldPos = drawInfo.worldPosition;
             chunkData.indexCount = buffers.indexCount;
             chunkData.vertexBufferAddress = buffers.vertexAddress;
-            chunkData.firstIndex = buffers.firstIndex; // CRITICAL for compute shader!
+            chunkData.firstIndex = buffers.firstIndex;
             chunkData._padding = 0;
             _chunkDrawData.push_back(chunkData);
         }
@@ -1048,10 +1012,8 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
         return;
     }
 
-    // Ensure buffers are large enough
     ensureBufferCapacity(static_cast<uint32_t>(_chunkDrawData.size()));
 
-    // PHASE 1: Upload chunk data to current frame's buffer (traditional path)
     {
         ZoneScopedN("Upload Chunk Data");
         const uint32_t frameIndex = static_cast<uint32_t>(_renderer.getFrameNumber() % CHUNK_BUFFER_COUNT);
@@ -1059,7 +1021,7 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
                                       _chunkDrawData.size() * sizeof(GPUChunkData));
     }
 
-    // ===== GPU FRUSTUM CULLING COMPUTE PASS =====
+    // GPU frustum culling compute pass
     if (_enableGPUCulling) {
         ZoneScopedN("GPU Frustum Culling");
 
@@ -1155,74 +1117,10 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
                                  VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
                              0, 1, &memoryBarrier, 0, nullptr, 0, nullptr);
 
-        // Update statistics (will be populated later via readback if needed)
         _cullingStats.totalChunks = pushConstants.totalChunks;
-        _cullingStats.visibleChunks = 0; // Will be updated by GPU
+        _cullingStats.visibleChunks = 0;
         _cullingStats.culledChunks = 0;
         _cullingStats.cullingPercentage = 0.0f;
-
-        // Debug: Print GPU culling info every 60 frames (once per second at 60 FPS)
-        static uint32_t frameCounter = 0;
-        if (++frameCounter >= 60) {
-            std::cout << "\n[GPU Culling] ===== DEBUG INFO =====\n";
-            std::cout << "[GPU Culling] Processing " << pushConstants.totalChunks
-                      << " chunks, chunk size: " << pushConstants.chunkSize << "m\n";
-            std::cout << "[GPU Culling] Debug mode: " << pushConstants.debugMode
-                      << " (0=all tests, 7=skip all)\n";
-
-            // Camera info
-            glm::vec3 forward = camera.getFront();
-            std::cout << "[GPU Culling] Camera pos: (" << cameraPos.x << ", " << cameraPos.y << ", "
-                      << cameraPos.z << ")\n";
-            std::cout << "[GPU Culling] Camera forward: (" << forward.x << ", " << forward.y << ", "
-                      << forward.z << ")\n";
-            std::cout << "[GPU Culling] Max render distance: " << frustumData.maxRenderDistance
-                      << "m\n";
-
-            // Frustum planes (all 6)
-            const char* planeNames[] = {"Left", "Right", "Top", "Bottom", "Near", "Far"};
-            std::cout << "[GPU Culling] Frustum planes (nx, ny, nz, d):\n";
-            for (int i = 0; i < 6; i++) {
-                const glm::vec4& p = frustumPlanes[i];
-                std::cout << "  " << planeNames[i] << ": (" << p.x << ", " << p.y << ", " << p.z
-                          << ", " << p.w << ")\n";
-            }
-
-            if (!_chunkDrawInfos.empty()) {
-                const auto& sampleChunk = _chunkDrawInfos[0];
-                std::cout << "[GPU Culling] Sample chunk pos: (" << sampleChunk.worldPosition.x
-                          << ", " << sampleChunk.worldPosition.y << ", "
-                          << sampleChunk.worldPosition.z << ")\n";
-
-                // CPU-side verification: calculate distance to sample chunk
-                glm::vec3 chunkCenter =
-                    sampleChunk.worldPosition + glm::vec3(16.0f); // halfChunkSize
-                glm::vec3 toChunk = chunkCenter - cameraPos;
-                float distToChunk = glm::length(toChunk);
-                std::cout << "[GPU Culling] Sample chunk center: (" << chunkCenter.x << ", "
-                          << chunkCenter.y << ", " << chunkCenter.z << ")\n";
-                std::cout << "[GPU Culling] Distance to sample chunk: " << distToChunk << "m\n";
-                std::cout << "[GPU Culling] Distance culling should: "
-                          << (distToChunk <= frustumData.maxRenderDistance ? "PASS" : "FAIL")
-                          << "\n";
-
-                // Test frustum plane distances
-                float chunkRadius = 16.0f * 1.732051f; // halfChunkSize * sqrt(3)
-                for (int i = 0; i < 6; i++) {
-                    const glm::vec4& p = frustumPlanes[i];
-                    float dist = glm::dot(glm::vec3(p), chunkCenter) + p.w;
-                    const char* planeNames[] = {"Left", "Right", "Top", "Bottom", "Near", "Far"};
-                    bool pass =
-                        (dist <=
-                         chunkRadius); // Negated planes: negative=inside, cull if dist > radius
-                    std::cout << "  " << planeNames[i] << " plane distance: " << dist
-                              << " (radius: " << chunkRadius
-                              << ", should: " << (pass ? "PASS" : "FAIL") << ")\n";
-                }
-            }
-            std::cout << "[GPU Culling] =====================\n\n";
-            frameCounter = 0;
-        }
     } else {
         // CPU fallback path (for debugging)
         _indirectCommands.clear();
@@ -1296,7 +1194,7 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
     VkRect2D scissor{.offset = {0, 0}, .extent = drawExtent};
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-    // ===== MESH SHADER PATH vs TRADITIONAL PATH =====
+    // Mesh shader path vs traditional path
     if (_useMeshShaders) {
         ZoneScopedN("Mesh Shader Rendering");
         TracyVkZone(_device.getTracyCtx(), cmd, "GPU Mesh Shader Rendering");
@@ -1306,7 +1204,6 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
                                                   : _meshShaderPipeline.getPipeline();
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, activePipeline);
 
-        // PHASE 1: Bind per-frame descriptor sets for double-buffered chunk data
         const uint32_t frameIndex = static_cast<uint32_t>(_renderer.getFrameNumber() % CHUNK_BUFFER_COUNT);
         VkDescriptorSet descriptorSets[] = {_meshShaderDescriptorSets[frameIndex], _meshShaderFragDescriptorSet};
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshShaderPipelineLayout, 0,
@@ -1350,57 +1247,15 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
         MeshShaderPushConstants pushConstants{};
         pushConstants.totalChunks = static_cast<uint32_t>(_chunkDrawData.size());
         pushConstants.chunkSize = 32.0F;
-        pushConstants.maxVerticesPerMeshWorkgroup = 256; // Must match mesh shader max_vertices
+        pushConstants.maxVerticesPerMeshWorkgroup = 256;
         pushConstants.maxMeshWorkgroupsPerTask = _maxMeshWorkgroupsPerTask;
-
-        // DEBUG: Log chunk geometry stats (only once per second to avoid spam)
-        static auto lastDebugTime = std::chrono::steady_clock::now();
-        auto now = std::chrono::steady_clock::now();
-        if (std::chrono::duration_cast<std::chrono::seconds>(now - lastDebugTime).count() >= 1) {
-            std::cout << "[VoxelRenderer] Total chunks: " << pushConstants.totalChunks << "\n";
-            std::cout << "[VoxelRenderer] Task workgroups to dispatch: "
-                      << ((pushConstants.totalChunks + 31) / 32) << "\n";
-            std::cout << "[VoxelRenderer] maxMeshWorkgroupsPerTask: " << _maxMeshWorkgroupsPerTask
-                      << "\n";
-
-            // Log detailed info for first few chunks
-            std::cout << "[VoxelRenderer] First 5 chunks:\n";
-            for (size_t i = 0; i < std::min(size_t(5), _chunkDrawData.size()); i++) {
-                const auto& chunk = _chunkDrawData[i];
-                uint32_t triangles = chunk.indexCount / 3;
-                uint32_t expectedTiles = (triangles + 84) / 85;
-                std::cout << "  Chunk " << i << ": indexCount=" << chunk.indexCount
-                          << " triangles=" << triangles << " expectedTiles=" << expectedTiles
-                          << "\n";
-            }
-
-            // Find and log stats for largest chunks
-            uint32_t maxIndexCount = 0;
-            for (const auto& chunk : _chunkDrawData) {
-                maxIndexCount = std::max(maxIndexCount, chunk.indexCount);
-            }
-            if (maxIndexCount > 0) {
-                uint32_t maxTriangles = maxIndexCount / 3;
-                uint32_t expectedTiles = (maxTriangles + 84) / 85;
-                std::cout << "[VoxelRenderer] Largest chunk: " << maxIndexCount << " indices, "
-                          << maxTriangles << " triangles, ~" << expectedTiles
-                          << " expected tiles\n";
-            }
-            lastDebugTime = now;
-        }
 
         vkCmdPushConstants(cmd, _meshShaderPipelineLayout, VK_SHADER_STAGE_TASK_BIT_EXT, 0,
                            sizeof(MeshShaderPushConstants), &pushConstants);
 
-        // Dispatch mesh shader tasks
-        // PHASE 1 FIX: Changed from 32 to 16 chunks per task workgroup
-        // Each task workgroup (16 threads) handles up to 16 chunks
-        // This reduces tile density per workgroup, preventing payload overflow
-        // With 16 chunks @ 128 avg tiles each = 2048 tiles (at limit)
-        // vs 32 chunks @ 64 avg tiles each = 2048 tiles (easier to overflow)
         {
             ZoneScopedN("Dispatch Mesh Tasks");
-            uint32_t taskWorkgroups = (pushConstants.totalChunks + 15) / 16; // PHASE 1 FIX: 31->15, /32->/16
+            uint32_t taskWorkgroups = (pushConstants.totalChunks + 15) / 16;
             _vkCmdDrawMeshTasksEXT(cmd, taskWorkgroups, 1, 1);
         }
 
@@ -1414,7 +1269,6 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
             wireframeMode ? _voxelWireframePipeline.getPipeline() : _voxelPipeline.getPipeline();
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, activePipeline);
 
-        // PHASE 1: Bind per-frame descriptor set for double-buffered chunk data
         const uint32_t frameIndex = static_cast<uint32_t>(_renderer.getFrameNumber() % CHUNK_BUFFER_COUNT);
         VkDescriptorSet activeChunkSet =
             _enableGPUCulling ? _culledChunkDescriptorSet : _chunkDescriptorSets[frameIndex];
@@ -1463,9 +1317,7 @@ void VoxelRenderer::rebuildMeshPool(const std::vector<glm::ivec3>& unloadedChunk
         return;
     }
 
-    // ========================================================================
-    // VMA PER-CHUNK BUFFERS = INSTANT UNLOAD!
-    // ========================================================================
+    // VMA per-chunk buffers allow instant unload
 
     // Process each chunk to unload
     for (const glm::ivec3& pos : unloadedChunks) {
