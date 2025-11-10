@@ -44,7 +44,6 @@ void WorldManager::start() {
             std::make_unique<std::thread>(&WorldManager::generationWorkerLoop, this));
     }
 
-    // Start completion processor
     _completionProcessor =
         std::make_unique<std::thread>(&WorldManager::completionProcessorLoop, this);
 
@@ -70,7 +69,6 @@ void WorldManager::stop() {
     }
     _generationWorkers.clear();
 
-    // Join completion processor
     if (_completionProcessor && _completionProcessor->joinable()) {
         _completionProcessor->join();
     }
@@ -124,7 +122,6 @@ void WorldManager::generationWorkerLoop() {
                       << pos[2] << ") took " << duration.count() / 1000.0F << "ms\n";
         }
 
-        // Store the chunk and update tracking (with lock)
         {
             std::lock_guard<std::mutex> lock(_chunkMutex);
             _loadedChunks[pos] = mainChunk;

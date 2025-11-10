@@ -1,0 +1,197 @@
+#version 460
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+// GPU-driven frustum culling compute shader
+// Performs frustum culling on all chunks and writes visible chunks to output buffer
+// Designed for maximum performance with early sphere-based rejection
+// NOTE: Far plane test is DISABLED due to numerical instability with distant far planes
+//       Distance culling handles far-chunk rejection instead
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+// ===== INPUT BUFFERS =====
+
+// Input: All chunk data (world positions, vertex buffer addresses, etc.)
+// MUST match GPUChunkData in RenderTypes.hpp!
+struct GPUChunkData {
+    vec3 chunkWorldPos;
+    uint indexCount;
+    uint64_t vertexBufferAddress;
+    uint firstIndex; // Offset in mega index buffer
+    uint _padding;
+};
+
+layout(set = 0, binding = 0, std430) readonly buffer InputChunkData {
+    GPUChunkData inputChunks[];
+};
+
+// Input: Frustum planes and camera data
+struct GPUFrustumData {
+    vec4 planes[6]; // 6 frustum planes: left, right, top, bottom, near, far
+    vec3 cameraPos;
+    float maxRenderDistance;
+};
+
+layout(set = 0, binding = 1, std140) uniform FrustumUniform {
+    GPUFrustumData frustum;
+};
+
+// ===== OUTPUT BUFFERS =====
+
+// Output: Culled indirect draw commands (only visible chunks)
+layout(set = 0, binding = 2, std430) writeonly buffer OutputIndirectCommands {
+    uint drawCount; // Atomic counter at offset 0
+    // VkDrawIndexedIndirectCommand follows:
+    // struct { uint indexCount, instanceCount, firstIndex, vertexOffset, firstInstance; }
+    uint indirectCommands[]; // Dynamically sized array
+};
+
+// Output: Visible chunk data (compacted - only visible chunks)
+layout(set = 0, binding = 3, std430) writeonly buffer OutputChunkData {
+    GPUChunkData outputChunks[];
+};
+
+// ===== PUSH CONSTANTS =====
+
+layout(push_constant) uniform PushConstants {
+    uint totalChunks; // Total number of input chunks
+    float chunkSize;  // Size of one chunk (default: 32.0)
+    uint debugMode;   // Debug flags: bit 0=skip distance, bit 1=skip sphere, bit 2=skip AABB
+    uint _padding2;
+}
+push;
+
+// ===== CULLING FUNCTIONS =====
+
+// Fast sphere-frustum test (cheaper than AABB test)
+// Returns true if sphere intersects or is inside frustum
+// NOTE: Only tests first 5 planes (skips far plane at index 5)
+bool testSphereFrustum(vec3 center, float radius) {
+    // Test against first 5 planes (left, right, top, bottom, near)
+    // Skip far plane (index 5) - it's numerically unstable with distant far planes
+    // Distance culling handles far-chunk rejection instead
+    for (int i = 0; i < 5; i++) {
+        vec4 plane = frustum.planes[i];
+        float distance = dot(plane.xyz, center) + plane.w;
+
+        // Planes are negated in CPU code, so they point OUTWARD
+        // Negative distance = inside, positive = outside
+        // Sphere is culled if center is more than radius distance OUTSIDE (positive)
+        if (distance > radius) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// AABB-frustum test (more accurate but slower)
+// Returns true if AABB intersects or is inside frustum
+// NOTE: Only tests first 5 planes (skips far plane at index 5)
+bool testAABBFrustum(vec3 minPoint, vec3 maxPoint) {
+    // Test against first 5 planes (left, right, top, bottom, near)
+    // Skip far plane (index 5) - it's numerically unstable with distant far planes
+    // Distance culling handles far-chunk rejection instead
+    for (int i = 0; i < 5; i++) {
+        vec4 plane = frustum.planes[i];
+        vec3 normal = plane.xyz;
+
+        // Find the "negative vertex" (corner furthest along outward normal)
+        // Since planes point outward (negated), this is the furthest corner
+        vec3 nVertex;
+        nVertex.x = (normal.x >= 0.0) ? maxPoint.x : minPoint.x;
+        nVertex.y = (normal.y >= 0.0) ? maxPoint.y : minPoint.y;
+        nVertex.z = (normal.z >= 0.0) ? maxPoint.z : minPoint.z;
+
+        // If furthest vertex is outside (positive), entire AABB is outside
+        float distance = dot(normal, nVertex) + plane.w;
+        if (distance > 0.0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Distance-based culling (early rejection for far chunks)
+bool testDistanceCulling(vec3 chunkPos) {
+    float distSq = dot(chunkPos - frustum.cameraPos, chunkPos - frustum.cameraPos);
+    float maxDistSq = frustum.maxRenderDistance * frustum.maxRenderDistance;
+    return distSq <= maxDistSq;
+}
+
+// ===== MAIN COMPUTE SHADER =====
+
+void main() {
+    uint chunkIndex = gl_GlobalInvocationID.x;
+
+    // Early exit if thread ID exceeds chunk count
+    if (chunkIndex >= push.totalChunks) {
+        return;
+    }
+
+    // Load chunk data
+    GPUChunkData chunk = inputChunks[chunkIndex];
+
+    // Skip empty chunks (no indices)
+    if (chunk.indexCount == 0) {
+        return;
+    }
+
+    // ===== CULLING TESTS (ordered by cost - cheapest first) =====
+
+    // Calculate chunk center and radius (used by multiple tests)
+    float halfChunkSize = push.chunkSize * 0.5;
+    vec3 chunkCenter = chunk.chunkWorldPos + vec3(halfChunkSize);
+    float chunkRadius = halfChunkSize * 1.732051; // sqrt(3) for diagonal
+
+    // DEBUG: Track culling reasons for chunk at origin
+    bool isDebugChunk = (chunk.chunkWorldPos.x == 0.0 && chunk.chunkWorldPos.y == 0.0 &&
+                         chunk.chunkWorldPos.z == 0.0);
+
+    // 1. Distance culling (cheapest - single distance check)
+    // IMPORTANT: Use chunk CENTER for distance test, not corner!
+    if ((push.debugMode & 1u) == 0u) { // Skip if debug bit 0 is set
+        if (!testDistanceCulling(chunkCenter)) {
+            return; // Chunk too far away
+        }
+    }
+
+    // 2. Sphere-frustum test (cheap - approximate test)
+    // Use sphere enclosing the chunk AABB
+    if ((push.debugMode & 2u) == 0u) { // Skip if debug bit 1 is set
+        if (!testSphereFrustum(chunkCenter, chunkRadius)) {
+            return; // Chunk sphere outside frustum
+        }
+    }
+
+    // 3. AABB-frustum test (more expensive - exact test)
+    // Only do this for chunks that passed sphere test (on frustum boundary)
+    if ((push.debugMode & 4u) == 0u) { // Skip if debug bit 2 is set
+        vec3 chunkMin = chunk.chunkWorldPos;
+        vec3 chunkMax = chunk.chunkWorldPos + vec3(push.chunkSize);
+
+        if (!testAABBFrustum(chunkMin, chunkMax)) {
+            return; // Chunk AABB outside frustum
+        }
+    }
+
+    // ===== CHUNK IS VISIBLE - Write to output buffers =====
+
+    // Atomically increment draw count and get index for this chunk
+    uint outputIndex = atomicAdd(drawCount, 1);
+
+    // Write compacted chunk data
+    outputChunks[outputIndex] = chunk;
+
+    // Write indirect draw command
+    // VkDrawIndexedIndirectCommand layout:
+    // struct { uint indexCount, instanceCount, firstIndex, vertexOffset, firstInstance; }
+    // Note: drawCount is a SEPARATE field, indirectCommands[] starts at index 0
+    uint baseOffset = outputIndex * 5; // 5 uints per command, no offset needed
+
+    indirectCommands[baseOffset + 0] = chunk.indexCount; // indexCount
+    indirectCommands[baseOffset + 1] = 1;                // instanceCount (always 1)
+    indirectCommands[baseOffset + 2] =
+        chunk.firstIndex;                 // firstIndex (CRITICAL: offset in mega index buffer!)
+    indirectCommands[baseOffset + 3] = 0; // vertexOffset (unused - using device address)
+    indirectCommands[baseOffset + 4] = outputIndex; // firstInstance (used as draw ID in shader)
+}

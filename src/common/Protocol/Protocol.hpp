@@ -11,9 +11,7 @@
 // Forward declaration
 class Chunk;
 
-// ============================================================================
 // Client -> Server: Request to load/generate a chunk
-// ============================================================================
 struct ChunkRequest {
     glm::ivec3 chunkPosition;
 
@@ -21,9 +19,7 @@ struct ChunkRequest {
     explicit ChunkRequest(const glm::ivec3& pos) : chunkPosition(pos) {}
 };
 
-// ============================================================================
 // Server -> Meshing Thread: Chunk data ready for meshing
-// ============================================================================
 struct GenerationTask {
     glm::ivec3 chunkPosition;
     std::shared_ptr<Chunk> chunkData; // The main chunk to mesh
@@ -41,9 +37,7 @@ struct GenerationTask {
         : chunkPosition(pos), chunkData(std::move(chunk)) {}
 };
 
-// ============================================================================
 // Meshing Thread -> Client: Finished mesh data ready for GPU upload
-// ============================================================================
 struct MeshData {
     glm::ivec3 chunkPosition;
     std::vector<VoxelVertex> vertices; // Packed vertex data
@@ -54,9 +48,7 @@ struct MeshData {
         : chunkPosition(pos), vertices(std::move(verts)), indices(std::move(idx)) {}
 };
 
-// ============================================================================
 // Meshing completion notification (chunk position only)
-// ============================================================================
 struct MeshingComplete {
     glm::ivec3 chunkPosition;
 

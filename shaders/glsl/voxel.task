@@ -1,0 +1,267 @@
+#version 460
+#extension GL_EXT_mesh_shader : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+// #extension GL_EXT_debug_printf : enable  // DISABLED: Causes massive performance overhead (~1,900 GPU→CPU syncs per frame)
+
+// Task shader for GPU-driven frustum culling and dynamic chunk tiling
+// Performs frustum culling on chunks and subdivides large chunks for mesh shader
+// This replaces the compute shader + indirect draw approach
+
+// PHASE 1 FIX: Reduced from 32 to 16 threads to lower tile density per workgroup
+// This prevents payload overflow at extreme view distances
+// With 16 chunks/workgroup, each chunk can have ~128 tiles before hitting 2048 limit
+// vs 32 chunks/workgroup where each could only have ~64 tiles
+layout(local_size_x = 16, local_size_y = 1, local_size_z = 1) in;
+
+// ===== SHARED MEMORY FOR TASK GROUP =====
+// Store visible chunk indices and tile counts for this workgroup
+// Maximum 32 visible chunks per workgroup (2x thread count for spatial clustering)
+shared uint visibleChunkIndices[32];
+shared uint visibleChunkTiles[32]; // Number of mesh shader workgroups needed per chunk
+shared uint visibleCount;
+
+// ===== INPUT: CAMERA DATA (UBO) =====
+struct GPUCameraData {
+    mat4 viewProjection;
+    vec4 planes[6]; // Frustum planes (a,b,c,d) for ax+by+cz+d=0
+    vec3 cameraPos;
+    float maxRenderDistance;
+};
+
+layout(set = 0, binding = 0, std140) uniform CameraUniform {
+    GPUCameraData camera;
+};
+
+// ===== INPUT: CHUNK DATA (SSBO) =====
+struct GPUChunkData {
+    vec3 chunkWorldPos;
+    uint indexCount;
+    uint64_t vertexBufferAddress;
+    uint firstIndex;
+    uint _padding;
+};
+
+layout(set = 0, binding = 1, std430) readonly buffer ChunkDataBuffer {
+    GPUChunkData chunks[];
+};
+
+// ===== PUSH CONSTANTS =====
+layout(push_constant) uniform PushConstants {
+    uint totalChunks;
+    float chunkSize;
+    uint maxVerticesPerMeshWorkgroup; // Typically 256
+    uint maxMeshWorkgroupsPerTask;    // Device limit for mesh groups emitted per task
+}
+push;
+
+// ===== CULLING FUNCTIONS (ported from frustum_cull.comp) =====
+
+// Distance-based culling
+bool testDistanceCulling(vec3 chunkCenter) {
+    float distSq = dot(chunkCenter - camera.cameraPos, chunkCenter - camera.cameraPos);
+    // Add margin to render distance to prevent pop-in at distance boundary
+    float margin = push.chunkSize * 2.0; // 2 chunk sizes extra
+    float maxDist = camera.maxRenderDistance + margin;
+    float maxDistSq = maxDist * maxDist;
+    return distSq <= maxDistSq;
+}
+
+// Sphere-frustum test (fast approximate test)
+bool testSphereFrustum(vec3 center, float radius) {
+    // Minimal margin to prevent precision issues
+    const float margin = radius * 0.1; // 10% extra margin
+    float expandedRadius = radius + margin;
+
+    // Test against first 5 planes (skip far plane at index 5)
+    // Planes point INWARD - negative distance means outside
+    for (int i = 0; i < 5; i++) {
+        vec4 plane = camera.planes[i];
+        float distance = dot(plane.xyz, center) + plane.w;
+
+        // If distance is less than -radius, sphere is outside this plane
+        if (distance < -expandedRadius) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// AABB-frustum test (more accurate)
+bool testAABBFrustum(vec3 minPoint, vec3 maxPoint) {
+    // Minimal margin to prevent precision issues
+    const float margin = push.chunkSize * 0.05; // 5% chunk size margin
+    vec3 expandedMin = minPoint - vec3(margin);
+    vec3 expandedMax = maxPoint + vec3(margin);
+
+    // Test against first 5 planes (skip far plane at index 5)
+    // Planes point INWARD - we test the closest vertex to each plane
+    for (int i = 0; i < 5; i++) {
+        vec4 plane = camera.planes[i];
+        vec3 normal = plane.xyz;
+
+        // Find CLOSEST vertex to plane (not furthest) for inward-pointing planes
+        vec3 pVertex;
+        pVertex.x = (normal.x < 0.0) ? expandedMax.x : expandedMin.x;
+        pVertex.y = (normal.y < 0.0) ? expandedMax.y : expandedMin.y;
+        pVertex.z = (normal.z < 0.0) ? expandedMax.z : expandedMin.z;
+
+        // If closest vertex is outside (negative distance), entire AABB is outside
+        float distance = dot(normal, pVertex) + plane.w;
+        if (distance < 0.0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// ===== TASK SHADER PAYLOAD =====
+// Data passed from task shader to mesh shader
+struct TaskPayloadEntry {
+    uint chunkIndex;
+    uint tileIndex; // For large chunks split across multiple mesh workgroups
+};
+
+struct TaskPayloadData {
+    uint meshCount;                 // Total mesh workgroups emitted by this task workgroup
+    TaskPayloadEntry entries[2048]; // 2048 entries = 16KB (hardware limit)
+};
+
+// Maximum possible mesh tasks with PHASE 1 fix:
+// 16 chunks per workgroup * 128 avg tiles per chunk = 2048 tiles (at limit)
+// This is 2x more headroom than 32 chunks * 64 avg tiles = 2048
+taskPayloadSharedEXT TaskPayloadData payload;
+
+// ===== MAIN TASK SHADER =====
+void main() {
+    uint localID = gl_LocalInvocationID.x;
+    uint workgroupID = gl_WorkGroupID.x;
+    uint chunkIndex = workgroupID * 16 + localID; // 16 threads per workgroup (PHASE 1 FIX)
+
+    // Initialize shared counter
+    if (localID == 0) {
+        visibleCount = 0;
+        payload.meshCount = 0;
+    }
+    barrier();
+
+    // Check if this thread has valid work
+    bool hasValidChunk = (chunkIndex < push.totalChunks);
+
+    // Load chunk data if valid
+    GPUChunkData chunk;
+    if (hasValidChunk) {
+        chunk = chunks[chunkIndex];
+
+        // Check if chunk is empty
+        if (chunk.indexCount == 0) {
+            hasValidChunk = false;
+        }
+    }
+
+    // ===== PERFORM FRUSTUM CULLING =====
+    bool visible = false;
+    uint tileCount = 0;
+
+    if (hasValidChunk) {
+        float halfChunkSize = push.chunkSize * 0.5;
+        vec3 chunkCenter = chunk.chunkWorldPos + vec3(halfChunkSize);
+        float chunkRadius = halfChunkSize * 1.732051; // sqrt(3) for diagonal
+
+        visible = true;
+
+        // 1. Distance culling
+        if (!testDistanceCulling(chunkCenter)) {
+            visible = false;
+        }
+
+        // 2. Sphere-frustum test (fast)
+        if (visible && !testSphereFrustum(chunkCenter, chunkRadius)) {
+            visible = false;
+        }
+
+        // 3. AABB-frustum test (precise)
+        if (visible) {
+            vec3 chunkMin = chunk.chunkWorldPos;
+            vec3 chunkMax = chunk.chunkWorldPos + vec3(push.chunkSize);
+            if (!testAABBFrustum(chunkMin, chunkMax)) {
+                visible = false;
+            }
+        }
+
+        // ===== DYNAMIC TILING FOR LARGE CHUNKS =====
+        if (visible) {
+            // Calculate tiles needed based on triangle count
+            // Each mesh shader can output max 85 primitives (255 vertices)
+            uint triangleCount = chunk.indexCount / 3;
+            tileCount = (triangleCount + 84) / 85; // Ceiling division
+            // No artificial cap - payload now supports up to 2048 tiles total
+
+            // Add to visible list
+            uint slot = atomicAdd(visibleCount, 1);
+            if (slot < 32) { // Ensure we don't overflow shared memory (32 slots)
+                visibleChunkIndices[slot] = chunkIndex;
+                visibleChunkTiles[slot] = tileCount;
+            } else {
+                // DEBUG: This should NEVER happen - log overflow
+                // debugPrintfEXT("[TASK WG=%u] WARNING: Chunk %u dropped! visibleCount overflow (slot=%u) - TOO MANY VISIBLE CHUNKS\n",
+                //                workgroupID, chunkIndex, slot);
+            }
+        }
+    }
+
+    // ===== EMIT MESH SHADER TASKS =====
+    barrier();
+
+    // DEBUG: Log visible count per workgroup
+    // if (localID == 0) {
+    //     debugPrintfEXT("[TASK WG=%u] After culling: visibleCount=%u (out of 32 possible chunks)\n",
+    //                    workgroupID, visibleCount);
+    // }
+
+    // Only first thread emits mesh tasks
+    if (localID == 0) {
+        const uint maxPayloadEntries = min(2048u, push.maxMeshWorkgroupsPerTask);
+
+        // DEBUG: Log task workgroup state
+        // debugPrintfEXT("[TASK WG=%u] visibleCount=%u maxEntries=%u\n", workgroupID, visibleCount,
+        //                maxPayloadEntries);
+
+        // Build payload for each mesh workgroup
+        uint payloadIndex = 0;
+        uint totalTilesNeeded = 0;
+        uint safeVisibleCount = min(visibleCount, 32u); // Safety clamp (PHASE 1 FIX: 64->32)
+        for (uint i = 0; i < safeVisibleCount; i++) {
+            uint chunkIdx = visibleChunkIndices[i];
+            uint tiles = visibleChunkTiles[i];
+            totalTilesNeeded += tiles;
+
+            // DEBUG: Log payload building for first few chunks
+            // if (i < 3) {
+            //     debugPrintfEXT("[TASK WG=%u] Building payload: chunk=%u tiles=%u payloadStart=%u\n",
+            //                    workgroupID, chunkIdx, tiles, payloadIndex);
+            // }
+
+            for (uint tile = 0; tile < tiles; tile++) {
+                if (payloadIndex < maxPayloadEntries) { // Safety check
+                    payload.entries[payloadIndex].chunkIndex = chunkIdx;
+                    payload.entries[payloadIndex].tileIndex = tile;
+                    payloadIndex++;
+                } else {
+                    // debugPrintfEXT("[TASK WG=%u] ERROR: Payload overflow! chunk=%u tile=%u/%u dropped (payloadIndex=%u maxEntries=%u)\n",
+                    //                workgroupID, chunkIdx, tile, tiles, payloadIndex,
+                    //                maxPayloadEntries);
+                }
+            }
+        }
+
+        payload.meshCount = payloadIndex;
+
+        // debugPrintfEXT("[TASK WG=%u] Emitting: visibleChunks=%u totalTilesNeeded=%u actualEmitting=%u (maxEntries=%u)\n",
+        //                workgroupID, safeVisibleCount, totalTilesNeeded, payload.meshCount,
+        //                maxPayloadEntries);
+
+        // Emit mesh shader workgroups
+        // Each mesh workgroup handles one tile of one chunk
+        EmitMeshTasksEXT(payload.meshCount, 1, 1);
+    }
+}

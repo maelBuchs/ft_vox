@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -27,6 +28,15 @@ class Camera {
     [[nodiscard]] glm::vec3 getUp() const { return _up; }
     [[nodiscard]] float getYaw() const { return _yaw; }
     [[nodiscard]] float getPitch() const { return _pitch; }
+
+    /**
+     * Extract frustum planes from view-projection matrix
+     * Returns 6 planes in order: left, right, top, bottom, near, far
+     * Each plane is vec4(a, b, c, d) for equation ax + by + cz + d = 0
+     * @param projection Projection matrix
+     * @return Array of 6 frustum planes (normalized)
+     */
+    [[nodiscard]] std::array<glm::vec4, 6> getFrustumPlanes(const glm::mat4& projection) const;
 
     // Setters
     void setPosition(glm::vec3 position) { _position = position; }

@@ -16,7 +16,6 @@ void Camera::processMouseMovement(float xoffset, float yoffset) {
     // Constrain pitch to prevent screen flip
     _pitch = std::clamp(_pitch, -MAX_PITCH, MAX_PITCH);
 
-    // Update Front, Right and Up Vectors using the updated Euler angles
     updateCameraVectors();
 }
 
@@ -57,6 +56,48 @@ void Camera::updateCameraVectors() {
     front.z = sin(glm::radians(_yaw)) * cos(glm::radians(_pitch));
     _front = glm::normalize(front);
 
-    // Recalculate the Up vector
     _up = _worldUp;
+}
+
+std::array<glm::vec4, 6> Camera::getFrustumPlanes(const glm::mat4& projection) const {
+    // Extract frustum planes from view-projection matrix using Gribb-Hartmann method
+    const glm::mat4 viewProjection = projection * getViewMatrix();
+    const glm::mat4& m = viewProjection;
+
+    std::array<glm::vec4, 6> planes;
+
+    // Left plane: m[3] + m[0]
+    planes[0] =
+        glm::vec4(m[0][3] + m[0][0], m[1][3] + m[1][0], m[2][3] + m[2][0], m[3][3] + m[3][0]);
+
+    // Right plane: m[3] - m[0]
+    planes[1] =
+        glm::vec4(m[0][3] - m[0][0], m[1][3] - m[1][0], m[2][3] - m[2][0], m[3][3] - m[3][0]);
+
+    // Top plane: m[3] - m[1]
+    planes[2] =
+        glm::vec4(m[0][3] - m[0][1], m[1][3] - m[1][1], m[2][3] - m[2][1], m[3][3] - m[3][1]);
+
+    // Bottom plane: m[3] + m[1]
+    planes[3] =
+        glm::vec4(m[0][3] + m[0][1], m[1][3] + m[1][1], m[2][3] + m[2][1], m[3][3] + m[3][1]);
+
+    // Near plane: m[3] + m[2]
+    planes[4] =
+        glm::vec4(m[0][3] + m[0][2], m[1][3] + m[1][2], m[2][3] + m[2][2], m[3][3] + m[3][2]);
+
+    // Far plane: m[3] - m[2]
+    planes[5] =
+        glm::vec4(m[0][3] - m[0][2], m[1][3] - m[1][2], m[2][3] - m[2][2], m[3][3] - m[3][2]);
+
+    // Normalize all planes
+    for (auto& plane : planes) {
+        const glm::vec3 normal(plane.x, plane.y, plane.z);
+        const float length = glm::length(normal);
+        if (length > 0.0001f) {
+            plane /= length;
+        }
+    }
+
+    return planes;
 }

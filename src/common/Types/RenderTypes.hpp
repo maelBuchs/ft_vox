@@ -31,5 +31,34 @@ struct alignas(16) GPUChunkData {
     glm::vec3 chunkWorldPos;
     uint32_t indexCount;
     uint64_t vertexBufferAddress; // VkDeviceAddress for per-chunk vertex buffer
-    // Note: Index buffer is shared (mega buffer), so no address needed here
+    uint32_t firstIndex;          // Offset in mega index buffer (needed for GPU culling)
+    uint32_t _padding;            // Align to 16 bytes
+};
+
+// GPU frustum data for compute culling
+// 6 planes (left, right, top, bottom, near, far) + camera position
+// MUST match the shader struct in frustum_cull.comp!
+struct alignas(16) GPUFrustumData {
+    glm::vec4 planes[6];     // Each plane: vec4(a, b, c, d) for ax + by + cz + d = 0
+    glm::vec3 cameraPos;     // Camera position for distance calculations
+    float maxRenderDistance; // Maximum render distance (for early culling)
+};
+
+// GPU camera data for task/mesh shader pipeline (UBO)
+// Contains both frustum planes and view-projection matrix
+// MUST match the shader struct in voxel.task and voxel.mesh!
+struct alignas(16) GPUCameraData {
+    glm::mat4 viewProjection; // 64 bytes - View-projection matrix
+    glm::vec4 planes[6];      // 96 bytes - Frustum planes (a,b,c,d) for ax+by+cz+d=0
+    glm::vec3 cameraPos;      // 12 bytes - Camera position
+    float maxRenderDistance;  // 4 bytes - Max render distance
+    // Total: 176 bytes
+};
+
+// Culling statistics (CPU-side readback for debug)
+struct CullingStats {
+    uint32_t totalChunks;
+    uint32_t visibleChunks;
+    uint32_t culledChunks;
+    float cullingPercentage;
 };

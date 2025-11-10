@@ -30,6 +30,7 @@ class FrameManager {
     FrameManager& operator=(FrameManager&&) = delete;
 
     [[nodiscard]] FrameData& getCurrentFrame();
+    [[nodiscard]] const FrameData& getFrameData(size_t index) const { return _frameData[index]; }
     [[nodiscard]] uint64_t getFrameNumber() const { return _frameNumber; }
     void incrementFrame() { _frameNumber++; }
 

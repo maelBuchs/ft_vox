@@ -59,6 +59,12 @@ class Chunk {
 
     // Block access (using block IDs from BlockRegistry)
     [[nodiscard]] uint8_t getBlock(int x, int y, int z) const;
+
+    // Unsafe but fast - skips bounds checking (caller must guarantee x,y,z in [0,CHUNK_SIZE))
+    [[nodiscard]] inline uint8_t getBlockUnsafe(int x, int y, int z) const {
+        return _blocks[x + (y * CHUNK_SIZE) + (z * CHUNK_SIZE * CHUNK_SIZE)];
+    }
+
     void setBlock(int x, int y, int z, uint8_t blockId);
 
     // Helper functions

@@ -1,6 +1,8 @@
 #pragma once
 
+#include <atomic>
 #include <functional>
+#include <memory>
 #include <span>
 #include <vector>
 
@@ -12,26 +14,6 @@
 class VulkanDevice;
 class VulkanBuffer;
 
-// ============================================================================
-// PER-CHUNK BUFFER ARCHITECTURE (VMA-based)
-// ============================================================================
-// Each chunk mesh gets its own dedicated VkBuffer pair (vertex + index).
-// This eliminates fragmentation entirely and provides O(1) allocation/deallocation.
-// VMA (Vulkan Memory Allocator) handles all memory management automatically.
-// ============================================================================
-
-// ============================================================================
-// HYBRID APPROACH: Per-chunk vertices + Mega index buffer
-// ============================================================================
-// - Vertex buffers: Per-chunk (VMA allocated), accessed via buffer device address
-// - Index buffer: Single mega buffer (traditional), shared by all chunks
-// This gives us:
-// - Memory savings on vertices (the big part, 80%+ of data)
-// - Multi-draw indirect still works (needs bound index buffer)
-// - Scalability (thousands of chunks)
-// ============================================================================
-
-// Represents a chunk's mesh allocation (hybrid approach)
 struct ChunkMeshBuffers {
     AllocatedBuffer vertexBuffer;      // Per-chunk VMA allocation
     VkDeviceAddress vertexAddress = 0; // For shader buffer_reference access
@@ -40,6 +22,51 @@ struct ChunkMeshBuffers {
     // Index data stored in mega buffer (not per-chunk)
     uint32_t firstIndex = 0; // Offset in mega index buffer
     uint32_t indexCount = 0;
+};
+
+class UploadRingBuffer {
+  public:
+    UploadRingBuffer(VulkanDevice& device, VulkanBuffer& bufferManager);
+    ~UploadRingBuffer();
+
+    UploadRingBuffer(const UploadRingBuffer&) = delete;
+    UploadRingBuffer& operator=(const UploadRingBuffer&) = delete;
+
+    struct Allocation {
+        VkBuffer buffer;        // The ring buffer handle
+        VkDeviceSize offset;    // Offset into ring buffer
+        void* mappedPtr;        // Pointer to mapped memory at offset
+        VkDeviceSize size;      // Size of allocation
+    };
+
+    // Allocate from ring buffer (NO VMA allocation!)
+    Allocation allocate(VkDeviceSize size, uint32_t frameIndex);
+
+    // Mark frame complete - allows ring to wrap around
+    void frameComplete(uint32_t frameIndex);
+
+    // Get current utilization (for debugging)
+    [[nodiscard]] float getUtilization() const;
+
+  private:
+    VulkanDevice& _device;
+    VulkanBuffer& _bufferManager;
+
+    AllocatedBuffer _ringBuffer;    // 64MB ring buffer
+    void* _mappedPtr = nullptr;     // Persistently mapped
+
+    static constexpr VkDeviceSize RING_SIZE = 64ull * 1024 * 1024; // 64MB
+    static constexpr uint32_t FRAME_COUNT = 2; // Double-buffered
+
+    // Per-frame tracking
+    struct FrameState {
+        VkDeviceSize startOffset;
+        VkDeviceSize endOffset;
+    };
+    std::array<FrameState, FRAME_COUNT> _frameStates;
+
+    std::atomic<VkDeviceSize> _writeOffset{0}; // Current write position
+    VkDeviceSize _frameStartOffset = 0;        // Where current frame started
 };
 
 // Manages per-chunk buffer allocation using VMA
@@ -78,12 +105,22 @@ class MeshBufferPool {
     // Get buffers for binding
     [[nodiscard]] VkBuffer getIndexBuffer() const { return _indexBuffer.buffer; }
 
+    // Set callback to notify when index buffer is resized (for descriptor updates)
+    void setIndexBufferResizeCallback(std::function<void()> callback) {
+        _indexBufferResizeCallback = std::move(callback);
+    }
+
+    void setCurrentFrameIndex(uint32_t frameIndex) { _currentFrameIndex = frameIndex; }
+
     // Get statistics
     [[nodiscard]] size_t getAllocatedChunkCount() const { return _allocatedChunks; }
     [[nodiscard]] size_t getTotalVertexMemory() const { return _totalVertexMemory; }
     [[nodiscard]] size_t getTotalIndexMemory() const { return _totalIndexMemory; }
     [[nodiscard]] VkDeviceSize getIndexBufferCapacity() const { return _currentIndexBufferSize; }
     [[nodiscard]] float getMemoryUsage() const;
+
+    enum class StagingType { Vertex, Index, Generic };
+    AllocatedBuffer acquireStagingBuffer(VkDeviceSize requiredSize, StagingType type);
 
   private:
     VulkanDevice& _device;
@@ -112,10 +149,6 @@ class MeshBufferPool {
     };
     std::vector<DeletionEntry> _deletionQueue;
 
-    // ========================================================================
-    // FREE-LIST INDEX ALLOCATOR
-    // ========================================================================
-    // Recycles freed index ranges to prevent monotonic growth and exhaustion
     struct IndexRange {
         uint32_t start; // Starting index in mega buffer
         uint32_t count; // Number of indices
@@ -136,5 +169,42 @@ class MeshBufferPool {
     void processPendingIndexFrees();
     void ensureIndexBufferCapacity(
         uint32_t requiredIndices,
+        const std::function<void(std::function<void(VkCommandBuffer)>&&)>& immediateSubmit);
+
+    struct PendingUpload {
+        AllocatedBuffer stagingVertex;
+        AllocatedBuffer stagingIndex;
+        VkBuffer dstVertexBuffer;
+        VkBuffer dstIndexBuffer;
+        VkDeviceSize vertexSize;
+        VkDeviceSize indexSize;
+        uint32_t indexOffset;
+        VkDeviceSize vertexSrcOffset = 0;
+        VkDeviceSize indexSrcOffset = 0;
+    };
+    std::vector<PendingUpload> _pendingUploads;
+
+    struct StagingBuffer {
+        AllocatedBuffer buffer;
+        VkDeviceSize size;
+        uint32_t frameDelay = 0; // 0 = available, >0 = in use (frames until recyclable)
+    };
+    std::vector<StagingBuffer> _stagingVertexPool;
+    std::vector<StagingBuffer> _stagingIndexPool;
+    std::vector<StagingBuffer> _stagingGenericPool;
+
+    static constexpr VkDeviceSize STAGING_BUFFER_SIZE_VERTEX = 128 * 1024;  // 128KB per buffer
+    static constexpr VkDeviceSize STAGING_BUFFER_SIZE_INDEX = 64 * 1024;    // 64KB per buffer
+    static constexpr VkDeviceSize STAGING_BUFFER_SIZE_GENERIC = 16 * 1024;
+
+    void updateStagingPools();
+
+    std::unique_ptr<UploadRingBuffer> _uploadRing;
+    uint32_t _currentFrameIndex = 0;
+
+    std::function<void()> _indexBufferResizeCallback;
+
+  public:
+    void submitPendingUploads(
         const std::function<void(std::function<void(VkCommandBuffer)>&&)>& immediateSubmit);
 };

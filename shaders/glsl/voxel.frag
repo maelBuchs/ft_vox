@@ -4,15 +4,16 @@ layout(location = 0) in vec3 inNormal;
 layout(location = 1) in vec4 inColor;
 layout(location = 2) in vec2 inUV;
 layout(location = 3) flat in uint inTextureId;
+layout(location = 4) flat in uint inDummy; // Dummy to maintain contiguous locations
 layout(location = 5) flat in uint inNormalId;
 layout(location = 6) in float inAO;
 
 layout(location = 0) out vec4 outFragColor;
 
-layout(set = 0, binding = 1) uniform sampler2D textureAtlas;
+layout(set = 1, binding = 0) uniform sampler2D textureAtlas;
 
 // Atlas configuration passed from C++
-layout(set = 0, binding = 2) uniform AtlasConfig {
+layout(set = 1, binding = 1) uniform AtlasConfig {
     int texturesPerRow;
 }
 atlasConfig;
@@ -74,7 +75,7 @@ void main() {
 
     // Apply lighting, directional brightness, and ambient occlusion
     vec3 finalOutputColor = finalColor * lighting * faceBrightness * inAO;
-    vec3 encoded = finalOutputColor * vec3(1.0 / 2.2);
+    vec3 encoded = pow(finalOutputColor, vec3(1.0 / 2.2));
     outFragColor = vec4(encoded, textureColor.a);
 
     // Note: Transparent fragment discarding disabled to avoid requiring

@@ -23,9 +23,7 @@
  * - Aligned allocation (C++17)
  */
 
-// ============================================================================
 // Regular new/delete (single object)
-// ============================================================================
 
 void* operator new(std::size_t size) {
     void* ptr = std::malloc(size);
@@ -47,9 +45,7 @@ void operator delete(void* ptr) noexcept {
     std::free(ptr);
 }
 
-// ============================================================================
 // Array new[]/delete[] (arrays)
-// ============================================================================
 
 void* operator new[](std::size_t size) {
     void* ptr = std::malloc(size);
@@ -71,9 +67,7 @@ void operator delete[](void* ptr) noexcept {
     std::free(ptr);
 }
 
-// ============================================================================
 // Sized delete (C++14) - provides size hint for better tracking
-// ============================================================================
 
 void operator delete(void* ptr, std::size_t size) noexcept {
     if (!ptr)
@@ -95,9 +89,7 @@ void operator delete[](void* ptr, std::size_t size) noexcept {
     (void)size; // Size is primarily for optimization, not needed with malloc/free
 }
 
-// ============================================================================
 // Aligned allocation (C++17) - for over-aligned types
-// ============================================================================
 
 #if __cplusplus >= 201703L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L)
 
@@ -192,9 +184,7 @@ void operator delete[](void* ptr, std::size_t size, std::align_val_t alignment) 
 
 #endif // C++17
 
-// ============================================================================
 // Nothrow variants - return nullptr instead of throwing on failure
-// ============================================================================
 
 void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
     void* ptr = std::malloc(size);

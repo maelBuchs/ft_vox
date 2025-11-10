@@ -33,8 +33,8 @@ class VoxelRenderer;
 
 class Renderer {
   public:
-    Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry,
-             ThreadSafeQueue<MeshData>& finishedMeshQueue);
+    Renderer(Window& window, VulkanDevice& device, BlockRegistry& blockRegistry,
+             std::vector<std::unique_ptr<ThreadSafeQueue<MeshData>>>& perThreadMeshQueues);
     ~Renderer();
 
     Renderer(const Renderer&) = delete;
@@ -56,6 +56,7 @@ class Renderer {
     [[nodiscard]] DescriptorAllocatorGrowable& getGlobalDescriptorAllocator() {
         return _globalDescriptorAllocator;
     }
+    [[nodiscard]] uint64_t getFrameNumber() const;
 
     [[nodiscard]] uint32_t getTextureId(const std::string& path);
 
@@ -75,7 +76,7 @@ class Renderer {
     Window& _window;
     VulkanDevice& _device;
     BlockRegistry& _blockRegistry;
-    ThreadSafeQueue<MeshData>& _finishedMeshQueue; // Reference to mesh queue from App
+    std::vector<std::unique_ptr<ThreadSafeQueue<MeshData>>>& _perThreadMeshQueues; // Reference to mesh queue from App
     std::unique_ptr<VulkanSwapchain> _swapchain;
     DescriptorAllocatorGrowable _globalDescriptorAllocator;
     std::vector<VkSemaphore> _swapchainSemaphores;

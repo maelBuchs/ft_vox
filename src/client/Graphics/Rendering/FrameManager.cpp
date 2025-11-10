@@ -1,5 +1,6 @@
 #include "FrameManager.hpp"
 
+#include <iostream>
 #include <stdexcept>
 
 #include "../Core/VulkanDevice.hpp"
@@ -11,6 +12,17 @@ FrameManager::FrameManager(VulkanDevice& device) : _device(device), _frameNumber
 }
 
 FrameManager::~FrameManager() {
+    for (size_t i = 0; i < FRAME_OVERLAP; i++) {
+        auto& frame = _frameData[i];
+        if (frame._renderFence != VK_NULL_HANDLE) {
+            VkResult result = vkWaitForFences(_device.getDevice(), 1, &frame._renderFence,
+                                            VK_TRUE, UINT64_MAX);
+            if (result == VK_SUCCESS) {
+                vkResetFences(_device.getDevice(), 1, &frame._renderFence);
+            }
+        }
+    }
+
     for (auto& frame : _frameData) {
         frame._deletionQueue.flush();
     }

@@ -2,6 +2,8 @@
 
 #include <cstring>
 
+#include <tracy/Tracy.hpp>
+
 #include "../Core/VulkanBuffer.hpp"
 #include "../Core/VulkanDevice.hpp"
 
@@ -12,6 +14,7 @@ MeshManager::MeshManager(VulkanDevice& device, VulkanBuffer& bufferManager)
 GPUMeshBuffers MeshManager::uploadMesh(
     std::span<uint32_t> indices, std::span<uint32_t> vertices,
     const std::function<void(std::function<void(VkCommandBuffer)>&&)>& immediateSubmit) {
+    ZoneScopedN("MeshManager::uploadMesh (uint32_t)");
     const size_t vertexBufferSize = vertices.size() * sizeof(uint32_t);
     const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
 
@@ -67,6 +70,7 @@ GPUMeshBuffers MeshManager::uploadMesh(
 GPUMeshBuffers MeshManager::uploadMesh(
     std::span<uint32_t> indices, std::span<Vertex> vertices,
     const std::function<void(std::function<void(VkCommandBuffer)>&&)>& immediateSubmit) {
+    ZoneScopedN("MeshManager::uploadMesh (Vertex)");
     const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
     const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
 
