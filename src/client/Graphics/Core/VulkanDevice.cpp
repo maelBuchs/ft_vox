@@ -44,6 +44,10 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
     auto instRet = instanceBuilder.set_app_name("ft_vox")
                        .request_validation_layers(true)
                        .use_default_debug_messenger()
+                       .add_validation_feature_enable(VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT)
+                       .add_validation_feature_enable(VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT)
+                       .add_validation_feature_enable(
+                           VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT)
                        .require_api_version(1, 3)
                        .build();
 

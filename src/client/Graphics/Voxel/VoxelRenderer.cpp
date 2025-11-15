@@ -455,6 +455,32 @@ void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atla
         return;
     }
 
+    // Validate task payload size (TaskPayloadData struct: 4 bytes meshCount + 2047 * 8 bytes entries)
+    const uint32_t REQUIRED_TASK_PAYLOAD_SIZE = 16380;
+    if (meshProps.maxTaskPayloadSize < REQUIRED_TASK_PAYLOAD_SIZE) {
+        std::cerr << "[VoxelRenderer] Task payload size insufficient:\n"
+                  << "  maxTaskPayloadSize: " << meshProps.maxTaskPayloadSize
+                  << " (required: " << REQUIRED_TASK_PAYLOAD_SIZE << ")\n";
+        _useMeshShaders = false;
+        return;
+    }
+
+    // Log all mesh shader properties for debugging
+    std::cout << "[VoxelRenderer] Mesh Shader Properties:\n"
+              << "  maxTaskPayloadSize: " << meshProps.maxTaskPayloadSize << " bytes\n"
+              << "  maxMeshOutputVertices: " << meshProps.maxMeshOutputVertices << "\n"
+              << "  maxMeshOutputPrimitives: " << meshProps.maxMeshOutputPrimitives << "\n"
+              << "  maxTaskWorkGroupInvocations: " << meshProps.maxTaskWorkGroupInvocations << "\n"
+              << "  maxMeshWorkGroupInvocations: " << meshProps.maxMeshWorkGroupInvocations << "\n"
+              << "  maxPreferredTaskWorkGroupInvocations: "
+              << meshProps.maxPreferredTaskWorkGroupInvocations << "\n"
+              << "  maxPreferredMeshWorkGroupInvocations: "
+              << meshProps.maxPreferredMeshWorkGroupInvocations << "\n"
+              << "  maxMeshWorkGroupCount[0]: " << meshProps.maxMeshWorkGroupCount[0] << "\n"
+              << "  maxTaskWorkGroupCount[0]: " << meshProps.maxTaskWorkGroupCount[0] << "\n"
+              << "  maxTaskSharedMemorySize: " << meshProps.maxTaskSharedMemorySize << " bytes\n"
+              << "  maxMeshSharedMemorySize: " << meshProps.maxMeshSharedMemorySize << " bytes\n";
+
     _maxMeshWorkgroupsPerTask = std::max(meshProps.maxMeshWorkGroupCount[0], 1u);
 
     DescriptorLayoutBuilder meshLayoutBuilder;
@@ -1280,7 +1306,39 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
         {
             ZoneScopedN("Dispatch Mesh Tasks");
             uint32_t taskWorkgroups = (pushConstants.totalChunks + 15) / 16;
+
+            // Safety bounds checking and logging
+            const uint32_t MAX_SAFE_TASK_WORKGROUPS = 512;
+            if (taskWorkgroups > MAX_SAFE_TASK_WORKGROUPS) {
+                std::cerr << "[VoxelRenderer] WARNING: taskWorkgroups=" << taskWorkgroups
+                          << " exceeds safe limit (" << MAX_SAFE_TASK_WORKGROUPS
+                          << "), clamping to prevent crash\n";
+                taskWorkgroups = MAX_SAFE_TASK_WORKGROUPS;
+            }
+
+            std::cout << "[VoxelRenderer] Dispatching " << taskWorkgroups << " task workgroups for "
+                      << pushConstants.totalChunks << " chunks\n";
+
+            // Add debug label to isolate crash location
+            PFN_vkCmdBeginDebugUtilsLabelEXT vkCmdBeginLabel =
+                (PFN_vkCmdBeginDebugUtilsLabelEXT)vkGetDeviceProcAddr(
+                    _device.getDevice(), "vkCmdBeginDebugUtilsLabelEXT");
+            PFN_vkCmdEndDebugUtilsLabelEXT vkCmdEndLabel =
+                (PFN_vkCmdEndDebugUtilsLabelEXT)vkGetDeviceProcAddr(_device.getDevice(),
+                                                                    "vkCmdEndDebugUtilsLabelEXT");
+
+            if (vkCmdBeginLabel) {
+                VkDebugUtilsLabelEXT label{};
+                label.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+                label.pLabelName = "Mesh Shader Draw";
+                vkCmdBeginLabel(cmd, &label);
+            }
+
             _vkCmdDrawMeshTasksEXT(cmd, taskWorkgroups, 1, 1);
+
+            if (vkCmdEndLabel) {
+                vkCmdEndLabel(cmd);
+            }
         }
 
     } else {
