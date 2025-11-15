@@ -14,9 +14,10 @@ layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
 layout(triangles, max_vertices = 256, max_primitives = 85) out; // 85 triangles * 3 = 255 vertices
 
 // ===== BUFFER DEVICE ADDRESS =====
-layout(buffer_reference, std430, buffer_reference_align = 4) readonly buffer VertexBuffer {
-    uint vertices[];
-};
+// COMMENTED OUT FOR TESTING - to isolate buffer address issue
+// layout(buffer_reference, std430, buffer_reference_align = 4) readonly buffer VertexBuffer {
+//     uint vertices[];
+// };
 
 // ===== INPUT: CAMERA DATA (UBO) =====
 struct GPUCameraData {
@@ -95,117 +96,71 @@ const vec2 UVS[4] = vec2[](vec2(0.0, 0.0), // 0: Bottom-left
                            vec2(0.0, 1.0)  // 3: Top-left
 );
 
-// ===== MAIN MESH SHADER =====
+// ===== MAIN MESH SHADER (SIMPLIFIED TEST VERSION) =====
+// This version emits a hardcoded triangle to isolate buffer address issues
 void main() {
     uint localID = gl_LocalInvocationID.x;
-
-    // gl_WorkGroupID.x is LOCAL to this task workgroup (0 to N-1)
-    // Each task workgroup has its own taskPayloadSharedEXT that only its mesh shaders see
     uint payloadIdx = gl_WorkGroupID.x;
 
-    // DEBUG: Log mesh shader invocation details (only first thread)
-    // if (localID == 0 && payloadIdx < 5) { // Only first 5 mesh workgroups to avoid spam
-    //     debugPrintfEXT("[MESH] WorkGroupID=%u meshCount=%u\n", payloadIdx, payload.meshCount);
-    // }
+    // Check payload bounds
+    if (payloadIdx >= payload.meshCount) {
+        if (localID == 0) {
+            SetMeshOutputsEXT(0, 0);
+        }
+        return;
+    }
+
+    // Only emit geometry for the first mesh workgroup to keep it simple
+    if (localID == 0) {
+        // Emit a simple triangle - 3 vertices, 1 primitive
+        SetMeshOutputsEXT(3, 1);
+    }
+
+    // Hardcoded triangle positions in clip space (visible on screen)
+    vec3 positions[3] = vec3[](
+        vec3(-0.5, -0.5, 0.5),  // Bottom-left
+        vec3( 0.5, -0.5, 0.5),  // Bottom-right
+        vec3( 0.0,  0.5, 0.5)   // Top-center
+    );
+
+    // Output vertices (first 3 threads each output one vertex)
+    if (localID < 3) {
+        // Transform by camera (or just output directly in clip space for testing)
+        gl_MeshVerticesEXT[localID].gl_Position = vec4(positions[localID], 1.0);
+
+        // Simple red color for visibility
+        outNormal[localID] = vec3(0.0, 0.0, 1.0);
+        outColor[localID] = vec4(1.0, 0.0, 0.0, 1.0);  // Red
+        outUV[localID] = vec2(0.5);
+        outTextureId[localID] = 0u;
+        outDummy[localID] = 0u;
+        outNormalId[localID] = 0u;
+        outAO[localID] = 1.0;
+    }
+
+    // Build the single triangle (first thread only)
+    if (localID == 0) {
+        gl_PrimitiveTriangleIndicesEXT[0] = uvec3(0, 1, 2);
+    }
+}
+
+/* ORIGINAL CODE - COMMENTED OUT FOR TESTING
+void main() {
+    uint localID = gl_LocalInvocationID.x;
+    uint payloadIdx = gl_WorkGroupID.x;
 
     if (payloadIdx >= payload.meshCount) {
         if (localID == 0 && payloadIdx < 5) {
-            // debugPrintfEXT("[MESH] OUT OF BOUNDS: payloadIdx=%u meshCount=%u\n", payloadIdx,
-            //                payload.meshCount);
             SetMeshOutputsEXT(0, 0);
         }
         return;
     }
 
     TaskPayloadEntry task = payload.entries[payloadIdx];
-
-    // if (localID == 0 && payloadIdx < 5) {
-    //     debugPrintfEXT("[MESH] Rendering chunk=%u tile=%u\n", task.chunkIndex, task.tileIndex);
-    // }
     GPUChunkData chunk = chunks[task.chunkIndex];
 
-    // Convert device address to buffer reference
-    VertexBuffer vertexBuffer = VertexBuffer(chunk.vertexBufferAddress);
-
-    // ===== CALCULATE TILE RANGE =====
-    // Each mesh workgroup processes a tile of the chunk's geometry
-    // Mesh shader can output max 85 primitives (255 vertices), so each tile handles at most 85
-    // triangles
-    const uint maxTrianglesPerTile = 85;
-
-    uint totalTriangles = chunk.indexCount / 3;
-    uint tileStart =
-        task.tileIndex * maxTrianglesPerTile * 3; // Start index (in indices, not triangles)
-    uint tileEnd = min(tileStart + maxTrianglesPerTile * 3, chunk.indexCount); // End index
-    uint tileIndexCount = tileEnd - tileStart;
-
-    // Calculate how many triangles this tile actually has
-    uint tilePrimitiveCount = tileIndexCount / 3;
-
-    // Clamp to mesh shader limits
-    uint actualPrimitives = min(tilePrimitiveCount, 85);
-    uint actualVertices = actualPrimitives * 3; // 3 vertices per triangle
-
-    // DEBUG: Log tile processing details
-    // if (localID == 0 && payloadIdx < 5) {
-    //     debugPrintfEXT("[MESH] Tile range: start=%u end=%u primitives=%u\n", tileStart, tileEnd,
-    //                    actualPrimitives);
-    // }
-
-    // Set mesh output counts (must be done by all threads, or just first thread)
-    if (localID == 0) {
-        SetMeshOutputsEXT(actualVertices, actualPrimitives);
-    }
-
-    // ===== PROCESS VERTICES IN PARALLEL =====
-    // Each thread processes multiple vertices (strided access)
-    // We output vertices sequentially in the order they appear in the index buffer for this tile
-    for (uint i = localID; i < actualVertices; i += 32) {
-
-        // Fetch index from mega index buffer for this tile
-        uint globalIndex = chunk.firstIndex + tileStart + i;
-        uint vertexIndex = indices[globalIndex];
-
-        // Fetch packed vertex data from the chunk's vertex buffer
-        uint inVertexData = vertexBuffer.vertices[vertexIndex];
-
-        // Unpack vertex data (bit layout: [X:6][Y:6][Z:6][Normal:3][UV:2][Texture:7][AO:2])
-        uint x = (inVertexData) & 0x3Fu;
-        uint y = (inVertexData >> 6) & 0x3Fu;
-        uint z = (inVertexData >> 12) & 0x3Fu;
-        uint normalId = (inVertexData >> 18) & 0x7u;
-        uint uvId = (inVertexData >> 21) & 0x3u;
-        uint textureId = (inVertexData >> 23) & 0x7Fu;
-        uint ao = (inVertexData >> 30) & 0x3u;
-
-        vec3 inPosition = vec3(float(x), float(y), float(z));
-        vec3 normal = NORMALS[normalId];
-        vec2 uv = UVS[uvId];
-
-        // Convert AO to brightness multiplier
-        float aoValue = 1.0 - (float(ao) * 0.25);
-
-        // Transform to world space and project
-        vec3 worldPos = inPosition + chunk.chunkWorldPos;
-
-        // Output vertex at position i (sequential output matching our primitive indices)
-        gl_MeshVerticesEXT[i].gl_Position = camera.viewProjection * vec4(worldPos, 1.0);
-
-        // Output vertex attributes
-        outNormal[i] = normal;
-        outColor[i] = vec4(abs(normal), 1.0);
-        outUV[i] = uv;
-        outTextureId[i] = textureId;
-        outDummy[i] = 0u; // Dummy value
-        outNormalId[i] = normalId;
-        outAO[i] = aoValue;
-    }
-
-    // ===== BUILD PRIMITIVE INDICES =====
-    // Build triangles using sequential vertex indices (0,1,2), (3,4,5), etc.
-    // This matches the order we output vertices above
-    for (uint i = localID; i < actualPrimitives; i += 32) {
-        uint baseVertex = i * 3;
-        gl_PrimitiveTriangleIndicesEXT[i] = uvec3(baseVertex, baseVertex + 1, baseVertex + 2);
-    }
+    // ORIGINAL BUFFER ACCESS CODE HERE...
+    // VertexBuffer vertexBuffer = VertexBuffer(chunk.vertexBufferAddress);
+    // ... rest of original implementation ...
 }
+*/
