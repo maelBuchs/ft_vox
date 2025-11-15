@@ -38,13 +38,17 @@ VoxelRenderer::VoxelRenderer(VulkanDevice& device, MeshManager& meshManager,
 }
 
 VoxelRenderer::~VoxelRenderer() {
+    std::cout << "[VoxelRenderer] ========== DESTRUCTOR STARTING ==========\n";
+
     // Free all chunk vertex buffers before clearing vectors
     // VMA requires explicit deallocation before the allocator is destroyed
 
     // BUGFIX: Flush deletion queue FIRST to avoid double-free
     // This destroys any buffers that were queued for deletion but not yet processed
     if (_meshPool) {
+        std::cout << "[VoxelRenderer] Flushing mesh pool deletion queue...\n";
         _meshPool->flushDeletionQueue();
+        std::cout << "[VoxelRenderer] Mesh pool deletion queue flushed\n";
     }
 
     // Extract mesh buffers into temp vector for batch destruction (fast!)
@@ -61,7 +65,10 @@ VoxelRenderer::~VoxelRenderer() {
 
     // Batch destroy all remaining vertex buffers (fast ~70ms for 15k chunks)
     if (!allBuffers.empty() && _meshPool) {
+        std::cout << "[VoxelRenderer] Batch destroying " << allBuffers.size()
+                  << " chunk buffers...\n";
         _meshPool->destroyAllChunkBuffers(allBuffers);
+        std::cout << "[VoxelRenderer] Chunk buffers destroyed\n";
     }
 
     // Now safe to clear vectors (no leaks!)
@@ -71,8 +78,11 @@ VoxelRenderer::~VoxelRenderer() {
     // Wait for GPU to finish before destroying resources
     // This prevents "pipeline layout in use" validation errors
     // Even though FrameManager waits for fences, we add a safety check here
+    std::cout << "[VoxelRenderer] Waiting for GPU idle (first wait)...\n";
     vkDeviceWaitIdle(_device.getDevice());
+    std::cout << "[VoxelRenderer] GPU idle (first wait complete)\n";
 
+    std::cout << "[VoxelRenderer] Cleaning up pipelines...\n";
     _voxelPipeline.cleanup(_device);
     _voxelWireframePipeline.cleanup(_device);
     _meshShaderPipeline.cleanup(_device);
@@ -80,10 +90,13 @@ VoxelRenderer::~VoxelRenderer() {
 
     // Clean up compute culling pipeline
     _frustumCullPipeline.cleanup(_device);
+    std::cout << "[VoxelRenderer] Pipelines cleaned up\n";
 
     // Wait again after pipeline destruction to ensure they're fully destroyed
     // before destroying the layouts they reference. This prevents the layout leak
+    std::cout << "[VoxelRenderer] Waiting for GPU idle (second wait)...\n";
     vkDeviceWaitIdle(_device.getDevice());
+    std::cout << "[VoxelRenderer] GPU idle (second wait complete)\n";
 
     // Clean up owned pipeline layouts
     if (_voxelPipelineLayout != VK_NULL_HANDLE) {
@@ -113,32 +126,43 @@ VoxelRenderer::~VoxelRenderer() {
         vkDestroyDescriptorSetLayout(_device.getDevice(), _frustumCullSetLayout, nullptr);
     }
 
+    std::cout << "[VoxelRenderer] Destroying buffers...\n";
+
     // Clean up MDI buffers
     if (_indirectBuffer.buffer != VK_NULL_HANDLE) {
+        std::cout << "  - Indirect buffer\n";
         _bufferManager.destroyBuffer(_indirectBuffer);
     }
     for (auto& buffer : _chunkDataBuffers) {
         if (buffer.buffer != VK_NULL_HANDLE) {
+            std::cout << "  - Chunk data buffer\n";
             _bufferManager.destroyBuffer(buffer);
         }
     }
     if (_atlasConfigBuffer.buffer != VK_NULL_HANDLE) {
+        std::cout << "  - Atlas config buffer\n";
         _bufferManager.destroyBuffer(_atlasConfigBuffer);
     }
     if (_cameraUniformBuffer.buffer != VK_NULL_HANDLE) {
+        std::cout << "  - Camera UBO (mesh shader resource)\n";
         _bufferManager.destroyBuffer(_cameraUniformBuffer);
     }
 
     // Clean up compute culling buffers
     if (_frustumUniformBuffer.buffer != VK_NULL_HANDLE) {
+        std::cout << "  - Frustum uniform buffer\n";
         _bufferManager.destroyBuffer(_frustumUniformBuffer);
     }
     if (_culledIndirectBuffer.buffer != VK_NULL_HANDLE) {
+        std::cout << "  - Culled indirect buffer\n";
         _bufferManager.destroyBuffer(_culledIndirectBuffer);
     }
     if (_culledChunkDataBuffer.buffer != VK_NULL_HANDLE) {
+        std::cout << "  - Culled chunk data buffer\n";
         _bufferManager.destroyBuffer(_culledChunkDataBuffer);
     }
+
+    std::cout << "[VoxelRenderer] ========== DESTRUCTOR COMPLETE ==========\n";
 }
 
 void VoxelRenderer::initPipelines(VkImageView atlasView, VkSampler atlasSampler,
@@ -483,6 +507,23 @@ void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atla
 
     _maxMeshWorkgroupsPerTask = std::max(meshProps.maxMeshWorkGroupCount[0], 1u);
 
+    std::cout << "[MESH SHADER DEBUG] Device limits validated successfully\n";
+    std::cout << "  - All required limits met for mesh shader execution\n";
+
+    // Check for integrated GPU and log device info
+    VkPhysicalDeviceProperties props;
+    vkGetPhysicalDeviceProperties(_device.getPhysicalDevice(), &props);
+    std::cout << "[MESH SHADER DEBUG] Device info:\n";
+    std::cout << "  - Device name: " << props.deviceName << "\n";
+    std::cout << "  - Device type: " << props.deviceType;
+    if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
+        std::cout << " (INTEGRATED GPU)";
+    }
+    std::cout << "\n";
+    std::cout << "  - Driver version: " << props.driverVersion << "\n";
+    std::cout << "  - Vendor ID: 0x" << std::hex << props.vendorID << std::dec << "\n";
+    std::flush(std::cout);
+
     DescriptorLayoutBuilder meshLayoutBuilder;
     meshLayoutBuilder.addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); // Camera UBO
     meshLayoutBuilder.addBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER); // Chunk data
@@ -498,6 +539,19 @@ void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atla
 
     _meshShaderFragSetLayout =
         fragLayoutBuilder.build(_device.getDevice(), VK_SHADER_STAGE_FRAGMENT_BIT);
+
+    // SAFETY CHECK: Verify descriptor set layouts are valid
+    if (_meshShaderSetLayout == VK_NULL_HANDLE) {
+        throw std::runtime_error("[MESH SHADER] Descriptor set layout 0 is NULL!");
+    }
+    if (_meshShaderFragSetLayout == VK_NULL_HANDLE) {
+        throw std::runtime_error("[MESH SHADER] Fragment descriptor set layout is NULL!");
+    }
+
+    std::cout << "[MESH SHADER DEBUG] Descriptor layouts created and validated\n";
+    std::cout << "  - Set 0 layout: " << _meshShaderSetLayout << "\n";
+    std::cout << "  - Set 1 layout: " << _meshShaderFragSetLayout << "\n";
+    std::flush(std::cout);
 
     _cameraUniformBuffer = _bufferManager.createBuffer(sizeof(GPUCameraData),
                                                        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
@@ -530,9 +584,21 @@ void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atla
         throw std::runtime_error("Failed to create mesh shader pipeline layout");
     }
 
+    std::cout << "[MESH SHADER DEBUG] Loading shader modules...\n";
+    std::cout << "  - Task shader: shaders/voxel.task.spv\n";
+    std::cout << "  - Mesh shader: shaders/voxel.mesh.spv\n";
+    std::cout << "  - Frag shader: shaders/voxel.frag.spv\n";
+    std::flush(std::cout);
+
     VkShaderModule taskShader = Pipeline::loadShaderModule(_device, "shaders/voxel.task.spv");
     VkShaderModule meshShader = Pipeline::loadShaderModule(_device, "shaders/voxel.mesh.spv");
     VkShaderModule fragShader = Pipeline::loadShaderModule(_device, "shaders/voxel.frag.spv");
+
+    std::cout << "[MESH SHADER DEBUG] Shader modules loaded successfully\n";
+    std::cout << "  - Task module: " << (taskShader != VK_NULL_HANDLE ? "OK" : "FAILED") << " (" << taskShader << ")\n";
+    std::cout << "  - Mesh module: " << (meshShader != VK_NULL_HANDLE ? "OK" : "FAILED") << " (" << meshShader << ")\n";
+    std::cout << "  - Frag module: " << (fragShader != VK_NULL_HANDLE ? "OK" : "FAILED") << " (" << fragShader << ")\n";
+    std::flush(std::cout);
 
     const RenderContext::AllocatedImage& drawImage = _context.getDrawImage();
     const RenderContext::AllocatedImage& depthImage = _context.getDepthImage();
@@ -621,11 +687,22 @@ void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atla
     pipelineInfo.pDynamicState = &dynamicState;
     pipelineInfo.layout = _meshShaderPipelineLayout;
 
+    std::cout << "[MESH SHADER DEBUG] Creating mesh shader pipeline...\n";
+    std::cout << "  - Pipeline layout: " << _meshShaderPipelineLayout << "\n";
+    std::cout << "  - Stage count: 3 (task + mesh + frag)\n";
+    std::cout << "  - Polygon mode: FILL\n";
+    std::cout << "  - Depth test: ENABLED\n";
+    std::flush(std::cout); // Force flush before potential crash
+
     VkPipeline meshPipeline = VK_NULL_HANDLE;
     if (vkCreateGraphicsPipelines(_device.getDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr,
                                   &meshPipeline) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create mesh shader pipeline");
     }
+
+    std::cout << "[MESH SHADER DEBUG] Mesh shader pipeline created successfully\n";
+    std::cout << "  - Pipeline handle: " << meshPipeline << "\n";
+    std::flush(std::cout);
 
     _meshShaderPipeline.init(meshPipeline, _meshShaderPipelineLayout);
 
@@ -637,11 +714,18 @@ void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atla
     VkGraphicsPipelineCreateInfo wireframePipelineInfo = pipelineInfo;
     wireframePipelineInfo.pRasterizationState = &wireframeRasterizer;
 
+    std::cout << "[MESH SHADER DEBUG] Creating wireframe pipeline...\n";
+    std::flush(std::cout);
+
     VkPipeline meshWireframePipeline = VK_NULL_HANDLE;
     if (vkCreateGraphicsPipelines(_device.getDevice(), VK_NULL_HANDLE, 1, &wireframePipelineInfo,
                                   nullptr, &meshWireframePipeline) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create mesh shader wireframe pipeline");
     }
+
+    std::cout << "[MESH SHADER DEBUG] Wireframe pipeline created successfully\n";
+    std::cout << "  - Pipeline handle: " << meshWireframePipeline << "\n";
+    std::flush(std::cout);
 
     _meshShaderWireframePipeline.init(meshWireframePipeline, _meshShaderPipelineLayout);
 
@@ -1249,15 +1333,36 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
         ZoneScopedN("Mesh Shader Rendering");
         TracyVkZone(_device.getTracyCtx(), cmd, "GPU Mesh Shader Rendering");
 
+        std::cout << "[MESH SHADER DRAW] ===== FRAME " << _renderer.getFrameNumber() << " STARTING =====\n";
+        std::cout << "  - Chunk count: " << _chunkDrawData.size() << "\n";
+        std::cout << "  - Wireframe mode: " << (wireframeMode ? "YES" : "NO") << "\n";
+        std::flush(std::cout);
+
         // Bind mesh shader pipeline (wireframe or filled based on F1 toggle)
         VkPipeline activePipeline = wireframeMode ? _meshShaderWireframePipeline.getPipeline()
                                                   : _meshShaderPipeline.getPipeline();
+
+        std::cout << "[MESH SHADER DRAW] Binding pipeline: " << activePipeline << "\n";
+        std::flush(std::cout);
+
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, activePipeline);
+
+        std::cout << "[MESH SHADER DRAW] Pipeline bound successfully\n";
+        std::flush(std::cout);
 
         const uint32_t frameIndex = static_cast<uint32_t>(_renderer.getFrameNumber() % CHUNK_BUFFER_COUNT);
         VkDescriptorSet descriptorSets[] = {_meshShaderDescriptorSets[frameIndex], _meshShaderFragDescriptorSet};
+
+        std::cout << "[MESH SHADER DRAW] Binding descriptor sets...\n";
+        std::cout << "  - Set 0 (frame " << frameIndex << "): " << descriptorSets[0] << "\n";
+        std::cout << "  - Set 1 (texture): " << descriptorSets[1] << "\n";
+        std::flush(std::cout);
+
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshShaderPipelineLayout, 0,
                                 2, descriptorSets, 0, nullptr);
+
+        std::cout << "[MESH SHADER DRAW] Descriptors bound successfully\n";
+        std::flush(std::cout);
 
         // Set up camera data for UBO
         glm::mat4 view = camera.getViewMatrix();
@@ -1281,10 +1386,20 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
         cameraData.maxRenderDistance = renderDistanceChunks * 32.0F; // chunks * chunkSize
 
         // Upload camera data to UBO
+        std::cout << "[MESH SHADER DRAW] Uploading camera data to UBO...\n";
+        std::cout << "  - Camera buffer: " << _cameraUniformBuffer.buffer << "\n";
+        std::cout << "  - Size: " << sizeof(GPUCameraData) << " bytes\n";
+        std::cout << "  - Camera pos: (" << cameraData.cameraPos.x << ", "
+                  << cameraData.cameraPos.y << ", " << cameraData.cameraPos.z << ")\n";
+        std::flush(std::cout);
+
         {
             ZoneScopedN("Upload Camera UBO");
             _bufferManager.uploadToBuffer(_cameraUniformBuffer, &cameraData, sizeof(GPUCameraData));
         }
+
+        std::cout << "[MESH SHADER DRAW] Camera data uploaded successfully\n";
+        std::flush(std::cout);
 
         // Push constants for task shader
         struct MeshShaderPushConstants {
@@ -1300,8 +1415,18 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
         pushConstants.maxVerticesPerMeshWorkgroup = 256;
         pushConstants.maxMeshWorkgroupsPerTask = _maxMeshWorkgroupsPerTask;
 
+        std::cout << "[MESH SHADER DRAW] Pushing constants...\n";
+        std::cout << "  - totalChunks: " << pushConstants.totalChunks << "\n";
+        std::cout << "  - chunkSize: " << pushConstants.chunkSize << "\n";
+        std::cout << "  - maxVerticesPerMeshWorkgroup: " << pushConstants.maxVerticesPerMeshWorkgroup << "\n";
+        std::cout << "  - maxMeshWorkgroupsPerTask: " << pushConstants.maxMeshWorkgroupsPerTask << "\n";
+        std::flush(std::cout);
+
         vkCmdPushConstants(cmd, _meshShaderPipelineLayout, VK_SHADER_STAGE_TASK_BIT_EXT, 0,
                            sizeof(MeshShaderPushConstants), &pushConstants);
+
+        std::cout << "[MESH SHADER DRAW] Push constants uploaded successfully\n";
+        std::flush(std::cout);
 
         {
             ZoneScopedN("Dispatch Mesh Tasks");
@@ -1334,7 +1459,24 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
                 vkCmdBeginLabel(cmd, &label);
             }
 
+            std::cout << "[MESH SHADER DRAW] ***** ABOUT TO DISPATCH MESH TASKS *****\n";
+            std::cout << "  - Task workgroups: " << taskWorkgroups << "\n";
+            std::cout << "  - Command buffer: " << cmd << "\n";
+            std::cout << "  - Function pointer: " << (void*)_vkCmdDrawMeshTasksEXT << "\n";
+            std::cout << "  - This is the CRITICAL CALL that may crash\n";
+            std::flush(std::cout);
+
+            // EMERGENCY BAILOUT TEST: Uncomment the next 3 lines to skip dispatch and test if crash is elsewhere
+            // std::cout << "[EMERGENCY] Skipping vkCmdDrawMeshTasksEXT for crash isolation test\n";
+            // std::flush(std::cout);
+            // goto skip_dispatch;
+
             _vkCmdDrawMeshTasksEXT(cmd, taskWorkgroups, 1, 1);
+
+            // skip_dispatch:
+            std::cout << "[MESH SHADER DRAW] ***** MESH TASKS DISPATCHED SUCCESSFULLY *****\n";
+            std::cout << "  - If you see this, the dispatch did NOT crash!\n";
+            std::flush(std::cout);
 
             if (vkCmdEndLabel) {
                 vkCmdEndLabel(cmd);
