@@ -431,6 +431,30 @@ void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atla
     deviceProps.pNext = &meshProps;
     vkGetPhysicalDeviceProperties2(_device.getPhysicalDevice(), &deviceProps);
 
+    // Validate mesh shader limits against our shader requirements
+    // Our shaders require: max_vertices = 256, max_primitives = 85, task local_size_x = 16
+    const uint32_t REQUIRED_MAX_VERTICES = 256;
+    const uint32_t REQUIRED_MAX_PRIMITIVES = 85;
+    const uint32_t REQUIRED_TASK_INVOCATIONS = 16;
+    const uint32_t MIN_MESH_WORKGROUPS = 2048;
+
+    if (meshProps.maxMeshOutputVertices < REQUIRED_MAX_VERTICES ||
+        meshProps.maxMeshOutputPrimitives < REQUIRED_MAX_PRIMITIVES ||
+        meshProps.maxTaskWorkGroupInvocations < REQUIRED_TASK_INVOCATIONS ||
+        meshProps.maxMeshWorkGroupCount[0] < MIN_MESH_WORKGROUPS) {
+        std::cerr << "[VoxelRenderer] Mesh shader limits insufficient for this application:\n"
+                  << "  maxMeshOutputVertices: " << meshProps.maxMeshOutputVertices
+                  << " (required: " << REQUIRED_MAX_VERTICES << ")\n"
+                  << "  maxMeshOutputPrimitives: " << meshProps.maxMeshOutputPrimitives
+                  << " (required: " << REQUIRED_MAX_PRIMITIVES << ")\n"
+                  << "  maxTaskWorkGroupInvocations: " << meshProps.maxTaskWorkGroupInvocations
+                  << " (required: " << REQUIRED_TASK_INVOCATIONS << ")\n"
+                  << "  maxMeshWorkGroupCount[0]: " << meshProps.maxMeshWorkGroupCount[0]
+                  << " (required: " << MIN_MESH_WORKGROUPS << ")\n";
+        _useMeshShaders = false;
+        return;
+    }
+
     _maxMeshWorkgroupsPerTask = std::max(meshProps.maxMeshWorkGroupCount[0], 1u);
 
     DescriptorLayoutBuilder meshLayoutBuilder;

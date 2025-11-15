@@ -99,20 +99,63 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
     const vkb::PhysicalDevice& vkbPhysicalDevice = physicalDeviceRet.value();
     _physicalDevice = vkbPhysicalDevice.physical_device;
 
-    // Check for mesh shader support
+    // Check Vulkan version support (mesh shaders require maintenance4 which is in Vulkan 1.3)
+    VkPhysicalDeviceProperties deviceProps;
+    vkGetPhysicalDeviceProperties(_physicalDevice, &deviceProps);
+
+    bool vulkan13Supported = (deviceProps.apiVersion >= VK_API_VERSION_1_3);
+    if (!vulkan13Supported) {
+        std::cout << "[VulkanDevice] Vulkan 1.3 not supported (found version "
+                  << VK_API_VERSION_MAJOR(deviceProps.apiVersion) << "."
+                  << VK_API_VERSION_MINOR(deviceProps.apiVersion) << "."
+                  << VK_API_VERSION_PATCH(deviceProps.apiVersion)
+                  << "), disabling mesh shaders\n";
+        _meshShaderSupported = false;
+    }
+
+    // Declare structures that will be used later if mesh shaders are supported
     VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeatures{};
     meshShaderFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT;
     meshShaderFeatures.pNext = nullptr;
 
     VkPhysicalDeviceFeatures2 deviceFeatures2{};
     deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    deviceFeatures2.pNext = &meshShaderFeatures;
 
-    vkGetPhysicalDeviceFeatures2(_physicalDevice, &deviceFeatures2);
+    // Only check for mesh shader extension and features if Vulkan 1.3 is supported
+    if (vulkan13Supported) {
+        // Check if VK_EXT_mesh_shader extension is available
+        uint32_t extensionCount = 0;
+        vkEnumerateDeviceExtensionProperties(_physicalDevice, nullptr, &extensionCount, nullptr);
+        std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+        vkEnumerateDeviceExtensionProperties(_physicalDevice, nullptr, &extensionCount,
+                                             availableExtensions.data());
 
-    // Enable mesh shaders if supported
-    _meshShaderSupported =
-        (meshShaderFeatures.taskShader == VK_TRUE && meshShaderFeatures.meshShader == VK_TRUE);
+        bool meshShaderExtAvailable = false;
+        for (const auto& ext : availableExtensions) {
+            if (strcmp(ext.extensionName, VK_EXT_MESH_SHADER_EXTENSION_NAME) == 0) {
+                meshShaderExtAvailable = true;
+                break;
+            }
+        }
+
+        if (!meshShaderExtAvailable) {
+            std::cout << "[VulkanDevice] VK_EXT_mesh_shader extension not available, disabling mesh "
+                         "shader support\n";
+            _meshShaderSupported = false;
+        } else {
+            // Check for mesh shader support
+            deviceFeatures2.pNext = &meshShaderFeatures;
+            vkGetPhysicalDeviceFeatures2(_physicalDevice, &deviceFeatures2);
+
+            // Enable mesh shaders if supported
+            _meshShaderSupported =
+                (meshShaderFeatures.taskShader == VK_TRUE && meshShaderFeatures.meshShader == VK_TRUE);
+
+            if (!_meshShaderSupported) {
+                std::cout << "[VulkanDevice] Mesh shader features not supported by device\n";
+            }
+        }
+    }
 
     if (_meshShaderSupported) {
         // Reset mesh shader features for device creation
@@ -197,8 +240,11 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
 
         VkResult result = vkCreateDevice(_physicalDevice, &createInfo, nullptr, &_device);
         if (result != VK_SUCCESS) {
+            std::cerr << "[VulkanDevice] Failed to create device with mesh shader support (VkResult: "
+                      << result << "). Falling back to non-mesh-shader path.\n";
             _meshShaderSupported = false;
         } else {
+            std::cout << "[VulkanDevice] Successfully created device with mesh shader support\n";
             _graphicsQueueFamily = graphicsFamily;
             _transferQueueFamily = transferFamily;
             vkGetDeviceQueue(_device, graphicsFamily, 0, &_graphicsQueue);
