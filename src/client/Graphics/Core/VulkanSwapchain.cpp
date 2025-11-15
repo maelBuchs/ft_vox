@@ -40,6 +40,7 @@ VulkanSwapchain::VulkanSwapchain(Window& window, VulkanDevice& device)
     _swapchain = vkbSwapchain.swapchain;
     _swapchainImages = vkbSwapchain.get_images().value();
     _swapchainImageViews = vkbSwapchain.get_image_views().value();
+    _swapchainImageFormat = vkbSwapchain.image_format;
 }
 
 VulkanSwapchain::~VulkanSwapchain() {
