@@ -1,0 +1,41 @@
+\doxysection{Command\+Executor.\+hpp}
+\hypertarget{CommandExecutor_8hpp_source}{}\label{CommandExecutor_8hpp_source}\index{src/client/Graphics/Rendering/CommandExecutor.hpp@{src/client/Graphics/Rendering/CommandExecutor.hpp}}
+
+\begin{DoxyCode}{0}
+\DoxyCodeLine{00001\ \textcolor{preprocessor}{\#pragma\ once}}
+\DoxyCodeLine{00002\ }
+\DoxyCodeLine{00003\ \textcolor{preprocessor}{\#include\ <functional>}}
+\DoxyCodeLine{00004\ }
+\DoxyCodeLine{00005\ \textcolor{preprocessor}{\#include\ <vulkan/vulkan.h>}}
+\DoxyCodeLine{00006\ }
+\DoxyCodeLine{00007\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classVulkanDevice}{VulkanDevice}};}
+\DoxyCodeLine{00008\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classRenderContext}{RenderContext}};}
+\DoxyCodeLine{00009\ }
+\DoxyCodeLine{00010\ \textcolor{keyword}{class\ }CommandExecutor\ \{}
+\DoxyCodeLine{00011\ \ \ \textcolor{keyword}{public}:}
+\DoxyCodeLine{00012\ \ \ \ \ \textcolor{keyword}{static}\ \textcolor{keyword}{constexpr}\ uint64\_t\ VULKAN\_TIMEOUT\_NS\ =\ 10000000000;\ \textcolor{comment}{//\ 10\ seconds\ (handles\ heavy\ chunk\ loading)}}
+\DoxyCodeLine{00013\ }
+\DoxyCodeLine{00014\ \ \ \ \ CommandExecutor(\mbox{\hyperlink{classVulkanDevice}{VulkanDevice}}\&\ device,\ \mbox{\hyperlink{classRenderContext}{RenderContext}}\&\ context);}
+\DoxyCodeLine{00015\ \ \ \ \ \string~CommandExecutor()\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00016\ }
+\DoxyCodeLine{00017\ \ \ \ \ CommandExecutor(\textcolor{keyword}{const}\ CommandExecutor\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00018\ \ \ \ \ CommandExecutor\&\ operator=(\textcolor{keyword}{const}\ CommandExecutor\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00019\ \ \ \ \ CommandExecutor(CommandExecutor\&\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00020\ \ \ \ \ CommandExecutor\&\ operator=(CommandExecutor\&\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00021\ }
+\DoxyCodeLine{00022\ \ \ \ \ \textcolor{keywordtype}{void}\ transitionImage(VkCommandBuffer\ cmd,\ VkImage\ image,\ VkImageLayout\ oldLayout,}
+\DoxyCodeLine{00023\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ VkImageLayout\ newLayout)\ \textcolor{keyword}{const};}
+\DoxyCodeLine{00024\ \ \ \ \ \textcolor{keywordtype}{void}\ copyImageToImage(VkCommandBuffer\ cmd,\ VkImage\ source,\ VkImage\ destination,}
+\DoxyCodeLine{00025\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ VkExtent2D\ srcSize,\ VkExtent2D\ dstSize);}
+\DoxyCodeLine{00026\ \ \ \ \ \textcolor{keywordtype}{void}\ immediateSubmit(std::function<\textcolor{keywordtype}{void}(VkCommandBuffer\ cmd)>\&\&\ function);}
+\DoxyCodeLine{00027\ }
+\DoxyCodeLine{00028\ \ \ \textcolor{keyword}{private}:}
+\DoxyCodeLine{00029\ \ \ \ \ [[nodiscard]]\ \textcolor{keyword}{static}\ VkImageMemoryBarrier2}
+\DoxyCodeLine{00030\ \ \ \ \ createImageBarrier(VkImage\ image,\ VkImageLayout\ oldLayout,\ VkImageLayout\ newLayout);}
+\DoxyCodeLine{00031\ \ \ \ \ [[nodiscard]]\ \textcolor{keyword}{static}\ VkImageAspectFlags\ getImageAspectMask(VkImageLayout\ layout);}
+\DoxyCodeLine{00032\ }
+\DoxyCodeLine{00033\ \ \ \ \ \mbox{\hyperlink{classVulkanDevice}{VulkanDevice}}\&\ \_device;}
+\DoxyCodeLine{00034\ \ \ \ \ \mbox{\hyperlink{classRenderContext}{RenderContext}}\&\ \_context;}
+\DoxyCodeLine{00035\ \};}
+
+\end{DoxyCode}

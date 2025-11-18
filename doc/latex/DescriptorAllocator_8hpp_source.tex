@@ -1,0 +1,91 @@
+\doxysection{Descriptor\+Allocator.\+hpp}
+\hypertarget{DescriptorAllocator_8hpp_source}{}\label{DescriptorAllocator_8hpp_source}\index{src/client/Graphics/Memory/DescriptorAllocator.hpp@{src/client/Graphics/Memory/DescriptorAllocator.hpp}}
+
+\begin{DoxyCode}{0}
+\DoxyCodeLine{00001\ \textcolor{preprocessor}{\#pragma\ once}}
+\DoxyCodeLine{00002\ }
+\DoxyCodeLine{00003\ \textcolor{preprocessor}{\#include\ <deque>}}
+\DoxyCodeLine{00004\ \textcolor{preprocessor}{\#include\ <span>}}
+\DoxyCodeLine{00005\ \textcolor{preprocessor}{\#include\ <vector>}}
+\DoxyCodeLine{00006\ }
+\DoxyCodeLine{00007\ \textcolor{preprocessor}{\#include\ <vulkan/vulkan.h>}}
+\DoxyCodeLine{00008\ }
+\DoxyCodeLine{00009\ \textcolor{comment}{//\ Growable\ descriptor\ allocator\ that\ creates\ new\ pools\ as\ needed}}
+\DoxyCodeLine{00010\ \textcolor{keyword}{class\ }DescriptorAllocatorGrowable\ \{}
+\DoxyCodeLine{00011\ \ \ \textcolor{keyword}{public}:}
+\DoxyCodeLine{00012\ \ \ \ \ \textcolor{keyword}{struct\ }\mbox{\hyperlink{structDescriptorAllocatorGrowable_1_1PoolSizeRatio}{PoolSizeRatio}}\ \{}
+\DoxyCodeLine{00013\ \ \ \ \ \ \ \ \ VkDescriptorType\ type;}
+\DoxyCodeLine{00014\ \ \ \ \ \ \ \ \ \textcolor{keywordtype}{float}\ ratio;}
+\DoxyCodeLine{00015\ \ \ \ \ \};}
+\DoxyCodeLine{00016\ }
+\DoxyCodeLine{00017\ \ \ \ \ DescriptorAllocatorGrowable()\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00018\ \ \ \ \ \string~DescriptorAllocatorGrowable()\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00019\ }
+\DoxyCodeLine{00020\ \ \ \ \ DescriptorAllocatorGrowable(\textcolor{keyword}{const}\ DescriptorAllocatorGrowable\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00021\ \ \ \ \ DescriptorAllocatorGrowable\&\ operator=(\textcolor{keyword}{const}\ DescriptorAllocatorGrowable\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00022\ \ \ \ \ DescriptorAllocatorGrowable(DescriptorAllocatorGrowable\&\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00023\ \ \ \ \ DescriptorAllocatorGrowable\&\ operator=(DescriptorAllocatorGrowable\&\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00024\ }
+\DoxyCodeLine{00025\ \ \ \ \ \textcolor{keywordtype}{void}\ init(VkDevice\ device,\ uint32\_t\ initialSets,\ std::span<PoolSizeRatio>\ poolRatios);}
+\DoxyCodeLine{00026\ \ \ \ \ \textcolor{keywordtype}{void}\ clearPools(VkDevice\ device);}
+\DoxyCodeLine{00027\ \ \ \ \ \textcolor{keywordtype}{void}\ destroyPools(VkDevice\ device);}
+\DoxyCodeLine{00028\ }
+\DoxyCodeLine{00029\ \ \ \ \ VkDescriptorSet\ allocate(VkDevice\ device,\ VkDescriptorSetLayout\ layout,\ \textcolor{keywordtype}{void}*\ pNext\ =\ \textcolor{keyword}{nullptr});}
+\DoxyCodeLine{00030\ }
+\DoxyCodeLine{00031\ \ \ \textcolor{keyword}{private}:}
+\DoxyCodeLine{00032\ \ \ \ \ VkDescriptorPool\ getPool(VkDevice\ device);}
+\DoxyCodeLine{00033\ \ \ \ \ VkDescriptorPool\ createPool(VkDevice\ device,\ uint32\_t\ setCount,}
+\DoxyCodeLine{00034\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ std::span<PoolSizeRatio>\ poolRatios);}
+\DoxyCodeLine{00035\ }
+\DoxyCodeLine{00036\ \ \ \ \ std::vector<PoolSizeRatio>\ \_ratios;}
+\DoxyCodeLine{00037\ \ \ \ \ std::vector<VkDescriptorPool>\ \_fullPools;}
+\DoxyCodeLine{00038\ \ \ \ \ std::vector<VkDescriptorPool>\ \_readyPools;}
+\DoxyCodeLine{00039\ \ \ \ \ uint32\_t\ \_setsPerPool\ =\ 0;}
+\DoxyCodeLine{00040\ \};}
+\DoxyCodeLine{00041\ }
+\DoxyCodeLine{00042\ \textcolor{comment}{//\ Builder\ for\ creating\ descriptor\ set\ layouts}}
+\DoxyCodeLine{00043\ \textcolor{keyword}{class\ }DescriptorLayoutBuilder\ \{}
+\DoxyCodeLine{00044\ \ \ \textcolor{keyword}{public}:}
+\DoxyCodeLine{00045\ \ \ \ \ DescriptorLayoutBuilder()\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00046\ \ \ \ \ \string~DescriptorLayoutBuilder()\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00047\ }
+\DoxyCodeLine{00048\ \ \ \ \ DescriptorLayoutBuilder(\textcolor{keyword}{const}\ DescriptorLayoutBuilder\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00049\ \ \ \ \ DescriptorLayoutBuilder\&\ operator=(\textcolor{keyword}{const}\ DescriptorLayoutBuilder\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00050\ \ \ \ \ DescriptorLayoutBuilder(DescriptorLayoutBuilder\&\&)\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00051\ \ \ \ \ DescriptorLayoutBuilder\&\ operator=(DescriptorLayoutBuilder\&\&)\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00052\ }
+\DoxyCodeLine{00053\ \ \ \ \ \textcolor{keywordtype}{void}\ addBinding(uint32\_t\ binding,\ VkDescriptorType\ type);}
+\DoxyCodeLine{00054\ \ \ \ \ \textcolor{keywordtype}{void}\ clear();}
+\DoxyCodeLine{00055\ \ \ \ \ VkDescriptorSetLayout\ build(VkDevice\ device,\ VkShaderStageFlags\ shaderStages,}
+\DoxyCodeLine{00056\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \textcolor{keywordtype}{void}*\ pNext\ =\ \textcolor{keyword}{nullptr},\ VkDescriptorSetLayoutCreateFlags\ flags\ =\ 0);}
+\DoxyCodeLine{00057\ }
+\DoxyCodeLine{00058\ \ \ \textcolor{keyword}{private}:}
+\DoxyCodeLine{00059\ \ \ \ \ std::vector<VkDescriptorSetLayoutBinding>\ \_bindings;}
+\DoxyCodeLine{00060\ \};}
+\DoxyCodeLine{00061\ }
+\DoxyCodeLine{00062\ \textcolor{comment}{//\ Writer\ for\ updating\ descriptor\ sets}}
+\DoxyCodeLine{00063\ \textcolor{keyword}{class\ }DescriptorWriter\ \{}
+\DoxyCodeLine{00064\ \ \ \textcolor{keyword}{public}:}
+\DoxyCodeLine{00065\ \ \ \ \ DescriptorWriter()\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00066\ \ \ \ \ \string~DescriptorWriter()\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00067\ }
+\DoxyCodeLine{00068\ \ \ \ \ DescriptorWriter(\textcolor{keyword}{const}\ DescriptorWriter\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00069\ \ \ \ \ DescriptorWriter\&\ operator=(\textcolor{keyword}{const}\ DescriptorWriter\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00070\ \ \ \ \ DescriptorWriter(DescriptorWriter\&\&)\ \textcolor{keyword}{noexcept}\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00071\ \ \ \ \ DescriptorWriter\&\ operator=(DescriptorWriter\&\&)\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00072\ }
+\DoxyCodeLine{00073\ \ \ \ \ \textcolor{keywordtype}{void}\ writeImage(\textcolor{keywordtype}{int}\ binding,\ VkImageView\ image,\ VkSampler\ sampler,\ VkImageLayout\ layout,}
+\DoxyCodeLine{00074\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ VkDescriptorType\ type);}
+\DoxyCodeLine{00075\ \ \ \ \ \textcolor{keywordtype}{void}\ writeBuffer(\textcolor{keywordtype}{int}\ binding,\ VkBuffer\ buffer,\ \textcolor{keywordtype}{size\_t}\ size,\ \textcolor{keywordtype}{size\_t}\ offset,}
+\DoxyCodeLine{00076\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ VkDescriptorType\ type);}
+\DoxyCodeLine{00077\ }
+\DoxyCodeLine{00078\ \ \ \ \ \textcolor{keywordtype}{void}\ clear();}
+\DoxyCodeLine{00079\ \ \ \ \ \textcolor{keywordtype}{void}\ updateSet(VkDevice\ device,\ VkDescriptorSet\ set);}
+\DoxyCodeLine{00080\ }
+\DoxyCodeLine{00081\ \ \ \textcolor{keyword}{private}:}
+\DoxyCodeLine{00082\ \ \ \ \ std::deque<VkDescriptorImageInfo>\ \_imageInfos;}
+\DoxyCodeLine{00083\ \ \ \ \ std::deque<VkDescriptorBufferInfo>\ \_bufferInfos;}
+\DoxyCodeLine{00084\ \ \ \ \ std::vector<VkWriteDescriptorSet>\ \_writes;}
+\DoxyCodeLine{00085\ \};}
+
+\end{DoxyCode}

@@ -1,0 +1,83 @@
+\doxysection{Voxel\+Renderer Class Reference}
+\hypertarget{classVoxelRenderer}{}\label{classVoxelRenderer}\index{VoxelRenderer@{VoxelRenderer}}
+\doxysubsubsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\Hypertarget{classVoxelRenderer_a505fcb6db25a3d774b73c765135b51f3}\label{classVoxelRenderer_a505fcb6db25a3d774b73c765135b51f3} 
+{\bfseries Voxel\+Renderer} (\mbox{\hyperlink{classVulkanDevice}{Vulkan\+Device}} \&device, \mbox{\hyperlink{classMeshManager}{Mesh\+Manager}} \&mesh\+Manager, \mbox{\hyperlink{classBlockRegistry}{Block\+Registry}} \&registry, \mbox{\hyperlink{classRenderContext}{Render\+Context}} \&context, \mbox{\hyperlink{classCommandExecutor}{Command\+Executor}} \&executor, \mbox{\hyperlink{classVulkanBuffer}{Vulkan\+Buffer}} \&buffer\+Manager, \mbox{\hyperlink{classDescriptorAllocatorGrowable}{Descriptor\+Allocator\+Growable}} \&descriptor\+Allocator, \mbox{\hyperlink{classRenderer}{Renderer}} \&renderer, std\+::vector$<$ std\+::unique\+\_\+ptr$<$ \mbox{\hyperlink{classThreadSafeQueue}{Thread\+Safe\+Queue}}$<$ \mbox{\hyperlink{structMeshData}{Mesh\+Data}} $>$ $>$ $>$ \&per\+Thread\+Mesh\+Queues)
+\item 
+\Hypertarget{classVoxelRenderer_aa733a9ebdc927c3ff609d391b25f7530}\label{classVoxelRenderer_aa733a9ebdc927c3ff609d391b25f7530} 
+{\bfseries Voxel\+Renderer} (const \mbox{\hyperlink{classVoxelRenderer}{Voxel\+Renderer}} \&)=delete
+\item 
+\Hypertarget{classVoxelRenderer_adf065a63e5520466e4fe1b6fb9605650}\label{classVoxelRenderer_adf065a63e5520466e4fe1b6fb9605650} 
+\mbox{\hyperlink{classVoxelRenderer}{Voxel\+Renderer}} \& {\bfseries operator=} (const \mbox{\hyperlink{classVoxelRenderer}{Voxel\+Renderer}} \&)=delete
+\item 
+\Hypertarget{classVoxelRenderer_aec54dbff503ead61c583f3180a1ec78e}\label{classVoxelRenderer_aec54dbff503ead61c583f3180a1ec78e} 
+{\bfseries Voxel\+Renderer} (\mbox{\hyperlink{classVoxelRenderer}{Voxel\+Renderer}} \&\&)=delete
+\item 
+\Hypertarget{classVoxelRenderer_a9f37ea1dc21d683c2991491c4e3ff589}\label{classVoxelRenderer_a9f37ea1dc21d683c2991491c4e3ff589} 
+\mbox{\hyperlink{classVoxelRenderer}{Voxel\+Renderer}} \& {\bfseries operator=} (\mbox{\hyperlink{classVoxelRenderer}{Voxel\+Renderer}} \&\&)=delete
+\item 
+\Hypertarget{classVoxelRenderer_a2f1554c9e97fb20f696c82db2e081157}\label{classVoxelRenderer_a2f1554c9e97fb20f696c82db2e081157} 
+void {\bfseries init\+Pipelines} (Vk\+Image\+View atlas\+View, Vk\+Sampler atlas\+Sampler, int textures\+Per\+Row)
+\item 
+void \mbox{\hyperlink{classVoxelRenderer_a62c3a85cbbc279dcb52e7c21c3f25566}{update}} (const glm\+::ivec3 \&camera\+Chunk\+Pos, int max\+Load\+Distance)
+\item 
+\Hypertarget{classVoxelRenderer_aa95786b615c0fcb1d2dee909c67cf2c1}\label{classVoxelRenderer_aa95786b615c0fcb1d2dee909c67cf2c1} 
+void {\bfseries draw\+Voxels} (Vk\+Command\+Buffer cmd, \mbox{\hyperlink{classCamera}{Camera}} \&camera, bool wireframe\+Mode)
+\item 
+void \mbox{\hyperlink{classVoxelRenderer_ada7ba4afd5af179d655384303f3f8f00}{rebuild\+Mesh\+Pool}} (const std\+::vector$<$ glm\+::ivec3 $>$ \&unloaded\+Chunks)
+\item 
+size\+\_\+t \mbox{\hyperlink{classVoxelRenderer_ac7fd410fcdbd685b586c34da6e8e11f6}{get\+Loaded\+Chunk\+Count}} () const
+\item 
+float \mbox{\hyperlink{classVoxelRenderer_ac4808ca4d9a1408a54dde57166e5d572}{get\+Mesh\+Pool\+Usage}} () const
+\end{DoxyCompactItemize}
+
+
+\label{doc-func-members}
+\Hypertarget{classVoxelRenderer_doc-func-members}
+\doxysubsection{Member Function Documentation}
+\Hypertarget{classVoxelRenderer_ac7fd410fcdbd685b586c34da6e8e11f6}\index{VoxelRenderer@{VoxelRenderer}!getLoadedChunkCount@{getLoadedChunkCount}}
+\index{getLoadedChunkCount@{getLoadedChunkCount}!VoxelRenderer@{VoxelRenderer}}
+\doxysubsubsection{\texorpdfstring{getLoadedChunkCount()}{getLoadedChunkCount()}}
+{\footnotesize\ttfamily \label{classVoxelRenderer_ac7fd410fcdbd685b586c34da6e8e11f6} 
+size\+\_\+t Voxel\+Renderer\+::get\+Loaded\+Chunk\+Count (\begin{DoxyParamCaption}{}{}\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [inline]}, {\ttfamily [nodiscard]}}
+
+Get the current number of chunks loaded in the renderer. \Hypertarget{classVoxelRenderer_ac4808ca4d9a1408a54dde57166e5d572}\index{VoxelRenderer@{VoxelRenderer}!getMeshPoolUsage@{getMeshPoolUsage}}
+\index{getMeshPoolUsage@{getMeshPoolUsage}!VoxelRenderer@{VoxelRenderer}}
+\doxysubsubsection{\texorpdfstring{getMeshPoolUsage()}{getMeshPoolUsage()}}
+{\footnotesize\ttfamily \label{classVoxelRenderer_ac4808ca4d9a1408a54dde57166e5d572} 
+float Voxel\+Renderer\+::get\+Mesh\+Pool\+Usage (\begin{DoxyParamCaption}{}{}\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [nodiscard]}}
+
+Get mesh buffer pool usage (0.\+0 to 1.\+0). Returns the maximum of vertex and index buffer usage. \Hypertarget{classVoxelRenderer_ada7ba4afd5af179d655384303f3f8f00}\index{VoxelRenderer@{VoxelRenderer}!rebuildMeshPool@{rebuildMeshPool}}
+\index{rebuildMeshPool@{rebuildMeshPool}!VoxelRenderer@{VoxelRenderer}}
+\doxysubsubsection{\texorpdfstring{rebuildMeshPool()}{rebuildMeshPool()}}
+{\footnotesize\ttfamily \label{classVoxelRenderer_ada7ba4afd5af179d655384303f3f8f00} 
+void Voxel\+Renderer\+::rebuild\+Mesh\+Pool (\begin{DoxyParamCaption}\item[{const std\+::vector$<$ glm\+::ivec3 $>$ \&}]{unloaded\+Chunks}{}\end{DoxyParamCaption})}
+
+Rebuild the entire mesh pool and clear all chunk meshes. Call this when chunks are unloaded to free VRAM. WARNING\+: This waits for GPU idle -\/ may cause a frame hitch.
+
+
+\begin{DoxyParams}{Parameters}
+{\em unloaded\+Chunks} & List of chunk positions that were unloaded from RAM \\
+\hline
+\end{DoxyParams}
+\Hypertarget{classVoxelRenderer_a62c3a85cbbc279dcb52e7c21c3f25566}\index{VoxelRenderer@{VoxelRenderer}!update@{update}}
+\index{update@{update}!VoxelRenderer@{VoxelRenderer}}
+\doxysubsubsection{\texorpdfstring{update()}{update()}}
+{\footnotesize\ttfamily \label{classVoxelRenderer_a62c3a85cbbc279dcb52e7c21c3f25566} 
+void Voxel\+Renderer\+::update (\begin{DoxyParamCaption}\item[{const glm\+::ivec3 \&}]{camera\+Chunk\+Pos}{, }\item[{int}]{max\+Load\+Distance}{}\end{DoxyParamCaption})}
+
+Update\+: Check for finished meshes and upload to GPU. Call this every frame BEFORE draw\+Voxels. 
+\begin{DoxyParams}{Parameters}
+{\em camera\+Chunk\+Pos} & Current camera chunk position for distance checks \\
+\hline
+{\em max\+Load\+Distance} & Maximum distance (in chunks) to accept new meshes \\
+\hline
+\end{DoxyParams}
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+src/client/\+Graphics/\+Voxel/Voxel\+Renderer.\+hpp\item 
+src/client/\+Graphics/\+Voxel/Voxel\+Renderer.\+cpp\end{DoxyCompactItemize}

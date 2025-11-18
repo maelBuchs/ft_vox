@@ -1,0 +1,70 @@
+\doxysection{Render\+Types.\+hpp}
+\hypertarget{RenderTypes_8hpp_source}{}\label{RenderTypes_8hpp_source}\index{src/common/Types/RenderTypes.hpp@{src/common/Types/RenderTypes.hpp}}
+
+\begin{DoxyCode}{0}
+\DoxyCodeLine{00001\ \textcolor{preprocessor}{\#pragma\ once}}
+\DoxyCodeLine{00002\ }
+\DoxyCodeLine{00003\ \textcolor{preprocessor}{\#include\ <cstdint>}}
+\DoxyCodeLine{00004\ }
+\DoxyCodeLine{00005\ \textcolor{preprocessor}{\#include\ <glm/glm.hpp>}}
+\DoxyCodeLine{00006\ }
+\DoxyCodeLine{00007\ \textcolor{comment}{//\ Vertex\ structure\ for\ general\ mesh\ rendering}}
+\DoxyCodeLine{00008\ \textcolor{keyword}{struct\ }\mbox{\hyperlink{structVertex}{Vertex}}\ \{}
+\DoxyCodeLine{00009\ \ \ \ \ glm::vec3\ position;}
+\DoxyCodeLine{00010\ \ \ \ \ \textcolor{keywordtype}{float}\ uv\_x;}
+\DoxyCodeLine{00011\ \ \ \ \ glm::vec3\ normal;}
+\DoxyCodeLine{00012\ \ \ \ \ \textcolor{keywordtype}{float}\ uv\_y;}
+\DoxyCodeLine{00013\ \ \ \ \ glm::vec4\ color;}
+\DoxyCodeLine{00014\ \};}
+\DoxyCodeLine{00015\ }
+\DoxyCodeLine{00016\ \textcolor{comment}{//\ -\/-\/-\/\ PACKED\ VERTEX\ DATA\ -\/-\/-\/}}
+\DoxyCodeLine{00017\ \textcolor{comment}{//\ Bit\ layout:\ [X:6][Y:6][Z:6][Normal:3][UV:2][Texture:7][Spare:2]}}
+\DoxyCodeLine{00018\ \textcolor{keyword}{using\ }VoxelVertex\ =\ uint32\_t;}
+\DoxyCodeLine{00019\ }
+\DoxyCodeLine{00020\ \textcolor{comment}{//\ Push\ constants\ for\ chunk/voxel\ rendering}}
+\DoxyCodeLine{00021\ \textcolor{keyword}{struct\ }\mbox{\hyperlink{structChunkPushConstants}{ChunkPushConstants}}\ \{}
+\DoxyCodeLine{00022\ \ \ \ \ glm::mat4\ viewProjection;}
+\DoxyCodeLine{00023\ \ \ \ \ glm::vec3\ chunkWorldPos;}
+\DoxyCodeLine{00024\ \ \ \ \ \textcolor{keywordtype}{float}\ padding;\ \textcolor{comment}{//\ Align\ to\ 16\ bytes}}
+\DoxyCodeLine{00025\ \};}
+\DoxyCodeLine{00026\ }
+\DoxyCodeLine{00027\ \textcolor{comment}{//\ GPU\ data\ for\ Multi-\/Draw\ Indirect\ rendering\ (HYBRID\ approach)}}
+\DoxyCodeLine{00028\ \textcolor{comment}{//\ This\ will\ be\ stored\ in\ an\ SSBO\ and\ indexed\ by\ gl\_DrawID}}
+\DoxyCodeLine{00029\ \textcolor{comment}{//\ MUST\ match\ the\ shader\ struct\ in\ voxel.vert!}}
+\DoxyCodeLine{00030\ \textcolor{keyword}{struct\ }\textcolor{keyword}{alignas}(16)\ \mbox{\hyperlink{structGPUChunkData}{GPUChunkData}}\ \{}
+\DoxyCodeLine{00031\ \ \ \ \ glm::vec3\ chunkWorldPos;}
+\DoxyCodeLine{00032\ \ \ \ \ uint32\_t\ indexCount;}
+\DoxyCodeLine{00033\ \ \ \ \ uint64\_t\ vertexBufferAddress;\ \textcolor{comment}{//\ VkDeviceAddress\ for\ per-\/chunk\ vertex\ buffer}}
+\DoxyCodeLine{00034\ \ \ \ \ uint32\_t\ firstIndex;\ \ \ \ \ \ \ \ \ \ \textcolor{comment}{//\ Offset\ in\ mega\ index\ buffer\ (needed\ for\ GPU\ culling)}}
+\DoxyCodeLine{00035\ \ \ \ \ uint32\_t\ \_padding;\ \ \ \ \ \ \ \ \ \ \ \ \textcolor{comment}{//\ Align\ to\ 16\ bytes}}
+\DoxyCodeLine{00036\ \};}
+\DoxyCodeLine{00037\ }
+\DoxyCodeLine{00038\ \textcolor{comment}{//\ GPU\ frustum\ data\ for\ compute\ culling}}
+\DoxyCodeLine{00039\ \textcolor{comment}{//\ 6\ planes\ (left,\ right,\ top,\ bottom,\ near,\ far)\ +\ camera\ position}}
+\DoxyCodeLine{00040\ \textcolor{comment}{//\ MUST\ match\ the\ shader\ struct\ in\ frustum\_cull.comp!}}
+\DoxyCodeLine{00041\ \textcolor{keyword}{struct\ }\textcolor{keyword}{alignas}(16)\ \mbox{\hyperlink{structGPUFrustumData}{GPUFrustumData}}\ \{}
+\DoxyCodeLine{00042\ \ \ \ \ glm::vec4\ planes[6];\ \ \ \ \ \textcolor{comment}{//\ Each\ plane:\ vec4(a,\ b,\ c,\ d)\ for\ ax\ +\ by\ +\ cz\ +\ d\ =\ 0}}
+\DoxyCodeLine{00043\ \ \ \ \ glm::vec3\ cameraPos;\ \ \ \ \ \textcolor{comment}{//\ Camera\ position\ for\ distance\ calculations}}
+\DoxyCodeLine{00044\ \ \ \ \ \textcolor{keywordtype}{float}\ maxRenderDistance;\ \textcolor{comment}{//\ Maximum\ render\ distance\ (for\ early\ culling)}}
+\DoxyCodeLine{00045\ \};}
+\DoxyCodeLine{00046\ }
+\DoxyCodeLine{00047\ \textcolor{comment}{//\ GPU\ camera\ data\ for\ task/mesh\ shader\ pipeline\ (UBO)}}
+\DoxyCodeLine{00048\ \textcolor{comment}{//\ Contains\ both\ frustum\ planes\ and\ view-\/projection\ matrix}}
+\DoxyCodeLine{00049\ \textcolor{comment}{//\ MUST\ match\ the\ shader\ struct\ in\ voxel.task\ and\ voxel.mesh!}}
+\DoxyCodeLine{00050\ \textcolor{keyword}{struct\ }\textcolor{keyword}{alignas}(16)\ \mbox{\hyperlink{structGPUCameraData}{GPUCameraData}}\ \{}
+\DoxyCodeLine{00051\ \ \ \ \ glm::mat4\ viewProjection;\ \textcolor{comment}{//\ 64\ bytes\ -\/\ View-\/projection\ matrix}}
+\DoxyCodeLine{00052\ \ \ \ \ glm::vec4\ planes[6];\ \ \ \ \ \ \textcolor{comment}{//\ 96\ bytes\ -\/\ Frustum\ planes\ (a,b,c,d)\ for\ ax+by+cz+d=0}}
+\DoxyCodeLine{00053\ \ \ \ \ glm::vec3\ cameraPos;\ \ \ \ \ \ \textcolor{comment}{//\ 12\ bytes\ -\/\ Camera\ position}}
+\DoxyCodeLine{00054\ \ \ \ \ \textcolor{keywordtype}{float}\ maxRenderDistance;\ \ \textcolor{comment}{//\ 4\ bytes\ -\/\ Max\ render\ distance}}
+\DoxyCodeLine{00055\ \ \ \ \ \textcolor{comment}{//\ Total:\ 176\ bytes}}
+\DoxyCodeLine{00056\ \};}
+\DoxyCodeLine{00057\ }
+\DoxyCodeLine{00058\ \textcolor{comment}{//\ Culling\ statistics\ (CPU-\/side\ readback\ for\ debug)}}
+\DoxyCodeLine{00059\ \textcolor{keyword}{struct\ }\mbox{\hyperlink{structCullingStats}{CullingStats}}\ \{}
+\DoxyCodeLine{00060\ \ \ \ \ uint32\_t\ totalChunks;}
+\DoxyCodeLine{00061\ \ \ \ \ uint32\_t\ visibleChunks;}
+\DoxyCodeLine{00062\ \ \ \ \ uint32\_t\ culledChunks;}
+\DoxyCodeLine{00063\ \ \ \ \ \textcolor{keywordtype}{float}\ cullingPercentage;}
+\DoxyCodeLine{00064\ \};}
+
+\end{DoxyCode}

@@ -1,0 +1,63 @@
+\doxysection{Protocol.\+hpp}
+\hypertarget{Protocol_8hpp_source}{}\label{Protocol_8hpp_source}\index{src/common/Protocol/Protocol.hpp@{src/common/Protocol/Protocol.hpp}}
+
+\begin{DoxyCode}{0}
+\DoxyCodeLine{00001\ \textcolor{preprocessor}{\#pragma\ once}}
+\DoxyCodeLine{00002\ }
+\DoxyCodeLine{00003\ \textcolor{preprocessor}{\#include\ <cstdint>}}
+\DoxyCodeLine{00004\ \textcolor{preprocessor}{\#include\ <memory>}}
+\DoxyCodeLine{00005\ \textcolor{preprocessor}{\#include\ <vector>}}
+\DoxyCodeLine{00006\ }
+\DoxyCodeLine{00007\ \textcolor{preprocessor}{\#include\ <glm/glm.hpp>}}
+\DoxyCodeLine{00008\ }
+\DoxyCodeLine{00009\ \textcolor{preprocessor}{\#include\ "{}common/Types/RenderTypes.hpp"{}}}
+\DoxyCodeLine{00010\ }
+\DoxyCodeLine{00011\ \textcolor{comment}{//\ Forward\ declaration}}
+\DoxyCodeLine{00012\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classChunk}{Chunk}};}
+\DoxyCodeLine{00013\ }
+\DoxyCodeLine{00014\ \textcolor{comment}{//\ Client\ -\/>\ Server:\ Request\ to\ load/generate\ a\ chunk}}
+\DoxyCodeLine{00015\ \textcolor{keyword}{struct\ }ChunkRequest\ \{}
+\DoxyCodeLine{00016\ \ \ \ \ glm::ivec3\ chunkPosition;}
+\DoxyCodeLine{00017\ }
+\DoxyCodeLine{00018\ \ \ \ \ ChunkRequest()\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00019\ \ \ \ \ \textcolor{keyword}{explicit}\ ChunkRequest(\textcolor{keyword}{const}\ glm::ivec3\&\ pos)\ :\ chunkPosition(pos)\ \{\}}
+\DoxyCodeLine{00020\ \};}
+\DoxyCodeLine{00021\ }
+\DoxyCodeLine{00022\ \textcolor{comment}{//\ Server\ -\/>\ Meshing\ Thread:\ Chunk\ data\ ready\ for\ meshing}}
+\DoxyCodeLine{00023\ \textcolor{keyword}{struct\ }GenerationTask\ \{}
+\DoxyCodeLine{00024\ \ \ \ \ glm::ivec3\ chunkPosition;}
+\DoxyCodeLine{00025\ \ \ \ \ std::shared\_ptr<Chunk>\ chunkData;\ \textcolor{comment}{//\ The\ main\ chunk\ to\ mesh}}
+\DoxyCodeLine{00026\ }
+\DoxyCodeLine{00027\ \ \ \ \ \textcolor{comment}{//\ Neighbor\ chunks\ for\ face\ culling\ (can\ be\ nullptr\ if\ not\ loaded)}}
+\DoxyCodeLine{00028\ \ \ \ \ std::shared\_ptr<Chunk>\ neighborNorth;\ \ \textcolor{comment}{//\ +Z}}
+\DoxyCodeLine{00029\ \ \ \ \ std::shared\_ptr<Chunk>\ neighborSouth;\ \ \textcolor{comment}{//\ -\/Z}}
+\DoxyCodeLine{00030\ \ \ \ \ std::shared\_ptr<Chunk>\ neighborEast;\ \ \ \textcolor{comment}{//\ +X}}
+\DoxyCodeLine{00031\ \ \ \ \ std::shared\_ptr<Chunk>\ neighborWest;\ \ \ \textcolor{comment}{//\ -\/X}}
+\DoxyCodeLine{00032\ \ \ \ \ std::shared\_ptr<Chunk>\ neighborTop;\ \ \ \ \textcolor{comment}{//\ +Y}}
+\DoxyCodeLine{00033\ \ \ \ \ std::shared\_ptr<Chunk>\ neighborBottom;\ \textcolor{comment}{//\ -\/Y}}
+\DoxyCodeLine{00034\ }
+\DoxyCodeLine{00035\ \ \ \ \ GenerationTask()\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00036\ \ \ \ \ \textcolor{keyword}{explicit}\ GenerationTask(\textcolor{keyword}{const}\ glm::ivec3\&\ pos,\ std::shared\_ptr<Chunk>\ chunk)}
+\DoxyCodeLine{00037\ \ \ \ \ \ \ \ \ :\ chunkPosition(pos),\ chunkData(std::move(chunk))\ \{\}}
+\DoxyCodeLine{00038\ \};}
+\DoxyCodeLine{00039\ }
+\DoxyCodeLine{00040\ \textcolor{comment}{//\ Meshing\ Thread\ -\/>\ Client:\ Finished\ mesh\ data\ ready\ for\ GPU\ upload}}
+\DoxyCodeLine{00041\ \textcolor{keyword}{struct\ }MeshData\ \{}
+\DoxyCodeLine{00042\ \ \ \ \ glm::ivec3\ chunkPosition;}
+\DoxyCodeLine{00043\ \ \ \ \ std::vector<VoxelVertex>\ vertices;\ \textcolor{comment}{//\ Packed\ vertex\ data}}
+\DoxyCodeLine{00044\ \ \ \ \ std::vector<uint32\_t>\ indices;}
+\DoxyCodeLine{00045\ }
+\DoxyCodeLine{00046\ \ \ \ \ MeshData()\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00047\ \ \ \ \ MeshData(\textcolor{keyword}{const}\ glm::ivec3\&\ pos,\ std::vector<VoxelVertex>\ verts,\ std::vector<uint32\_t>\ idx)}
+\DoxyCodeLine{00048\ \ \ \ \ \ \ \ \ :\ chunkPosition(pos),\ vertices(std::move(verts)),\ indices(std::move(idx))\ \{\}}
+\DoxyCodeLine{00049\ \};}
+\DoxyCodeLine{00050\ }
+\DoxyCodeLine{00051\ \textcolor{comment}{//\ Meshing\ completion\ notification\ (chunk\ position\ only)}}
+\DoxyCodeLine{00052\ \textcolor{keyword}{struct\ }MeshingComplete\ \{}
+\DoxyCodeLine{00053\ \ \ \ \ glm::ivec3\ chunkPosition;}
+\DoxyCodeLine{00054\ }
+\DoxyCodeLine{00055\ \ \ \ \ MeshingComplete()\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00056\ \ \ \ \ \textcolor{keyword}{explicit}\ MeshingComplete(\textcolor{keyword}{const}\ glm::ivec3\&\ pos)\ :\ chunkPosition(pos)\ \{\}}
+\DoxyCodeLine{00057\ \};}
+
+\end{DoxyCode}

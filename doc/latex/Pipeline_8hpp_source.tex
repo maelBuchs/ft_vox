@@ -1,0 +1,43 @@
+\doxysection{Pipeline.\+hpp}
+\hypertarget{Pipeline_8hpp_source}{}\label{Pipeline_8hpp_source}\index{src/client/Graphics/Pipeline/Pipeline.hpp@{src/client/Graphics/Pipeline/Pipeline.hpp}}
+
+\begin{DoxyCode}{0}
+\DoxyCodeLine{00001\ \textcolor{preprocessor}{\#pragma\ once}}
+\DoxyCodeLine{00002\ }
+\DoxyCodeLine{00003\ \textcolor{preprocessor}{\#include\ <string\_view>}}
+\DoxyCodeLine{00004\ }
+\DoxyCodeLine{00005\ \textcolor{preprocessor}{\#include\ <vulkan/vulkan.h>}}
+\DoxyCodeLine{00006\ }
+\DoxyCodeLine{00007\ \textcolor{preprocessor}{\#include\ <glm/glm.hpp>}}
+\DoxyCodeLine{00008\ }
+\DoxyCodeLine{00009\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classVulkanDevice}{VulkanDevice}};}
+\DoxyCodeLine{00010\ }
+\DoxyCodeLine{00011\ \textcolor{keyword}{class\ }Pipeline\ \{}
+\DoxyCodeLine{00012\ \ \ \textcolor{keyword}{public}:}
+\DoxyCodeLine{00013\ \ \ \ \ Pipeline()\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00014\ \ \ \ \ \string~Pipeline()\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00015\ }
+\DoxyCodeLine{00016\ \ \ \ \ Pipeline(\textcolor{keyword}{const}\ Pipeline\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00017\ \ \ \ \ Pipeline\&\ operator=(\textcolor{keyword}{const}\ Pipeline\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00018\ \ \ \ \ Pipeline(Pipeline\&\&)\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00019\ \ \ \ \ Pipeline\&\ operator=(Pipeline\&\&)\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00020\ }
+\DoxyCodeLine{00021\ \ \ \ \ \textcolor{keywordtype}{void}\ init(VkPipeline\ pipeline,\ VkPipelineLayout\ layout,}
+\DoxyCodeLine{00022\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ VkDescriptorSetLayout\ descriptorSetLayout\ =\ VK\_NULL\_HANDLE);}
+\DoxyCodeLine{00023\ \ \ \ \ \textcolor{keywordtype}{void}\ cleanup(\mbox{\hyperlink{classVulkanDevice}{VulkanDevice}}\&\ device);}
+\DoxyCodeLine{00024\ }
+\DoxyCodeLine{00025\ \ \ \ \ [[nodiscard]]\ VkPipeline\ getPipeline()\textcolor{keyword}{\ const\ }\{\ \textcolor{keywordflow}{return}\ \_pipeline;\ \}}
+\DoxyCodeLine{00026\ \ \ \ \ [[nodiscard]]\ VkPipelineLayout\ getLayout()\textcolor{keyword}{\ const\ }\{\ \textcolor{keywordflow}{return}\ \_pipelineLayout;\ \}}
+\DoxyCodeLine{00027\ \ \ \ \ [[nodiscard]]\ VkDescriptorSetLayout\ getDescriptorSetLayout()\textcolor{keyword}{\ const\ }\{}
+\DoxyCodeLine{00028\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return}\ \_descriptorSetLayout;}
+\DoxyCodeLine{00029\ \ \ \ \ \}}
+\DoxyCodeLine{00030\ }
+\DoxyCodeLine{00031\ \ \ \ \ \textcolor{keyword}{static}\ VkShaderModule\ loadShaderModule(\mbox{\hyperlink{classVulkanDevice}{VulkanDevice}}\&\ device,\ std::string\_view\ shaderPath);}
+\DoxyCodeLine{00032\ }
+\DoxyCodeLine{00033\ \ \ \textcolor{keyword}{private}:}
+\DoxyCodeLine{00034\ \ \ \ \ VkPipeline\ \_pipeline\ =\ VK\_NULL\_HANDLE;}
+\DoxyCodeLine{00035\ \ \ \ \ VkPipelineLayout\ \_pipelineLayout\ =\ VK\_NULL\_HANDLE;}
+\DoxyCodeLine{00036\ \ \ \ \ VkDescriptorSetLayout\ \_descriptorSetLayout\ =\ VK\_NULL\_HANDLE;}
+\DoxyCodeLine{00037\ \};}
+
+\end{DoxyCode}

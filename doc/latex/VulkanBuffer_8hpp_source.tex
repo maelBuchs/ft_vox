@@ -1,0 +1,62 @@
+\doxysection{Vulkan\+Buffer.\+hpp}
+\hypertarget{VulkanBuffer_8hpp_source}{}\label{VulkanBuffer_8hpp_source}\index{src/client/Graphics/Core/VulkanBuffer.hpp@{src/client/Graphics/Core/VulkanBuffer.hpp}}
+
+\begin{DoxyCode}{0}
+\DoxyCodeLine{00001\ \textcolor{preprocessor}{\#pragma\ once}}
+\DoxyCodeLine{00002\ }
+\DoxyCodeLine{00003\ \textcolor{preprocessor}{\#include\ <cstdint>}}
+\DoxyCodeLine{00004\ \textcolor{preprocessor}{\#include\ <unordered\_map>}}
+\DoxyCodeLine{00005\ \textcolor{preprocessor}{\#include\ <vk\_mem\_alloc.h>}}
+\DoxyCodeLine{00006\ }
+\DoxyCodeLine{00007\ \textcolor{preprocessor}{\#include\ <vulkan/vulkan.h>}}
+\DoxyCodeLine{00008\ }
+\DoxyCodeLine{00009\ \textcolor{preprocessor}{\#include\ <glm/glm.hpp>}}
+\DoxyCodeLine{00010\ }
+\DoxyCodeLine{00011\ \textcolor{preprocessor}{\#include\ "{}VulkanTypes.hpp"{}}}
+\DoxyCodeLine{00012\ }
+\DoxyCodeLine{00013\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classVulkanDevice}{VulkanDevice}};}
+\DoxyCodeLine{00014\ }
+\DoxyCodeLine{00015\ \textcolor{comment}{//\ Tracking\ structure\ for\ buffer\ lifecycle\ debugging}}
+\DoxyCodeLine{00016\ \textcolor{keyword}{struct\ }\mbox{\hyperlink{structBufferAllocation}{BufferAllocation}}\ \{}
+\DoxyCodeLine{00017\ \ \ \ \ uint64\_t\ id;}
+\DoxyCodeLine{00018\ \ \ \ \ VkBuffer\ buffer;}
+\DoxyCodeLine{00019\ \ \ \ \ VmaAllocation\ allocation;}
+\DoxyCodeLine{00020\ \ \ \ \ \textcolor{keywordtype}{size\_t}\ size;}
+\DoxyCodeLine{00021\ \ \ \ \ \textcolor{keyword}{const}\ \textcolor{keywordtype}{char}*\ purpose;}
+\DoxyCodeLine{00022\ \};}
+\DoxyCodeLine{00023\ }
+\DoxyCodeLine{00024\ \textcolor{keyword}{class\ }VulkanBuffer\ \{}
+\DoxyCodeLine{00025\ \ \ \textcolor{keyword}{public}:}
+\DoxyCodeLine{00026\ \ \ \ \ VulkanBuffer(\mbox{\hyperlink{classVulkanDevice}{VulkanDevice}}\&\ device);}
+\DoxyCodeLine{00027\ \ \ \ \ \string~VulkanBuffer();}
+\DoxyCodeLine{00028\ }
+\DoxyCodeLine{00029\ \ \ \ \ VulkanBuffer(\textcolor{keyword}{const}\ VulkanBuffer\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00030\ \ \ \ \ VulkanBuffer\&\ operator=(\textcolor{keyword}{const}\ VulkanBuffer\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00031\ \ \ \ \ VulkanBuffer(VulkanBuffer\&\&\ other)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00032\ \ \ \ \ VulkanBuffer\&\ operator=(VulkanBuffer\&\&\ other)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00033\ }
+\DoxyCodeLine{00034\ \ \ \ \ \mbox{\hyperlink{structAllocatedBuffer}{AllocatedBuffer}}\ createBuffer(\textcolor{keywordtype}{size\_t}\ size,\ VkBufferUsageFlags\ usage,\ VmaMemoryUsage\ memoryUsage);}
+\DoxyCodeLine{00035\ \ \ \ \ \textcolor{keywordtype}{void}\ destroyBuffer(\textcolor{keyword}{const}\ \mbox{\hyperlink{structAllocatedBuffer}{AllocatedBuffer}}\&\ buffer);}
+\DoxyCodeLine{00036\ }
+\DoxyCodeLine{00037\ \ \ \ \ \textcolor{keywordtype}{void}\ uploadToBuffer(\textcolor{keyword}{const}\ \mbox{\hyperlink{structAllocatedBuffer}{AllocatedBuffer}}\&\ dst,\ \textcolor{keyword}{const}\ \textcolor{keywordtype}{void}*\ data,\ \textcolor{keywordtype}{size\_t}\ size);}
+\DoxyCodeLine{00038\ \ \ \ \ \mbox{\hyperlink{structAllocatedBuffer}{AllocatedBuffer}}\ createStagingBuffer(\textcolor{keywordtype}{size\_t}\ size);}
+\DoxyCodeLine{00039\ }
+\DoxyCodeLine{00040\ \ \ \ \ \textcolor{comment}{//\ Get\ tracking\ stats\ (for\ debugging)}}
+\DoxyCodeLine{00041\ \ \ \ \ [[nodiscard]]\ \textcolor{keyword}{const}\ std::unordered\_map<VkBuffer,\ BufferAllocation>\&}
+\DoxyCodeLine{00042\ \ \ \ \ getActiveAllocations()\textcolor{keyword}{\ const\ }\{}
+\DoxyCodeLine{00043\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return}\ \_activeAllocations;}
+\DoxyCodeLine{00044\ \ \ \ \ \}}
+\DoxyCodeLine{00045\ \ \ \ \ [[nodiscard]]\ \textcolor{keywordtype}{size\_t}\ getTotalVmaAllocations()\textcolor{keyword}{\ const\ }\{\ \textcolor{keywordflow}{return}\ \_totalVmaAllocations;\ \}}
+\DoxyCodeLine{00046\ \ \ \ \ [[nodiscard]]\ \textcolor{keywordtype}{size\_t}\ getTotalVmaDeallocations()\textcolor{keyword}{\ const\ }\{\ \textcolor{keywordflow}{return}\ \_totalVmaDeallocations;\ \}}
+\DoxyCodeLine{00047\ }
+\DoxyCodeLine{00048\ \ \ \textcolor{keyword}{private}:}
+\DoxyCodeLine{00049\ \ \ \ \ \mbox{\hyperlink{classVulkanDevice}{VulkanDevice}}\&\ \_device;}
+\DoxyCodeLine{00050\ }
+\DoxyCodeLine{00051\ \ \ \ \ \textcolor{comment}{//\ Buffer\ lifecycle\ tracking\ (for\ leak\ detection)}}
+\DoxyCodeLine{00052\ \ \ \ \ std::unordered\_map<VkBuffer,\ BufferAllocation>\ \_activeAllocations;}
+\DoxyCodeLine{00053\ \ \ \ \ uint64\_t\ \_nextBufferId\ =\ 1;}
+\DoxyCodeLine{00054\ \ \ \ \ \textcolor{keywordtype}{size\_t}\ \_totalVmaAllocations\ =\ 0;}
+\DoxyCodeLine{00055\ \ \ \ \ \textcolor{keywordtype}{size\_t}\ \_totalVmaDeallocations\ =\ 0;}
+\DoxyCodeLine{00056\ \};}
+
+\end{DoxyCode}

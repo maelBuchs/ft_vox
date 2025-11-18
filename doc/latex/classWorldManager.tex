@@ -1,0 +1,140 @@
+\doxysection{World\+Manager Class Reference}
+\hypertarget{classWorldManager}{}\label{classWorldManager}\index{WorldManager@{WorldManager}}
+
+
+{\ttfamily \#include $<$World\+Manager.\+hpp$>$}
+
+\doxysubsubsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+struct \mbox{\hyperlink{structWorldManager_1_1QueueStats}{Queue\+Stats}}
+\end{DoxyCompactItemize}
+\doxysubsubsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\Hypertarget{classWorldManager_a9c7d198254efc33961ebd00d8e55eb66}\label{classWorldManager_a9c7d198254efc33961ebd00d8e55eb66} 
+{\bfseries World\+Manager} (\mbox{\hyperlink{classThreadSafeQueue}{Thread\+Safe\+Queue}}$<$ \mbox{\hyperlink{structChunkRequest}{Chunk\+Request}} $>$ \&request\+Queue, \mbox{\hyperlink{classThreadSafeQueue}{Thread\+Safe\+Queue}}$<$ \mbox{\hyperlink{structGenerationTask}{Generation\+Task}} $>$ \&meshing\+Queue, \mbox{\hyperlink{classThreadSafeQueue}{Thread\+Safe\+Queue}}$<$ \mbox{\hyperlink{structMeshingComplete}{Meshing\+Complete}} $>$ \&completion\+Queue)
+\item 
+\Hypertarget{classWorldManager_a7d2ff6cfe2745c93245200ecab08e9a6}\label{classWorldManager_a7d2ff6cfe2745c93245200ecab08e9a6} 
+{\bfseries World\+Manager} (const \mbox{\hyperlink{classWorldManager}{World\+Manager}} \&)=delete
+\item 
+\Hypertarget{classWorldManager_ab7f5f8d39830f0c72671b0a1f4802bd4}\label{classWorldManager_ab7f5f8d39830f0c72671b0a1f4802bd4} 
+\mbox{\hyperlink{classWorldManager}{World\+Manager}} \& {\bfseries operator=} (const \mbox{\hyperlink{classWorldManager}{World\+Manager}} \&)=delete
+\item 
+\Hypertarget{classWorldManager_acc3b282bbf8bf821023949d1e5110632}\label{classWorldManager_acc3b282bbf8bf821023949d1e5110632} 
+{\bfseries World\+Manager} (\mbox{\hyperlink{classWorldManager}{World\+Manager}} \&\&)=delete
+\item 
+\Hypertarget{classWorldManager_a9a6a7ede7b71dc233a72d55994b4f4a2}\label{classWorldManager_a9a6a7ede7b71dc233a72d55994b4f4a2} 
+\mbox{\hyperlink{classWorldManager}{World\+Manager}} \& {\bfseries operator=} (\mbox{\hyperlink{classWorldManager}{World\+Manager}} \&\&)=delete
+\item 
+void \mbox{\hyperlink{classWorldManager_a53cb4a1b07d4d77747682dc180dbacec}{start}} ()
+\item 
+void \mbox{\hyperlink{classWorldManager_a9f042d51b81bff5d48b913020d241477}{stop}} ()
+\item 
+\Hypertarget{classWorldManager_ad4b5f8dc31b37188a4621154455ccf73}\label{classWorldManager_ad4b5f8dc31b37188a4621154455ccf73} 
+\mbox{\hyperlink{structWorldManager_1_1QueueStats}{Queue\+Stats}} {\bfseries get\+Queue\+Stats} () const
+\item 
+void \mbox{\hyperlink{classWorldManager_aaa5165aa7bd0b20a8e95a56e4a851887}{mark\+Chunk\+For\+Unload}} (const glm\+::ivec3 \&pos)
+\item 
+void \mbox{\hyperlink{classWorldManager_a5cb3900bf0b0c3a9fc73ac91ec775797}{unmark\+Chunk\+For\+Unload}} (const glm\+::ivec3 \&pos)
+\item 
+std\+::vector$<$ glm\+::ivec3 $>$ \mbox{\hyperlink{classWorldManager_a1c387978e7b6fe3188997f738043ff5f}{unload\+Marked\+Chunks}} ()
+\item 
+std\+::vector$<$ glm\+::ivec3 $>$ \mbox{\hyperlink{classWorldManager_acad8add58059e66f431e11ac21edde41}{get\+Loaded\+Chunk\+Positions}} () const
+\item 
+bool \mbox{\hyperlink{classWorldManager_a5f9069bfbd741a601d38d3aa9b688cc6}{is\+Chunk\+Loaded}} (const glm\+::ivec3 \&pos) const
+\item 
+void \mbox{\hyperlink{classWorldManager_aef8bf22e2529238629c23e1a6a83cb92}{request\+Remesh\+For\+All\+Chunks}} (const std\+::vector$<$ glm\+::ivec3 $>$ \&exclude\+Chunks)
+\item 
+\Hypertarget{classWorldManager_a474b56fcb9b91de3a655088f358a3925}\label{classWorldManager_a474b56fcb9b91de3a655088f358a3925} 
+\mbox{\hyperlink{classChunk}{Chunk}} \texorpdfstring{$\ast$}{*} {\bfseries get\+Current\+Chunk} (const glm\+::vec3 \&position)
+\item 
+\Hypertarget{classWorldManager_a107d6472976978e1cf775db544df753d}\label{classWorldManager_a107d6472976978e1cf775db544df753d} 
+int64\+\_\+t {\bfseries get\+Seed} () const
+\item 
+\Hypertarget{classWorldManager_a271b727c86575ff4d038bf7b24b0664c}\label{classWorldManager_a271b727c86575ff4d038bf7b24b0664c} 
+tk\+::spline \& {\bfseries get\+Height\+Spline} ()
+\end{DoxyCompactItemize}
+
+
+\doxysubsection{Detailed Description}
+\doxylink{classWorldManager}{World\+Manager} runs on dedicated generation worker threads. Responsibilities\+:
+\begin{DoxyItemize}
+\item Receives \doxylink{structChunkRequest}{Chunk\+Request} messages from the client
+\item Generates/loads chunk data (procedural or from disk) on multiple worker threads
+\item Pushes \doxylink{structGenerationTask}{Generation\+Task} to meshing threads
+\item Manages chunk lifetime and caching
+\item Tracks in-\/progress chunks to avoid duplicate work 
+\end{DoxyItemize}
+
+\label{doc-func-members}
+\Hypertarget{classWorldManager_doc-func-members}
+\doxysubsection{Member Function Documentation}
+\Hypertarget{classWorldManager_acad8add58059e66f431e11ac21edde41}\index{WorldManager@{WorldManager}!getLoadedChunkPositions@{getLoadedChunkPositions}}
+\index{getLoadedChunkPositions@{getLoadedChunkPositions}!WorldManager@{WorldManager}}
+\doxysubsubsection{\texorpdfstring{getLoadedChunkPositions()}{getLoadedChunkPositions()}}
+{\footnotesize\ttfamily \label{classWorldManager_acad8add58059e66f431e11ac21edde41} 
+std\+::vector$<$ glm\+::ivec3 $>$ World\+Manager\+::get\+Loaded\+Chunk\+Positions (\begin{DoxyParamCaption}{}{}\end{DoxyParamCaption}) const}
+
+Get a copy of all currently loaded chunk positions. Thread-\/safe. Useful for determining which chunks are far from camera and should be unloaded. \Hypertarget{classWorldManager_a5f9069bfbd741a601d38d3aa9b688cc6}\index{WorldManager@{WorldManager}!isChunkLoaded@{isChunkLoaded}}
+\index{isChunkLoaded@{isChunkLoaded}!WorldManager@{WorldManager}}
+\doxysubsubsection{\texorpdfstring{isChunkLoaded()}{isChunkLoaded()}}
+{\footnotesize\ttfamily \label{classWorldManager_a5f9069bfbd741a601d38d3aa9b688cc6} 
+bool World\+Manager\+::is\+Chunk\+Loaded (\begin{DoxyParamCaption}\item[{const glm\+::ivec3 \&}]{pos}{}\end{DoxyParamCaption}) const}
+
+Check if a chunk is currently loaded in memory. Thread-\/safe. 
+\begin{DoxyParams}{Parameters}
+{\em pos} & \doxylink{classChunk}{Chunk} position to check \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+true if chunk is loaded, false otherwise 
+\end{DoxyReturn}
+\Hypertarget{classWorldManager_aaa5165aa7bd0b20a8e95a56e4a851887}\index{WorldManager@{WorldManager}!markChunkForUnload@{markChunkForUnload}}
+\index{markChunkForUnload@{markChunkForUnload}!WorldManager@{WorldManager}}
+\doxysubsubsection{\texorpdfstring{markChunkForUnload()}{markChunkForUnload()}}
+{\footnotesize\ttfamily \label{classWorldManager_aaa5165aa7bd0b20a8e95a56e4a851887} 
+void World\+Manager\+::mark\+Chunk\+For\+Unload (\begin{DoxyParamCaption}\item[{const glm\+::ivec3 \&}]{pos}{}\end{DoxyParamCaption})}
+
+Mark a chunk for unloading. Thread-\/safe. The chunk will be removed from memory during the next cleanup pass. \Hypertarget{classWorldManager_aef8bf22e2529238629c23e1a6a83cb92}\index{WorldManager@{WorldManager}!requestRemeshForAllChunks@{requestRemeshForAllChunks}}
+\index{requestRemeshForAllChunks@{requestRemeshForAllChunks}!WorldManager@{WorldManager}}
+\doxysubsubsection{\texorpdfstring{requestRemeshForAllChunks()}{requestRemeshForAllChunks()}}
+{\footnotesize\ttfamily \label{classWorldManager_aef8bf22e2529238629c23e1a6a83cb92} 
+void World\+Manager\+::request\+Remesh\+For\+All\+Chunks (\begin{DoxyParamCaption}\item[{const std\+::vector$<$ glm\+::ivec3 $>$ \&}]{exclude\+Chunks}{}\end{DoxyParamCaption})}
+
+Request re-\/meshing for all loaded chunks (except those in exclusion list). Thread-\/safe. Use this after mesh pool rebuild to regenerate meshes. 
+\begin{DoxyParams}{Parameters}
+{\em exclude\+Chunks} & Chunks to exclude from re-\/meshing (e.\+g., unloaded chunks) \\
+\hline
+\end{DoxyParams}
+\Hypertarget{classWorldManager_a53cb4a1b07d4d77747682dc180dbacec}\index{WorldManager@{WorldManager}!start@{start}}
+\index{start@{start}!WorldManager@{WorldManager}}
+\doxysubsubsection{\texorpdfstring{start()}{start()}}
+{\footnotesize\ttfamily \label{classWorldManager_a53cb4a1b07d4d77747682dc180dbacec} 
+void World\+Manager\+::start (\begin{DoxyParamCaption}{}{}\end{DoxyParamCaption})}
+
+Start the generation worker threads. Non-\/blocking. \Hypertarget{classWorldManager_a9f042d51b81bff5d48b913020d241477}\index{WorldManager@{WorldManager}!stop@{stop}}
+\index{stop@{stop}!WorldManager@{WorldManager}}
+\doxysubsubsection{\texorpdfstring{stop()}{stop()}}
+{\footnotesize\ttfamily \label{classWorldManager_a9f042d51b81bff5d48b913020d241477} 
+void World\+Manager\+::stop (\begin{DoxyParamCaption}{}{}\end{DoxyParamCaption})}
+
+Stop all worker threads. Blocks until all threads exit. \Hypertarget{classWorldManager_a1c387978e7b6fe3188997f738043ff5f}\index{WorldManager@{WorldManager}!unloadMarkedChunks@{unloadMarkedChunks}}
+\index{unloadMarkedChunks@{unloadMarkedChunks}!WorldManager@{WorldManager}}
+\doxysubsubsection{\texorpdfstring{unloadMarkedChunks()}{unloadMarkedChunks()}}
+{\footnotesize\ttfamily \label{classWorldManager_a1c387978e7b6fe3188997f738043ff5f} 
+std\+::vector$<$ glm\+::ivec3 $>$ World\+Manager\+::unload\+Marked\+Chunks (\begin{DoxyParamCaption}{}{}\end{DoxyParamCaption})}
+
+Unload all chunks marked for unloading. Returns the list of unloaded chunk positions. Thread-\/safe. Call this from the main thread when ready to rebuild mesh pool. \Hypertarget{classWorldManager_a5cb3900bf0b0c3a9fc73ac91ec775797}\index{WorldManager@{WorldManager}!unmarkChunkForUnload@{unmarkChunkForUnload}}
+\index{unmarkChunkForUnload@{unmarkChunkForUnload}!WorldManager@{WorldManager}}
+\doxysubsubsection{\texorpdfstring{unmarkChunkForUnload()}{unmarkChunkForUnload()}}
+{\footnotesize\ttfamily \label{classWorldManager_a5cb3900bf0b0c3a9fc73ac91ec775797} 
+void World\+Manager\+::unmark\+Chunk\+For\+Unload (\begin{DoxyParamCaption}\item[{const glm\+::ivec3 \&}]{pos}{}\end{DoxyParamCaption})}
+
+Unmark a chunk for unloading (keep it loaded). Thread-\/safe. Use this when a chunk that was previously marked comes back within range. 
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+src/server/\+World/World\+Manager.\+hpp\item 
+src/server/\+World/World\+Generation.\+cpp\item 
+src/server/\+World/World\+Manager.\+cpp\end{DoxyCompactItemize}

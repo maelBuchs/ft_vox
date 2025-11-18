@@ -1,0 +1,35 @@
+\doxysection{Descriptor\+Writer Class Reference}
+\hypertarget{classDescriptorWriter}{}\label{classDescriptorWriter}\index{DescriptorWriter@{DescriptorWriter}}
+\doxysubsubsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\Hypertarget{classDescriptorWriter_abefb5440c4a6ada6222ece90fed2ca97}\label{classDescriptorWriter_abefb5440c4a6ada6222ece90fed2ca97} 
+{\bfseries Descriptor\+Writer} (const \mbox{\hyperlink{classDescriptorWriter}{Descriptor\+Writer}} \&)=delete
+\item 
+\Hypertarget{classDescriptorWriter_ae9c7f624a27e55f1ba680559a90386cc}\label{classDescriptorWriter_ae9c7f624a27e55f1ba680559a90386cc} 
+\mbox{\hyperlink{classDescriptorWriter}{Descriptor\+Writer}} \& {\bfseries operator=} (const \mbox{\hyperlink{classDescriptorWriter}{Descriptor\+Writer}} \&)=delete
+\item 
+\Hypertarget{classDescriptorWriter_adcea3cf6fca99c9cecccaa25c586ea09}\label{classDescriptorWriter_adcea3cf6fca99c9cecccaa25c586ea09} 
+{\bfseries Descriptor\+Writer} (\mbox{\hyperlink{classDescriptorWriter}{Descriptor\+Writer}} \&\&) noexcept=default
+\item 
+\Hypertarget{classDescriptorWriter_ae594a86f93d2d01dd5063e5a8175642c}\label{classDescriptorWriter_ae594a86f93d2d01dd5063e5a8175642c} 
+\mbox{\hyperlink{classDescriptorWriter}{Descriptor\+Writer}} \& {\bfseries operator=} (\mbox{\hyperlink{classDescriptorWriter}{Descriptor\+Writer}} \&\&)=default
+\item 
+\Hypertarget{classDescriptorWriter_a2a892146e50f1e47f2e5e2f84fb0eb66}\label{classDescriptorWriter_a2a892146e50f1e47f2e5e2f84fb0eb66} 
+void {\bfseries write\+Image} (int binding, Vk\+Image\+View image, Vk\+Sampler sampler, Vk\+Image\+Layout layout, Vk\+Descriptor\+Type type)
+\item 
+\Hypertarget{classDescriptorWriter_a24d1efff56cfd0a03ffe5aa3ce7e17bf}\label{classDescriptorWriter_a24d1efff56cfd0a03ffe5aa3ce7e17bf} 
+void {\bfseries write\+Buffer} (int binding, Vk\+Buffer buffer, size\+\_\+t size, size\+\_\+t offset, Vk\+Descriptor\+Type type)
+\item 
+\Hypertarget{classDescriptorWriter_ad2f603a5f4382aeed806d6a25f4fc9d9}\label{classDescriptorWriter_ad2f603a5f4382aeed806d6a25f4fc9d9} 
+void {\bfseries clear} ()
+\item 
+\Hypertarget{classDescriptorWriter_aa6d2deed567c313417fc333e55647814}\label{classDescriptorWriter_aa6d2deed567c313417fc333e55647814} 
+void {\bfseries update\+Set} (Vk\+Device device, Vk\+Descriptor\+Set set)
+\end{DoxyCompactItemize}
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+src/client/\+Graphics/\+Memory/Descriptor\+Allocator.\+hpp\item 
+src/client/\+Graphics/\+Memory/Descriptor\+Allocator.\+cpp\end{DoxyCompactItemize}

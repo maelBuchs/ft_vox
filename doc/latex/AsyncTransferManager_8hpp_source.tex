@@ -1,0 +1,51 @@
+\doxysection{Async\+Transfer\+Manager.\+hpp}
+\hypertarget{AsyncTransferManager_8hpp_source}{}\label{AsyncTransferManager_8hpp_source}\index{src/client/Graphics/Core/AsyncTransferManager.hpp@{src/client/Graphics/Core/AsyncTransferManager.hpp}}
+
+\begin{DoxyCode}{0}
+\DoxyCodeLine{00001\ \textcolor{preprocessor}{\#pragma\ once}}
+\DoxyCodeLine{00002\ }
+\DoxyCodeLine{00003\ \textcolor{preprocessor}{\#include\ <array>}}
+\DoxyCodeLine{00004\ \textcolor{preprocessor}{\#include\ <functional>}}
+\DoxyCodeLine{00005\ \textcolor{preprocessor}{\#include\ <vulkan/vulkan.h>}}
+\DoxyCodeLine{00006\ }
+\DoxyCodeLine{00007\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classVulkanDevice}{VulkanDevice}};}
+\DoxyCodeLine{00008\ }
+\DoxyCodeLine{00009\ \textcolor{keyword}{class\ }AsyncTransferManager\ \{}
+\DoxyCodeLine{00010\ \ \ \textcolor{keyword}{public}:}
+\DoxyCodeLine{00011\ \ \ \ \ AsyncTransferManager(\mbox{\hyperlink{classVulkanDevice}{VulkanDevice}}\&\ device);}
+\DoxyCodeLine{00012\ \ \ \ \ \string~AsyncTransferManager();}
+\DoxyCodeLine{00013\ }
+\DoxyCodeLine{00014\ \ \ \ \ AsyncTransferManager(\textcolor{keyword}{const}\ AsyncTransferManager\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00015\ \ \ \ \ AsyncTransferManager\&\ operator=(\textcolor{keyword}{const}\ AsyncTransferManager\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00016\ }
+\DoxyCodeLine{00017\ \ \ \ \ \textcolor{comment}{//\ Check\ if\ async\ transfer\ is\ available}}
+\DoxyCodeLine{00018\ \ \ \ \ [[nodiscard]]\ \textcolor{keywordtype}{bool}\ isAvailable()\textcolor{keyword}{\ const\ }\{\ \textcolor{keywordflow}{return}\ \_available;\ \}}
+\DoxyCodeLine{00019\ }
+\DoxyCodeLine{00020\ \ \ \ \ \textcolor{comment}{//\ Submit\ a\ transfer\ operation\ asynchronously}}
+\DoxyCodeLine{00021\ \ \ \ \ \textcolor{comment}{//\ recordFunc:\ Lambda\ that\ records\ vkCmdCopyBuffer\ commands}}
+\DoxyCodeLine{00022\ \ \ \ \ \textcolor{comment}{//\ Returns:\ Semaphore\ that\ graphics\ queue\ should\ wait\ on\ (or\ VK\_NULL\_HANDLE\ if\ unavailable)}}
+\DoxyCodeLine{00023\ \ \ \ \ VkSemaphore\ submitTransfer(\textcolor{keyword}{const}\ std::function<\textcolor{keywordtype}{void}(VkCommandBuffer)>\&\ recordFunc,}
+\DoxyCodeLine{00024\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ uint32\_t\ frameIndex);}
+\DoxyCodeLine{00025\ }
+\DoxyCodeLine{00026\ \ \ \ \ \textcolor{comment}{//\ Call\ this\ each\ frame\ to\ advance\ the\ frame\ index}}
+\DoxyCodeLine{00027\ \ \ \ \ \textcolor{keywordtype}{void}\ advanceFrame();}
+\DoxyCodeLine{00028\ }
+\DoxyCodeLine{00029\ \ \ \textcolor{keyword}{private}:}
+\DoxyCodeLine{00030\ \ \ \ \ \mbox{\hyperlink{classVulkanDevice}{VulkanDevice}}\&\ \_device;}
+\DoxyCodeLine{00031\ \ \ \ \ \textcolor{keywordtype}{bool}\ \_available\ =\ \textcolor{keyword}{false};}
+\DoxyCodeLine{00032\ }
+\DoxyCodeLine{00033\ \ \ \ \ \textcolor{comment}{//\ Transfer\ command\ pool\ and\ buffers\ (per-\/frame)}}
+\DoxyCodeLine{00034\ \ \ \ \ \textcolor{keyword}{static}\ \textcolor{keyword}{constexpr}\ uint32\_t\ FRAME\_COUNT\ =\ 2;}
+\DoxyCodeLine{00035\ \ \ \ \ VkCommandPool\ \_transferCmdPool\ =\ VK\_NULL\_HANDLE;}
+\DoxyCodeLine{00036\ \ \ \ \ std::array<VkCommandBuffer,\ FRAME\_COUNT>\ \_transferCmdBuffers\ =\ \{\};}
+\DoxyCodeLine{00037\ }
+\DoxyCodeLine{00038\ \ \ \ \ \textcolor{comment}{//\ Semaphores\ for\ transfer\ →\ graphics\ synchronization\ (per-\/frame)}}
+\DoxyCodeLine{00039\ \ \ \ \ std::array<VkSemaphore,\ FRAME\_COUNT>\ \_transferSemaphores\ =\ \{\};}
+\DoxyCodeLine{00040\ }
+\DoxyCodeLine{00041\ \ \ \ \ \textcolor{comment}{//\ Fences\ to\ track\ transfer\ completion\ (per-\/frame)}}
+\DoxyCodeLine{00042\ \ \ \ \ std::array<VkFence,\ FRAME\_COUNT>\ \_transferFences\ =\ \{\};}
+\DoxyCodeLine{00043\ }
+\DoxyCodeLine{00044\ \ \ \ \ uint32\_t\ \_currentFrame\ =\ 0;}
+\DoxyCodeLine{00045\ \};}
+
+\end{DoxyCode}

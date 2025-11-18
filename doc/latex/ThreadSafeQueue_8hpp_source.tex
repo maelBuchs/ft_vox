@@ -1,0 +1,101 @@
+\doxysection{Thread\+Safe\+Queue.\+hpp}
+\hypertarget{ThreadSafeQueue_8hpp_source}{}\label{ThreadSafeQueue_8hpp_source}\index{src/common/Util/ThreadSafeQueue.hpp@{src/common/Util/ThreadSafeQueue.hpp}}
+
+\begin{DoxyCode}{0}
+\DoxyCodeLine{00001\ \textcolor{preprocessor}{\#pragma\ once}}
+\DoxyCodeLine{00002\ }
+\DoxyCodeLine{00003\ \textcolor{preprocessor}{\#include\ <condition\_variable>}}
+\DoxyCodeLine{00004\ \textcolor{preprocessor}{\#include\ <deque>}}
+\DoxyCodeLine{00005\ \textcolor{preprocessor}{\#include\ <mutex>}}
+\DoxyCodeLine{00006\ \textcolor{preprocessor}{\#include\ <optional>}}
+\DoxyCodeLine{00007\ \textcolor{preprocessor}{\#include\ <vector>}}
+\DoxyCodeLine{00008\ }
+\DoxyCodeLine{00013\ \textcolor{keyword}{template}\ <\textcolor{keyword}{typename}\ T>\ \textcolor{keyword}{class\ }ThreadSafeQueue\ \{}
+\DoxyCodeLine{00014\ \ \ \textcolor{keyword}{public}:}
+\DoxyCodeLine{00015\ \ \ \ \ ThreadSafeQueue()\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00016\ \ \ \ \ \string~ThreadSafeQueue()\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00017\ }
+\DoxyCodeLine{00018\ \ \ \ \ ThreadSafeQueue(\textcolor{keyword}{const}\ ThreadSafeQueue\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00019\ \ \ \ \ ThreadSafeQueue\&\ operator=(\textcolor{keyword}{const}\ ThreadSafeQueue\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00020\ \ \ \ \ ThreadSafeQueue(ThreadSafeQueue\&\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00021\ \ \ \ \ ThreadSafeQueue\&\ operator=(ThreadSafeQueue\&\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00022\ }
+\DoxyCodeLine{00026\ \ \ \ \ \textcolor{keywordtype}{void}\ \mbox{\hyperlink{classThreadSafeQueue_a402ba25c8544045726d5644568c30794}{push}}(T\ item)\ \{}
+\DoxyCodeLine{00027\ \ \ \ \ \ \ \ \ \{}
+\DoxyCodeLine{00028\ \ \ \ \ \ \ \ \ \ \ \ \ std::lock\_guard<std::mutex>\ lock(\_mutex);}
+\DoxyCodeLine{00029\ \ \ \ \ \ \ \ \ \ \ \ \ \_queue.push\_back(std::move(item));}
+\DoxyCodeLine{00030\ \ \ \ \ \ \ \ \ \}}
+\DoxyCodeLine{00031\ \ \ \ \ \ \ \ \ \_condVar.notify\_one();\ \textcolor{comment}{//\ Wake\ up\ one\ waiting\ thread}}
+\DoxyCodeLine{00032\ \ \ \ \ \}}
+\DoxyCodeLine{00033\ }
+\DoxyCodeLine{00038\ \ \ \ \ std::optional<T>\ \mbox{\hyperlink{classThreadSafeQueue_ab6562a16916382ecd39ff2f7728b59ce}{try\_pop}}()\ \{}
+\DoxyCodeLine{00039\ \ \ \ \ \ \ \ \ std::lock\_guard<std::mutex>\ lock(\_mutex);}
+\DoxyCodeLine{00040\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{if}\ (\_queue.empty())\ \{}
+\DoxyCodeLine{00041\ \ \ \ \ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return}\ std::nullopt;}
+\DoxyCodeLine{00042\ \ \ \ \ \ \ \ \ \}}
+\DoxyCodeLine{00043\ \ \ \ \ \ \ \ \ T\ item\ =\ std::move(\_queue.front());}
+\DoxyCodeLine{00044\ \ \ \ \ \ \ \ \ \_queue.pop\_front();}
+\DoxyCodeLine{00045\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return}\ item;}
+\DoxyCodeLine{00046\ \ \ \ \ \}}
+\DoxyCodeLine{00047\ }
+\DoxyCodeLine{00053\ \ \ \ \ \textcolor{keywordtype}{size\_t}\ \mbox{\hyperlink{classThreadSafeQueue_abd005a618e629fcd947758cd4f2c0107}{try\_pop\_batch}}(std::vector<T>\&\ outItems,\ \textcolor{keywordtype}{size\_t}\ maxItems)\ \{}
+\DoxyCodeLine{00054\ \ \ \ \ \ \ \ \ std::lock\_guard<std::mutex>\ lock(\_mutex);}
+\DoxyCodeLine{00055\ }
+\DoxyCodeLine{00056\ \ \ \ \ \ \ \ \ \textcolor{keyword}{const}\ \textcolor{keywordtype}{size\_t}\ available\ =\ \_queue.size();}
+\DoxyCodeLine{00057\ \ \ \ \ \ \ \ \ \textcolor{keyword}{const}\ \textcolor{keywordtype}{size\_t}\ toExtract\ =\ std::min(available,\ maxItems);}
+\DoxyCodeLine{00058\ }
+\DoxyCodeLine{00059\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{if}\ (toExtract\ ==\ 0)\ \{}
+\DoxyCodeLine{00060\ \ \ \ \ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return}\ 0;}
+\DoxyCodeLine{00061\ \ \ \ \ \ \ \ \ \}}
+\DoxyCodeLine{00062\ }
+\DoxyCodeLine{00063\ \ \ \ \ \ \ \ \ \textcolor{comment}{//\ Reserve\ space\ to\ avoid\ reallocations}}
+\DoxyCodeLine{00064\ \ \ \ \ \ \ \ \ outItems.reserve(outItems.size()\ +\ toExtract);}
+\DoxyCodeLine{00065\ }
+\DoxyCodeLine{00066\ \ \ \ \ \ \ \ \ \textcolor{comment}{//\ Move\ items\ from\ queue\ to\ output\ vector}}
+\DoxyCodeLine{00067\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{for}\ (\textcolor{keywordtype}{size\_t}\ i\ =\ 0;\ i\ <\ toExtract;\ ++i)\ \{}
+\DoxyCodeLine{00068\ \ \ \ \ \ \ \ \ \ \ \ \ outItems.push\_back(std::move(\_queue.front()));}
+\DoxyCodeLine{00069\ \ \ \ \ \ \ \ \ \ \ \ \ \_queue.pop\_front();}
+\DoxyCodeLine{00070\ \ \ \ \ \ \ \ \ \}}
+\DoxyCodeLine{00071\ }
+\DoxyCodeLine{00072\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return}\ toExtract;}
+\DoxyCodeLine{00073\ \ \ \ \ \}}
+\DoxyCodeLine{00074\ }
+\DoxyCodeLine{00079\ \ \ \ \ \textcolor{keywordtype}{bool}\ \mbox{\hyperlink{classThreadSafeQueue_a3ac6e4c92e87a31dd731dfb570141bf4}{wait\_and\_pop}}(T\&\ outItem)\ \{}
+\DoxyCodeLine{00080\ \ \ \ \ \ \ \ \ std::unique\_lock<std::mutex>\ lock(\_mutex);}
+\DoxyCodeLine{00081\ \ \ \ \ \ \ \ \ \_condVar.wait(lock,\ [\textcolor{keyword}{this}]\ \{\ \textcolor{keywordflow}{return}\ !\_queue.empty()\ ||\ \_shutdown;\ \});}
+\DoxyCodeLine{00082\ }
+\DoxyCodeLine{00083\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{if}\ (\_shutdown\ \&\&\ \_queue.empty())\ \{}
+\DoxyCodeLine{00084\ \ \ \ \ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return}\ \textcolor{keyword}{false};\ \textcolor{comment}{//\ Queue\ is\ closed\ and\ empty}}
+\DoxyCodeLine{00085\ \ \ \ \ \ \ \ \ \}}
+\DoxyCodeLine{00086\ }
+\DoxyCodeLine{00087\ \ \ \ \ \ \ \ \ outItem\ =\ std::move(\_queue.front());}
+\DoxyCodeLine{00088\ \ \ \ \ \ \ \ \ \_queue.pop\_front();}
+\DoxyCodeLine{00089\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return}\ \textcolor{keyword}{true};}
+\DoxyCodeLine{00090\ \ \ \ \ \}}
+\DoxyCodeLine{00091\ }
+\DoxyCodeLine{00095\ \ \ \ \ \textcolor{keywordtype}{bool}\ \mbox{\hyperlink{classThreadSafeQueue_a58b5532baa6110071f697ad1f9bfbf58}{empty}}()\textcolor{keyword}{\ const\ }\{}
+\DoxyCodeLine{00096\ \ \ \ \ \ \ \ \ std::lock\_guard<std::mutex>\ lock(\_mutex);}
+\DoxyCodeLine{00097\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return}\ \_queue.empty();}
+\DoxyCodeLine{00098\ \ \ \ \ \}}
+\DoxyCodeLine{00099\ }
+\DoxyCodeLine{00103\ \ \ \ \ \textcolor{keywordtype}{size\_t}\ \mbox{\hyperlink{classThreadSafeQueue_ab255a078bfa2253878a2e17fd5a7a21c}{size}}()\textcolor{keyword}{\ const\ }\{}
+\DoxyCodeLine{00104\ \ \ \ \ \ \ \ \ std::lock\_guard<std::mutex>\ lock(\_mutex);}
+\DoxyCodeLine{00105\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return}\ \_queue.size();}
+\DoxyCodeLine{00106\ \ \ \ \ \}}
+\DoxyCodeLine{00107\ }
+\DoxyCodeLine{00111\ \ \ \ \ \textcolor{keywordtype}{void}\ \mbox{\hyperlink{classThreadSafeQueue_a610d8cdc5a505a75ce96939863d8b449}{shutdown}}()\ \{}
+\DoxyCodeLine{00112\ \ \ \ \ \ \ \ \ \{}
+\DoxyCodeLine{00113\ \ \ \ \ \ \ \ \ \ \ \ \ std::lock\_guard<std::mutex>\ lock(\_mutex);}
+\DoxyCodeLine{00114\ \ \ \ \ \ \ \ \ \ \ \ \ \_shutdown\ =\ \textcolor{keyword}{true};}
+\DoxyCodeLine{00115\ \ \ \ \ \ \ \ \ \}}
+\DoxyCodeLine{00116\ \ \ \ \ \ \ \ \ \_condVar.notify\_all();}
+\DoxyCodeLine{00117\ \ \ \ \ \}}
+\DoxyCodeLine{00118\ }
+\DoxyCodeLine{00119\ \ \ \textcolor{keyword}{private}:}
+\DoxyCodeLine{00120\ \ \ \ \ \textcolor{keyword}{mutable}\ std::mutex\ \_mutex;}
+\DoxyCodeLine{00121\ \ \ \ \ std::condition\_variable\ \_condVar;}
+\DoxyCodeLine{00122\ \ \ \ \ std::deque<T>\ \_queue;}
+\DoxyCodeLine{00123\ \ \ \ \ \textcolor{keywordtype}{bool}\ \_shutdown\ =\ \textcolor{keyword}{false};}
+\DoxyCodeLine{00124\ \};}
+
+\end{DoxyCode}

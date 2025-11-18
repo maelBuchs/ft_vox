@@ -1,0 +1,80 @@
+\doxysection{Camera Class Reference}
+\hypertarget{classCamera}{}\label{classCamera}\index{Camera@{Camera}}
+\doxysubsubsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\Hypertarget{classCamera_ac819f3b8ce2c0d65f61faa0c3790b2ea}\label{classCamera_ac819f3b8ce2c0d65f61faa0c3790b2ea} 
+{\bfseries Camera} (glm\+::vec3 position=glm\+::vec3(0.\+0F, 0.\+0F, 0.\+0F), float yaw=-\/90.\+0F, float pitch=0.\+0F)
+\item 
+\Hypertarget{classCamera_a18cea16e830732cc106c27c7a840c3ac}\label{classCamera_a18cea16e830732cc106c27c7a840c3ac} 
+{\bfseries Camera} (const \mbox{\hyperlink{classCamera}{Camera}} \&)=delete
+\item 
+\Hypertarget{classCamera_a815562aa01b5ccfe876fcecbbcfb946d}\label{classCamera_a815562aa01b5ccfe876fcecbbcfb946d} 
+\mbox{\hyperlink{classCamera}{Camera}} \& {\bfseries operator=} (const \mbox{\hyperlink{classCamera}{Camera}} \&)=delete
+\item 
+\Hypertarget{classCamera_a32200bd57f6c4d7d6dce8d9bac7a7724}\label{classCamera_a32200bd57f6c4d7d6dce8d9bac7a7724} 
+{\bfseries Camera} (\mbox{\hyperlink{classCamera}{Camera}} \&\&)=default
+\item 
+\Hypertarget{classCamera_a7851f894927bf26a45cbec979e6e0d16}\label{classCamera_a7851f894927bf26a45cbec979e6e0d16} 
+\mbox{\hyperlink{classCamera}{Camera}} \& {\bfseries operator=} (\mbox{\hyperlink{classCamera}{Camera}} \&\&)=default
+\item 
+\Hypertarget{classCamera_a96d300da335234059e602591070ba009}\label{classCamera_a96d300da335234059e602591070ba009} 
+void {\bfseries process\+Mouse\+Movement} (float xoffset, float yoffset)
+\item 
+\Hypertarget{classCamera_a4106adb5012ba38838d77022da50c377}\label{classCamera_a4106adb5012ba38838d77022da50c377} 
+void {\bfseries process\+Keyboard} (Camera\+Movement direction, float delta\+Time)
+\item 
+\Hypertarget{classCamera_a2f90e661a78172675ca06ea69667b531}\label{classCamera_a2f90e661a78172675ca06ea69667b531} 
+glm\+::mat4 {\bfseries get\+View\+Matrix} () const
+\item 
+\Hypertarget{classCamera_aa9dc951f8d6e7082233786438139c51d}\label{classCamera_aa9dc951f8d6e7082233786438139c51d} 
+glm\+::vec3 {\bfseries get\+Position} () const
+\item 
+\Hypertarget{classCamera_a35236a53be5652632aa351adae214d91}\label{classCamera_a35236a53be5652632aa351adae214d91} 
+glm\+::vec3 {\bfseries get\+Front} () const
+\item 
+\Hypertarget{classCamera_aaca7b5755187dbe1920ae8aeeed1a29a}\label{classCamera_aaca7b5755187dbe1920ae8aeeed1a29a} 
+glm\+::vec3 {\bfseries get\+Up} () const
+\item 
+\Hypertarget{classCamera_ae29e236b834705d6611caa0639941da2}\label{classCamera_ae29e236b834705d6611caa0639941da2} 
+float {\bfseries get\+Yaw} () const
+\item 
+\Hypertarget{classCamera_a642c0d474c9cf122f64ea9404d6fc3fd}\label{classCamera_a642c0d474c9cf122f64ea9404d6fc3fd} 
+float {\bfseries get\+Pitch} () const
+\item 
+std\+::array$<$ glm\+::vec4, 6 $>$ \mbox{\hyperlink{classCamera_a354681301999672a0dd024e4bce28f9f}{get\+Frustum\+Planes}} (const glm\+::mat4 \&projection) const
+\item 
+\Hypertarget{classCamera_abe8633adb8475cb7c62e1a12743a1025}\label{classCamera_abe8633adb8475cb7c62e1a12743a1025} 
+void {\bfseries set\+Position} (glm\+::vec3 position)
+\item 
+\Hypertarget{classCamera_af073e5018dbe94c9a074c660cb4b731f}\label{classCamera_af073e5018dbe94c9a074c660cb4b731f} 
+void {\bfseries set\+Speed} (float speed)
+\item 
+\Hypertarget{classCamera_a0d40263320e7d4f9f1abb06b3f3bffc2}\label{classCamera_a0d40263320e7d4f9f1abb06b3f3bffc2} 
+void {\bfseries set\+Sensitivity} (float sensitivity)
+\end{DoxyCompactItemize}
+
+
+\label{doc-func-members}
+\Hypertarget{classCamera_doc-func-members}
+\doxysubsection{Member Function Documentation}
+\Hypertarget{classCamera_a354681301999672a0dd024e4bce28f9f}\index{Camera@{Camera}!getFrustumPlanes@{getFrustumPlanes}}
+\index{getFrustumPlanes@{getFrustumPlanes}!Camera@{Camera}}
+\doxysubsubsection{\texorpdfstring{getFrustumPlanes()}{getFrustumPlanes()}}
+{\footnotesize\ttfamily \label{classCamera_a354681301999672a0dd024e4bce28f9f} 
+std\+::array$<$ glm\+::vec4, 6 $>$ Camera\+::get\+Frustum\+Planes (\begin{DoxyParamCaption}\item[{const glm\+::mat4 \&}]{projection}{}\end{DoxyParamCaption}) const\hspace{0.3cm}{\ttfamily [nodiscard]}}
+
+Extract frustum planes from view-\/projection matrix Returns 6 planes in order\+: left, right, top, bottom, near, far Each plane is vec4(a, b, c, d) for equation ax + by + cz + d = 0 
+\begin{DoxyParams}{Parameters}
+{\em projection} & Projection matrix \\
+\hline
+\end{DoxyParams}
+\begin{DoxyReturn}{Returns}
+Array of 6 frustum planes (normalized) 
+\end{DoxyReturn}
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+src/client/\+Game/Camera.\+hpp\item 
+src/client/\+Game/Camera.\+cpp\end{DoxyCompactItemize}

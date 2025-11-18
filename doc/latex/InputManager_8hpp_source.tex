@@ -1,0 +1,52 @@
+\doxysection{Input\+Manager.\+hpp}
+\hypertarget{InputManager_8hpp_source}{}\label{InputManager_8hpp_source}\index{src/client/Core/InputManager.hpp@{src/client/Core/InputManager.hpp}}
+
+\begin{DoxyCode}{0}
+\DoxyCodeLine{00001\ \textcolor{preprocessor}{\#pragma\ once}}
+\DoxyCodeLine{00002\ }
+\DoxyCodeLine{00003\ \textcolor{preprocessor}{\#include\ <SDL3/SDL\_events.h>}}
+\DoxyCodeLine{00004\ }
+\DoxyCodeLine{00005\ \textcolor{preprocessor}{\#include\ <glm/glm.hpp>}}
+\DoxyCodeLine{00006\ }
+\DoxyCodeLine{00007\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classCamera}{Camera}};}
+\DoxyCodeLine{00008\ }
+\DoxyCodeLine{00009\ \textcolor{keyword}{class\ }InputManager\ \{}
+\DoxyCodeLine{00010\ \ \ \textcolor{keyword}{public}:}
+\DoxyCodeLine{00011\ \ \ \ \ InputManager()\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00012\ \ \ \ \ \string~InputManager()\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00013\ }
+\DoxyCodeLine{00014\ \ \ \ \ InputManager(\textcolor{keyword}{const}\ InputManager\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00015\ \ \ \ \ InputManager\&\ operator=(\textcolor{keyword}{const}\ InputManager\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00016\ \ \ \ \ InputManager(InputManager\&\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00017\ \ \ \ \ InputManager\&\ operator=(InputManager\&\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00018\ }
+\DoxyCodeLine{00019\ \ \ \ \ \textcolor{comment}{//\ Process\ SDL\ events}}
+\DoxyCodeLine{00020\ \ \ \ \ \textcolor{keywordtype}{void}\ processEvent(\textcolor{keyword}{const}\ SDL\_Event\&\ event);}
+\DoxyCodeLine{00021\ \ \ \ \ \textcolor{keywordtype}{void}\ newFrame();\ \textcolor{comment}{//\ Call\ at\ start\ of\ frame\ to\ reset\ per-\/frame\ state}}
+\DoxyCodeLine{00022\ }
+\DoxyCodeLine{00023\ \ \ \ \ \textcolor{comment}{//\ Keyboard\ state}}
+\DoxyCodeLine{00024\ \ \ \ \ [[nodiscard]]\ \textcolor{keywordtype}{bool}\ isKeyPressed(SDL\_Scancode\ key)\ \textcolor{keyword}{const};}
+\DoxyCodeLine{00025\ \ \ \ \ [[nodiscard]]\ \textcolor{keywordtype}{bool}\ isKeyDown(SDL\_Scancode\ key)\ \textcolor{keyword}{const};}
+\DoxyCodeLine{00026\ }
+\DoxyCodeLine{00027\ \ \ \ \ \textcolor{comment}{//\ Special\ actions}}
+\DoxyCodeLine{00028\ \ \ \ \ [[nodiscard]]\ \textcolor{keywordtype}{bool}\ shouldQuit()\textcolor{keyword}{\ const\ }\{\ \textcolor{keywordflow}{return}\ \_shouldQuit;\ \}}
+\DoxyCodeLine{00029\ \ \ \ \ \textcolor{keywordtype}{void}\ setShouldQuit(\textcolor{keywordtype}{bool}\ quit)\ \{\ \_shouldQuit\ =\ quit;\ \}}
+\DoxyCodeLine{00030\ \ \ \ \ [[nodiscard]]\ \textcolor{keywordtype}{bool}\ isWireframeToggled();}
+\DoxyCodeLine{00031\ \ \ \ \ [[nodiscard]]\ \textcolor{keywordtype}{bool}\ isEscapePressed();}
+\DoxyCodeLine{00032\ }
+\DoxyCodeLine{00033\ \ \ \ \ \textcolor{comment}{//\ Mouse\ state}}
+\DoxyCodeLine{00034\ \ \ \ \ [[nodiscard]]\ glm::vec2\ getMouseDelta()\textcolor{keyword}{\ const\ }\{\ \textcolor{keywordflow}{return}\ \_mouseDelta;\ \}}
+\DoxyCodeLine{00035\ \ \ \ \ [[nodiscard]]\ \textcolor{keywordtype}{bool}\ isMouseButtonPressed(\textcolor{keywordtype}{int}\ button)\ \textcolor{keyword}{const};}
+\DoxyCodeLine{00036\ }
+\DoxyCodeLine{00037\ \ \ \ \ \textcolor{comment}{//\ Camera\ update}}
+\DoxyCodeLine{00038\ \ \ \ \ \textcolor{keywordtype}{void}\ updateCamera(\mbox{\hyperlink{classCamera}{Camera}}\&\ camera,\ \textcolor{keywordtype}{float}\ deltaTime);}
+\DoxyCodeLine{00039\ }
+\DoxyCodeLine{00040\ \ \ \textcolor{keyword}{private}:}
+\DoxyCodeLine{00041\ \ \ \ \ \textcolor{keywordtype}{bool}\ \_shouldQuit\ =\ \textcolor{keyword}{false};}
+\DoxyCodeLine{00042\ \ \ \ \ \textcolor{keywordtype}{bool}\ \_wireframeToggled\ =\ \textcolor{keyword}{false};}
+\DoxyCodeLine{00043\ \ \ \ \ \textcolor{keywordtype}{bool}\ \_wireframeKeyWasPressed\ =\ \textcolor{keyword}{false};}
+\DoxyCodeLine{00044\ \ \ \ \ \textcolor{keywordtype}{bool}\ \_escapePressed\ =\ \textcolor{keyword}{false};}
+\DoxyCodeLine{00045\ \ \ \ \ glm::vec2\ \_mouseDelta\{0.0F,\ 0.0F\};}
+\DoxyCodeLine{00046\ \};}
+
+\end{DoxyCode}

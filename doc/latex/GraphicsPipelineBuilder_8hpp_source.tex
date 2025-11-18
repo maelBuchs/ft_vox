@@ -1,0 +1,54 @@
+\doxysection{Graphics\+Pipeline\+Builder.\+hpp}
+\hypertarget{GraphicsPipelineBuilder_8hpp_source}{}\label{GraphicsPipelineBuilder_8hpp_source}\index{src/client/Graphics/Pipeline/GraphicsPipelineBuilder.hpp@{src/client/Graphics/Pipeline/GraphicsPipelineBuilder.hpp}}
+
+\begin{DoxyCode}{0}
+\DoxyCodeLine{00001\ \textcolor{preprocessor}{\#pragma\ once}}
+\DoxyCodeLine{00002\ \textcolor{preprocessor}{\#include\ <vector>}}
+\DoxyCodeLine{00003\ }
+\DoxyCodeLine{00004\ \textcolor{preprocessor}{\#include\ <vulkan/vulkan.h>}}
+\DoxyCodeLine{00005\ }
+\DoxyCodeLine{00006\ \textcolor{keyword}{class\ }GraphicsPipelineBuilder\ \{}
+\DoxyCodeLine{00007\ \ \ \textcolor{keyword}{public}:}
+\DoxyCodeLine{00008\ \ \ \ \ GraphicsPipelineBuilder();}
+\DoxyCodeLine{00009\ \ \ \ \ \string~GraphicsPipelineBuilder();}
+\DoxyCodeLine{00010\ }
+\DoxyCodeLine{00011\ \ \ \ \ GraphicsPipelineBuilder(\textcolor{keyword}{const}\ GraphicsPipelineBuilder\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00012\ \ \ \ \ GraphicsPipelineBuilder\&\ operator=(\textcolor{keyword}{const}\ GraphicsPipelineBuilder\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00013\ \ \ \ \ GraphicsPipelineBuilder(GraphicsPipelineBuilder\&\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00014\ \ \ \ \ GraphicsPipelineBuilder\&\ operator=(GraphicsPipelineBuilder\&\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00015\ }
+\DoxyCodeLine{00016\ \ \ \ \ \textcolor{keywordtype}{void}\ clear();}
+\DoxyCodeLine{00017\ \ \ \ \ \textcolor{keywordtype}{void}\ setInputTopology(VkPrimitiveTopology\ topology);}
+\DoxyCodeLine{00018\ \ \ \ \ \textcolor{keywordtype}{void}\ setPolygonMode(VkPolygonMode\ polygonMode);}
+\DoxyCodeLine{00019\ \ \ \ \ \textcolor{keywordtype}{void}\ disableBlending();}
+\DoxyCodeLine{00020\ \ \ \ \ \textcolor{keywordtype}{void}\ setShaders(VkShaderModule\ vertexShader,\ VkShaderModule\ fragmentShader);}
+\DoxyCodeLine{00021\ \ \ \ \ \textcolor{keywordtype}{void}\ setCullMode(VkCullModeFlags\ cullMode,\ VkFrontFace\ frontFace);}
+\DoxyCodeLine{00022\ \ \ \ \ \textcolor{keywordtype}{void}\ setMultisamplingNone();}
+\DoxyCodeLine{00023\ \ \ \ \ \textcolor{keywordtype}{void}\ setColorAttachmentFormat(VkFormat\ format);}
+\DoxyCodeLine{00024\ \ \ \ \ \textcolor{keywordtype}{void}\ setDepthFormat(VkFormat\ format);}
+\DoxyCodeLine{00025\ \ \ \ \ \textcolor{keywordtype}{void}\ disableDepthtest();}
+\DoxyCodeLine{00026\ \ \ \ \ \textcolor{keywordtype}{void}\ enableDepthtest(\textcolor{keywordtype}{bool}\ depthWriteEnable,\ VkCompareOp\ compareOp);}
+\DoxyCodeLine{00027\ \ \ \ \ \textcolor{keywordtype}{void}\ enableBlendingAdditive();}
+\DoxyCodeLine{00028\ \ \ \ \ \textcolor{keywordtype}{void}\ enableBlendingAlphablend();}
+\DoxyCodeLine{00029\ \ \ \ \ \textcolor{keywordtype}{void}\ setPipelineLayout(VkPipelineLayout\ layout);}
+\DoxyCodeLine{00030\ \ \ \ \ \textcolor{keywordtype}{void}\ setVertexInputState(\textcolor{keyword}{const}\ std::vector<VkVertexInputBindingDescription>\&\ bindings,}
+\DoxyCodeLine{00031\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \textcolor{keyword}{const}\ std::vector<VkVertexInputAttributeDescription>\&\ attributes);}
+\DoxyCodeLine{00032\ }
+\DoxyCodeLine{00033\ \ \ \ \ VkPipeline\ build(VkDevice\ device);}
+\DoxyCodeLine{00034\ }
+\DoxyCodeLine{00035\ \ \ \textcolor{keyword}{private}:}
+\DoxyCodeLine{00036\ \ \ \ \ std::vector<VkPipelineShaderStageCreateInfo>\ \_shaderStages;}
+\DoxyCodeLine{00037\ \ \ \ \ std::vector<VkVertexInputBindingDescription>\ \_vertexBindings;}
+\DoxyCodeLine{00038\ \ \ \ \ std::vector<VkVertexInputAttributeDescription>\ \_vertexAttributes;}
+\DoxyCodeLine{00039\ }
+\DoxyCodeLine{00040\ \ \ \ \ VkPipelineInputAssemblyStateCreateInfo\ \_inputAssembly;}
+\DoxyCodeLine{00041\ \ \ \ \ VkPipelineRasterizationStateCreateInfo\ \_rasterizer;}
+\DoxyCodeLine{00042\ \ \ \ \ VkPipelineColorBlendAttachmentState\ \_colorBlendAttachment;}
+\DoxyCodeLine{00043\ \ \ \ \ VkPipelineMultisampleStateCreateInfo\ \_multisampling;}
+\DoxyCodeLine{00044\ \ \ \ \ VkPipelineLayout\ \_pipelineLayout;}
+\DoxyCodeLine{00045\ \ \ \ \ VkPipelineDepthStencilStateCreateInfo\ \_depthStencil;}
+\DoxyCodeLine{00046\ \ \ \ \ VkPipelineRenderingCreateInfo\ \_renderInfo;}
+\DoxyCodeLine{00047\ \ \ \ \ VkFormat\ \_colorAttachmentformat;}
+\DoxyCodeLine{00048\ \};}
+
+\end{DoxyCode}

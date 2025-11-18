@@ -1,0 +1,49 @@
+\doxysection{Frustum.\+hpp}
+\hypertarget{Frustum_8hpp_source}{}\label{Frustum_8hpp_source}\index{src/client/Game/Frustum.hpp@{src/client/Game/Frustum.hpp}}
+
+\begin{DoxyCode}{0}
+\DoxyCodeLine{00001\ \textcolor{preprocessor}{\#pragma\ once}}
+\DoxyCodeLine{00002\ }
+\DoxyCodeLine{00003\ \textcolor{preprocessor}{\#include\ <array>}}
+\DoxyCodeLine{00004\ \textcolor{preprocessor}{\#include\ <glm/glm.hpp>}}
+\DoxyCodeLine{00005\ }
+\DoxyCodeLine{00011\ \textcolor{keyword}{class\ }Frustum\ \{}
+\DoxyCodeLine{00012\ \ \ \textcolor{keyword}{public}:}
+\DoxyCodeLine{00017\ \ \ \ \ \textcolor{keyword}{enum\ class}\ \mbox{\hyperlink{classFrustum_a2eab5d8641a6d4e58fef45315934aa08}{PlaneIndex}}\ :\ uint32\_t\ \{}
+\DoxyCodeLine{00018\ \ \ \ \ \ \ \ \ Left\ =\ 0,}
+\DoxyCodeLine{00019\ \ \ \ \ \ \ \ \ Right\ =\ 1,}
+\DoxyCodeLine{00020\ \ \ \ \ \ \ \ \ Top\ =\ 2,}
+\DoxyCodeLine{00021\ \ \ \ \ \ \ \ \ Bottom\ =\ 3,}
+\DoxyCodeLine{00022\ \ \ \ \ \ \ \ \ Near\ =\ 4,}
+\DoxyCodeLine{00023\ \ \ \ \ \ \ \ \ Far\ =\ 5}
+\DoxyCodeLine{00024\ \ \ \ \ \};}
+\DoxyCodeLine{00025\ }
+\DoxyCodeLine{00026\ \ \ \ \ \mbox{\hyperlink{classFrustum}{Frustum}}()\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00027\ }
+\DoxyCodeLine{00033\ \ \ \ \ \textcolor{keyword}{explicit}\ \mbox{\hyperlink{classFrustum}{Frustum}}(\textcolor{keyword}{const}\ glm::mat4\&\ viewProjection);}
+\DoxyCodeLine{00034\ }
+\DoxyCodeLine{00039\ \ \ \ \ \textcolor{keywordtype}{void}\ \mbox{\hyperlink{classFrustum_a9c64fe5daf4b8d526ef2b6f6b3be2359}{update}}(\textcolor{keyword}{const}\ glm::mat4\&\ viewProjection);}
+\DoxyCodeLine{00040\ }
+\DoxyCodeLine{00047\ \ \ \ \ [[nodiscard]]\ \textcolor{keywordtype}{bool}\ \mbox{\hyperlink{classFrustum_afa8073345e399d576b6165991b628272}{testSphere}}(\textcolor{keyword}{const}\ glm::vec3\&\ center,\ \textcolor{keywordtype}{float}\ radius)\ \textcolor{keyword}{const};}
+\DoxyCodeLine{00048\ }
+\DoxyCodeLine{00055\ \ \ \ \ [[nodiscard]]\ \textcolor{keywordtype}{bool}\ \mbox{\hyperlink{classFrustum_a82f25dd2d898672234c1ea0dd54799a8}{testAABB}}(\textcolor{keyword}{const}\ glm::vec3\&\ minPoint,\ \textcolor{keyword}{const}\ glm::vec3\&\ maxPoint)\ \textcolor{keyword}{const};}
+\DoxyCodeLine{00056\ }
+\DoxyCodeLine{00061\ \ \ \ \ [[nodiscard]]\ \textcolor{keyword}{const}\ std::array<glm::vec4,\ 6>\&\ \mbox{\hyperlink{classFrustum_a09856e0e5db49a95143a7726eb042874}{getPlanes}}()\textcolor{keyword}{\ const\ }\{\ \textcolor{keywordflow}{return}\ \_planes;\ \}}
+\DoxyCodeLine{00062\ }
+\DoxyCodeLine{00068\ \ \ \ \ [[nodiscard]]\ \textcolor{keyword}{const}\ glm::vec4\&\ \mbox{\hyperlink{classFrustum_a97acb4275e74a5d78e8c553bbd9dd3b7}{getPlane}}(\mbox{\hyperlink{classFrustum_a2eab5d8641a6d4e58fef45315934aa08}{PlaneIndex}}\ index)\textcolor{keyword}{\ const\ }\{}
+\DoxyCodeLine{00069\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return}\ \_planes[\textcolor{keyword}{static\_cast<}uint32\_t\textcolor{keyword}{>}(index)];}
+\DoxyCodeLine{00070\ \ \ \ \ \}}
+\DoxyCodeLine{00071\ }
+\DoxyCodeLine{00076\ \ \ \ \ [[nodiscard]]\ \textcolor{keywordtype}{bool}\ \mbox{\hyperlink{classFrustum_a8d07f83292566d5688a61a5c96f906cc}{isValid}}()\ \textcolor{keyword}{const};}
+\DoxyCodeLine{00077\ }
+\DoxyCodeLine{00078\ \ \ \textcolor{keyword}{private}:}
+\DoxyCodeLine{00083\ \ \ \ \ \textcolor{keyword}{static}\ \textcolor{keywordtype}{void}\ normalizePlane(glm::vec4\&\ plane);}
+\DoxyCodeLine{00084\ }
+\DoxyCodeLine{00089\ \ \ \ \ \textcolor{keyword}{static}\ \textcolor{keywordtype}{float}\ distanceToPlane(\textcolor{keyword}{const}\ glm::vec4\&\ plane,\ \textcolor{keyword}{const}\ glm::vec3\&\ point);}
+\DoxyCodeLine{00090\ }
+\DoxyCodeLine{00091\ \ \ \ \ \textcolor{comment}{//\ 6\ frustum\ planes:\ left,\ right,\ top,\ bottom,\ near,\ far}}
+\DoxyCodeLine{00092\ \ \ \ \ \textcolor{comment}{//\ Each\ plane\ stored\ as\ vec4(a,\ b,\ c,\ d)\ for\ equation\ ax\ +\ by\ +\ cz\ +\ d\ =\ 0}}
+\DoxyCodeLine{00093\ \ \ \ \ std::array<glm::vec4,\ 6>\ \_planes\{\};}
+\DoxyCodeLine{00094\ \};}
+
+\end{DoxyCode}

@@ -1,0 +1,189 @@
+\doxysection{Voxel\+Renderer.\+hpp}
+\hypertarget{VoxelRenderer_8hpp_source}{}\label{VoxelRenderer_8hpp_source}\index{src/client/Graphics/Voxel/VoxelRenderer.hpp@{src/client/Graphics/Voxel/VoxelRenderer.hpp}}
+
+\begin{DoxyCode}{0}
+\DoxyCodeLine{00001\ \textcolor{preprocessor}{\#pragma\ once}}
+\DoxyCodeLine{00002\ }
+\DoxyCodeLine{00003\ \textcolor{preprocessor}{\#include\ <functional>}}
+\DoxyCodeLine{00004\ \textcolor{preprocessor}{\#include\ <memory>}}
+\DoxyCodeLine{00005\ \textcolor{preprocessor}{\#include\ <unordered\_map>}}
+\DoxyCodeLine{00006\ \textcolor{preprocessor}{\#include\ <vector>}}
+\DoxyCodeLine{00007\ }
+\DoxyCodeLine{00008\ \textcolor{preprocessor}{\#include\ <vulkan/vulkan.h>}}
+\DoxyCodeLine{00009\ }
+\DoxyCodeLine{00010\ \textcolor{preprocessor}{\#include\ <glm/glm.hpp>}}
+\DoxyCodeLine{00011\ }
+\DoxyCodeLine{00012\ \textcolor{preprocessor}{\#include\ "{}../Core/VulkanTypes.hpp"{}}}
+\DoxyCodeLine{00013\ \textcolor{preprocessor}{\#include\ "{}../Pipeline/Pipeline.hpp"{}}}
+\DoxyCodeLine{00014\ \textcolor{preprocessor}{\#include\ "{}common/Protocol/Protocol.hpp"{}}}
+\DoxyCodeLine{00015\ \textcolor{preprocessor}{\#include\ "{}common/Types/RenderTypes.hpp"{}}}
+\DoxyCodeLine{00016\ \textcolor{preprocessor}{\#include\ "{}common/Util/ThreadSafeQueue.hpp"{}}}
+\DoxyCodeLine{00017\ \textcolor{preprocessor}{\#include\ "{}MeshBufferPool.hpp"{}}}
+\DoxyCodeLine{00018\ \textcolor{preprocessor}{\#define\ GLM\_ENABLE\_EXPERIMENTAL}}
+\DoxyCodeLine{00019\ \textcolor{preprocessor}{\#include\ <glm/gtx/hash.hpp>}}
+\DoxyCodeLine{00020\ }
+\DoxyCodeLine{00021\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classVulkanDevice}{VulkanDevice}};}
+\DoxyCodeLine{00022\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classMeshManager}{MeshManager}};}
+\DoxyCodeLine{00023\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classBlockRegistry}{BlockRegistry}};}
+\DoxyCodeLine{00024\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classCamera}{Camera}};}
+\DoxyCodeLine{00025\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classRenderContext}{RenderContext}};}
+\DoxyCodeLine{00026\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classCommandExecutor}{CommandExecutor}};}
+\DoxyCodeLine{00027\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classMeshBufferPool}{MeshBufferPool}};}
+\DoxyCodeLine{00028\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classVulkanBuffer}{VulkanBuffer}};}
+\DoxyCodeLine{00029\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classDescriptorAllocatorGrowable}{DescriptorAllocatorGrowable}};}
+\DoxyCodeLine{00030\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classRenderer}{Renderer}};}
+\DoxyCodeLine{00031\ }
+\DoxyCodeLine{00032\ \textcolor{keyword}{class\ }VoxelRenderer\ \{}
+\DoxyCodeLine{00033\ \ \ \textcolor{keyword}{public}:}
+\DoxyCodeLine{00034\ \ \ \ \ VoxelRenderer(\mbox{\hyperlink{classVulkanDevice}{VulkanDevice}}\&\ device,\ \mbox{\hyperlink{classMeshManager}{MeshManager}}\&\ meshManager,\ \mbox{\hyperlink{classBlockRegistry}{BlockRegistry}}\&\ registry,}
+\DoxyCodeLine{00035\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \mbox{\hyperlink{classRenderContext}{RenderContext}}\&\ context,\ \mbox{\hyperlink{classCommandExecutor}{CommandExecutor}}\&\ executor,\ \mbox{\hyperlink{classVulkanBuffer}{VulkanBuffer}}\&\ bufferManager,}
+\DoxyCodeLine{00036\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \mbox{\hyperlink{classDescriptorAllocatorGrowable}{DescriptorAllocatorGrowable}}\&\ descriptorAllocator,\ \mbox{\hyperlink{classRenderer}{Renderer}}\&\ renderer,}
+\DoxyCodeLine{00037\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ std::vector<std::unique\_ptr<\mbox{\hyperlink{classThreadSafeQueue}{ThreadSafeQueue<MeshData>}}>>\&\ perThreadMeshQueues);}
+\DoxyCodeLine{00038\ \ \ \ \ \string~VoxelRenderer();}
+\DoxyCodeLine{00039\ }
+\DoxyCodeLine{00040\ \ \ \ \ VoxelRenderer(\textcolor{keyword}{const}\ VoxelRenderer\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00041\ \ \ \ \ VoxelRenderer\&\ operator=(\textcolor{keyword}{const}\ VoxelRenderer\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00042\ \ \ \ \ VoxelRenderer(VoxelRenderer\&\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00043\ \ \ \ \ VoxelRenderer\&\ operator=(VoxelRenderer\&\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00044\ }
+\DoxyCodeLine{00045\ \ \ \ \ \textcolor{keywordtype}{void}\ initPipelines(VkImageView\ atlasView,\ VkSampler\ atlasSampler,\ \textcolor{keywordtype}{int}\ texturesPerRow);}
+\DoxyCodeLine{00046\ }
+\DoxyCodeLine{00053\ \ \ \ \ \textcolor{keywordtype}{void}\ \mbox{\hyperlink{classVoxelRenderer_a62c3a85cbbc279dcb52e7c21c3f25566}{update}}(\textcolor{keyword}{const}\ glm::ivec3\&\ cameraChunkPos,\ \textcolor{keywordtype}{int}\ maxLoadDistance);}
+\DoxyCodeLine{00054\ }
+\DoxyCodeLine{00055\ \ \ \ \ \textcolor{keywordtype}{void}\ drawVoxels(VkCommandBuffer\ cmd,\ \mbox{\hyperlink{classCamera}{Camera}}\&\ camera,\ \textcolor{keywordtype}{bool}\ wireframeMode);}
+\DoxyCodeLine{00056\ }
+\DoxyCodeLine{00064\ \ \ \ \ \textcolor{keywordtype}{void}\ \mbox{\hyperlink{classVoxelRenderer_ada7ba4afd5af179d655384303f3f8f00}{rebuildMeshPool}}(\textcolor{keyword}{const}\ std::vector<glm::ivec3>\&\ unloadedChunks);}
+\DoxyCodeLine{00065\ }
+\DoxyCodeLine{00069\ \ \ \ \ [[nodiscard]]\ \textcolor{keywordtype}{size\_t}\ \mbox{\hyperlink{classVoxelRenderer_ac7fd410fcdbd685b586c34da6e8e11f6}{getLoadedChunkCount}}()\textcolor{keyword}{\ const\ }\{\ \textcolor{keywordflow}{return}\ \_chunkDrawInfos.size();\ \}}
+\DoxyCodeLine{00070\ }
+\DoxyCodeLine{00075\ \ \ \ \ [[nodiscard]]\ \textcolor{keywordtype}{float}\ \mbox{\hyperlink{classVoxelRenderer_ac4808ca4d9a1408a54dde57166e5d572}{getMeshPoolUsage}}()\ \textcolor{keyword}{const};}
+\DoxyCodeLine{00076\ }
+\DoxyCodeLine{00077\ \ \ \textcolor{keyword}{private}:}
+\DoxyCodeLine{00078\ \ \ \ \ \textcolor{keywordtype}{void}\ initMDI(VkImageView\ atlasView,\ VkSampler\ atlasSampler,\ \textcolor{keywordtype}{int}\ texturesPerRow);}
+\DoxyCodeLine{00079\ \ \ \ \ \textcolor{keywordtype}{void}\ initComputeCulling();}
+\DoxyCodeLine{00080\ \ \ \ \ \textcolor{keywordtype}{void}\ initMeshShaderPipeline(VkImageView\ atlasView,\ VkSampler\ atlasSampler);}
+\DoxyCodeLine{00081\ \ \ \ \ \textcolor{keywordtype}{void}\ ensureBufferCapacity(uint32\_t\ requiredChunks);}
+\DoxyCodeLine{00082\ }
+\DoxyCodeLine{00083\ \ \ \ \ \textcolor{keyword}{static}\ \textcolor{keyword}{constexpr}\ uint32\_t\ MAX\_CHUNKS\ =}
+\DoxyCodeLine{00084\ \ \ \ \ \ \ \ \ 2048;\ \textcolor{comment}{//\ Initial\ maximum\ number\ of\ chunks\ (grows\ dynamically\ via\ ensureBufferCapacity)}}
+\DoxyCodeLine{00085\ \ \ \ \ \textcolor{keyword}{static}\ \textcolor{keyword}{constexpr}\ \textcolor{keywordtype}{float}\ TYPICAL\_MAX\_VRAM\_MB\ =\ 512.0f;\ \textcolor{comment}{//\ Assume\ 512MB\ as\ "{}100\%"{}\ for\ UI\ display}}
+\DoxyCodeLine{00086\ }
+\DoxyCodeLine{00087\ \ \ \ \ \mbox{\hyperlink{classVulkanDevice}{VulkanDevice}}\&\ \_device;}
+\DoxyCodeLine{00088\ \ \ \ \ \mbox{\hyperlink{classMeshManager}{MeshManager}}\&\ \_meshManager;}
+\DoxyCodeLine{00089\ \ \ \ \ \mbox{\hyperlink{classBlockRegistry}{BlockRegistry}}\&\ \_blockRegistry;}
+\DoxyCodeLine{00090\ \ \ \ \ \mbox{\hyperlink{classRenderContext}{RenderContext}}\&\ \_context;}
+\DoxyCodeLine{00091\ \ \ \ \ \mbox{\hyperlink{classCommandExecutor}{CommandExecutor}}\&\ \_executor;}
+\DoxyCodeLine{00092\ \ \ \ \ \mbox{\hyperlink{classVulkanBuffer}{VulkanBuffer}}\&\ \_bufferManager;}
+\DoxyCodeLine{00093\ \ \ \ \ \mbox{\hyperlink{classDescriptorAllocatorGrowable}{DescriptorAllocatorGrowable}}\&\ \_descriptorAllocator;}
+\DoxyCodeLine{00094\ \ \ \ \ \mbox{\hyperlink{classRenderer}{Renderer}}\&\ \_renderer;}
+\DoxyCodeLine{00095\ }
+\DoxyCodeLine{00096\ \ \ \ \ \mbox{\hyperlink{classPipeline}{Pipeline}}\ \_voxelPipeline;}
+\DoxyCodeLine{00097\ \ \ \ \ \mbox{\hyperlink{classPipeline}{Pipeline}}\ \_voxelWireframePipeline;}
+\DoxyCodeLine{00098\ \ \ \ \ \mbox{\hyperlink{classPipeline}{Pipeline}}\ \_meshShaderPipeline;\ \textcolor{comment}{//\ Task/mesh\ shader\ pipeline}}
+\DoxyCodeLine{00099\ }
+\DoxyCodeLine{00100\ \ \ \ \ VkPipelineLayout\ \_voxelPipelineLayout\ =\ VK\_NULL\_HANDLE;}
+\DoxyCodeLine{00101\ \ \ \ \ VkPipelineLayout\ \_meshShaderPipelineLayout\ =\ VK\_NULL\_HANDLE;}
+\DoxyCodeLine{00102\ }
+\DoxyCodeLine{00103\ \ \ \ \ \textcolor{comment}{//\ -\/-\/-\/\ MDI\ Resources\ -\/-\/-\/}}
+\DoxyCodeLine{00104\ \ \ \ \ std::unique\_ptr<MeshBufferPool>\ \_meshPool;}
+\DoxyCodeLine{00105\ }
+\DoxyCodeLine{00106\ \ \ \ \ \textcolor{keyword}{struct\ }ChunkDrawInfo\ \{}
+\DoxyCodeLine{00107\ \ \ \ \ \ \ \ \ glm::ivec3\ chunkCoords\{\};}
+\DoxyCodeLine{00108\ \ \ \ \ \ \ \ \ glm::vec3\ worldPosition\{\};}
+\DoxyCodeLine{00109\ \ \ \ \ \ \ \ \ ChunkMeshBuffers\ meshBuffers\{\};\ \textcolor{comment}{//\ Per-\/chunk\ VMA-\/allocated\ buffers}}
+\DoxyCodeLine{00110\ \ \ \ \ \};}
+\DoxyCodeLine{00111\ }
+\DoxyCodeLine{00112\ \ \ \ \ std::vector<ChunkDrawInfo>\ \_chunkDrawInfos;}
+\DoxyCodeLine{00113\ \ \ \ \ std::unordered\_map<glm::ivec3,\ size\_t>\ \_chunkDrawLookup;}
+\DoxyCodeLine{00114\ }
+\DoxyCodeLine{00115\ \ \ \ \ \textcolor{comment}{//\ Per-\/thread\ mesh\ queues\ for\ receiving\ finished\ mesh\ data\ (eliminates\ lock\ contention)}}
+\DoxyCodeLine{00116\ \ \ \ \ std::vector<std::unique\_ptr<ThreadSafeQueue<MeshData>>>\&\ \_perThreadMeshQueues;}
+\DoxyCodeLine{00117\ }
+\DoxyCodeLine{00118\ \ \ \ \ AllocatedBuffer\ \_indirectBuffer;}
+\DoxyCodeLine{00119\ \ \ \ \ \textcolor{keyword}{static}\ \textcolor{keyword}{constexpr}\ uint32\_t\ CHUNK\_BUFFER\_COUNT\ =\ 2;\ \textcolor{comment}{//\ Must\ match\ FrameManager::FRAME\_OVERLAP}}
+\DoxyCodeLine{00120\ \ \ \ \ std::array<AllocatedBuffer,\ CHUNK\_BUFFER\_COUNT>\ \_chunkDataBuffers;}
+\DoxyCodeLine{00121\ \ \ \ \ AllocatedBuffer\ \_atlasConfigBuffer;\ \ \ \ \ \ \textcolor{comment}{//\ Uniform\ buffer\ for\ atlas\ configuration}}
+\DoxyCodeLine{00122\ \ \ \ \ uint32\_t\ \_currentMaxChunks\ =\ MAX\_CHUNKS;\ \textcolor{comment}{//\ Current\ capacity\ of\ indirect/chunk\ buffers}}
+\DoxyCodeLine{00123\ }
+\DoxyCodeLine{00124\ \ \ \ \ std::vector<VkDrawIndexedIndirectCommand>\ \_indirectCommands;}
+\DoxyCodeLine{00125\ \ \ \ \ std::vector<GPUChunkData>\ \_chunkDrawData;}
+\DoxyCodeLine{00126\ \ \ \ \ \textcolor{keywordtype}{bool}\ \_chunkDataDirty\ =\ \textcolor{keyword}{true};\ \textcolor{comment}{//\ Track\ if\ chunk\ data\ needs\ GPU\ upload}}
+\DoxyCodeLine{00127\ }
+\DoxyCodeLine{00128\ \ \ \ \ \textcolor{comment}{//\ Max\ load\ distance\ for\ dynamic\ render\ distance\ culling}}
+\DoxyCodeLine{00129\ \ \ \ \ \textcolor{keywordtype}{int}\ \_maxLoadDistance\ =\ 24;\ \textcolor{comment}{//\ Default\ to\ 24\ chunks}}
+\DoxyCodeLine{00130\ }
+\DoxyCodeLine{00131\ \ \ \ \ \textcolor{comment}{//\ Upload\ throttling\ to\ reduce\ GPU\ overhead}}
+\DoxyCodeLine{00132\ \ \ \ \ uint32\_t\ \_dirtyChunkCount\ =\ 0;}
+\DoxyCodeLine{00133\ \ \ \ \ std::chrono::steady\_clock::time\_point\ \_lastUploadTime\ =\ std::chrono::steady\_clock::now();}
+\DoxyCodeLine{00134\ \ \ \ \ \textcolor{keyword}{static}\ \textcolor{keyword}{constexpr}\ uint32\_t\ MIN\_CHUNKS\_FOR\_UPLOAD\ =\ 32;\ \ \ \ \ \ \textcolor{comment}{//\ Batch\ at\ least\ this\ many}}
+\DoxyCodeLine{00135\ \ \ \ \ \textcolor{keyword}{static}\ \textcolor{keyword}{constexpr}\ uint32\_t\ MAX\_MS\_BETWEEN\_UPLOADS\ =\ 16;\ \ \ \ \ \textcolor{comment}{//\ Or\ upload\ every\ 16ms}}
+\DoxyCodeLine{00136\ \ \ \ \ \textcolor{keyword}{static}\ \textcolor{keyword}{constexpr}\ uint32\_t\ MAX\_MESHES\_PER\_BATCH\ =\ 256;\ \ \ \ \ \ \textcolor{comment}{//\ Process\ max\ 256\ meshes/frame}}
+\DoxyCodeLine{00137\ }
+\DoxyCodeLine{00138\ \ \ \ \ uint32\_t\ \_adaptiveMinChunks\ =\ MIN\_CHUNKS\_FOR\_UPLOAD;\ \ \ \ \ \ \ \textcolor{comment}{//\ Adjusts\ between\ 8-\/64}}
+\DoxyCodeLine{00139\ \ \ \ \ uint32\_t\ \_adaptiveMaxMs\ =\ MAX\_MS\_BETWEEN\_UPLOADS;\ \ \ \ \ \ \ \ \ \ \textcolor{comment}{//\ Adjusts\ between\ 8-\/32ms}}
+\DoxyCodeLine{00140\ \ \ \ \ uint32\_t\ \_adaptiveMaxMeshes\ =\ MAX\_MESHES\_PER\_BATCH;\ \ \ \ \ \ \ \ \textcolor{comment}{//\ Adjusts\ between\ 64-\/512}}
+\DoxyCodeLine{00141\ \ \ \ \ std::chrono::steady\_clock::time\_point\ \_lastFrameTime\ =\ std::chrono::steady\_clock::now();}
+\DoxyCodeLine{00142\ \ \ \ \ \textcolor{keywordtype}{float}\ \_avgFrameTimeMs\ =\ 16.67f;\ \textcolor{comment}{//\ Target\ 60\ FPS}}
+\DoxyCodeLine{00143\ }
+\DoxyCodeLine{00144\ \ \ \ \ std::vector<bool>\ \_dirtyChunkIndices;\ \textcolor{comment}{//\ Tracks\ which\ specific\ chunks\ need\ upload}}
+\DoxyCodeLine{00145\ \ \ \ \ std::vector<uint32\_t>\ \_dirtyChunkList;\ \textcolor{comment}{//\ Compact\ list\ of\ dirty\ indices\ (for\ efficient\ iteration)}}
+\DoxyCodeLine{00146\ }
+\DoxyCodeLine{00147\ \ \ \ \ \textcolor{comment}{//\ Descriptor\ set\ for\ chunk\ data\ SSBO}}
+\DoxyCodeLine{00148\ \ \ \ \ VkDescriptorSetLayout\ \_chunkSetLayout\ =\ VK\_NULL\_HANDLE;}
+\DoxyCodeLine{00149\ \ \ \ \ std::array<VkDescriptorSet,\ CHUNK\_BUFFER\_COUNT>\ \_chunkDescriptorSets\ =\ \{\};\ \textcolor{comment}{//\ Points\ to\ \_chunkDataBuffers[i]\ (input)}}
+\DoxyCodeLine{00150\ \ \ \ \ VkDescriptorSet\ \_culledChunkDescriptorSet\ =}
+\DoxyCodeLine{00151\ \ \ \ \ \ \ \ \ VK\_NULL\_HANDLE;\ \textcolor{comment}{//\ Points\ to\ \_culledChunkDataBuffer\ (output)}}
+\DoxyCodeLine{00152\ }
+\DoxyCodeLine{00153\ \ \ \ \ \textcolor{comment}{//\ Mesh\ shader\ pipeline\ resources}}
+\DoxyCodeLine{00154\ \ \ \ \ VkDescriptorSetLayout\ \_meshShaderSetLayout\ =}
+\DoxyCodeLine{00155\ \ \ \ \ \ \ \ \ VK\_NULL\_HANDLE;\ \textcolor{comment}{//\ Set\ 0:\ Camera,\ chunk\ data,\ index\ buffer}}
+\DoxyCodeLine{00156\ \ \ \ \ VkDescriptorSetLayout\ \_meshShaderFragSetLayout\ =}
+\DoxyCodeLine{00157\ \ \ \ \ \ \ \ \ VK\_NULL\_HANDLE;\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \textcolor{comment}{//\ Set\ 1:\ Texture\ atlas\ for\ fragment}}
+\DoxyCodeLine{00158\ \ \ \ \ std::array<VkDescriptorSet,\ CHUNK\_BUFFER\_COUNT>\ \_meshShaderDescriptorSets\ =\ \{\};\ \textcolor{comment}{//\ Set\ 0\ descriptor\ sets}}
+\DoxyCodeLine{00159\ \ \ \ \ VkDescriptorSet\ \_meshShaderFragDescriptorSet\ =\ VK\_NULL\_HANDLE;\ \textcolor{comment}{//\ Set\ 1\ descriptor\ set}}
+\DoxyCodeLine{00160\ \ \ \ \ Pipeline\ \_meshShaderWireframePipeline;\ \textcolor{comment}{//\ Wireframe\ variant\ for\ debugging\ (F1\ toggle)}}
+\DoxyCodeLine{00161\ \ \ \ \ AllocatedBuffer\ \_cameraUniformBuffer;\ \ \textcolor{comment}{//\ GPUCameraData\ UBO\ for\ task/mesh\ shaders}}
+\DoxyCodeLine{00162\ \ \ \ \ \textcolor{keywordtype}{bool}\ \_useMeshShaders\ =\ \textcolor{keyword}{false};\ \ \ \ \ \ \ \ \ \ \textcolor{comment}{//\ Runtime\ toggle\ for\ mesh\ shader\ path}}
+\DoxyCodeLine{00163\ \ \ \ \ PFN\_vkCmdDrawMeshTasksEXT\ \_vkCmdDrawMeshTasksEXT\ =\ \textcolor{keyword}{nullptr};\ \textcolor{comment}{//\ Extension\ function\ pointer}}
+\DoxyCodeLine{00164\ \ \ \ \ uint32\_t\ \_maxMeshWorkgroupsPerTask\ =\ 1;\ \textcolor{comment}{//\ Device\ limit\ for\ mesh\ workgroups\ per\ task\ workgroup}}
+\DoxyCodeLine{00165\ }
+\DoxyCodeLine{00166\ \ \ \ \ \textcolor{comment}{//\ Flag\ to\ defer\ index\ buffer\ resize\ descriptor\ updates\ to\ safe\ frame\ point}}
+\DoxyCodeLine{00167\ \ \ \ \ \textcolor{keywordtype}{bool}\ \_indexBufferResizePending\ =\ \textcolor{keyword}{false};}
+\DoxyCodeLine{00168\ }
+\DoxyCodeLine{00169\ \ \ \ \ \textcolor{comment}{//\ -\/-\/-\/\ GPU\ Frustum\ Culling\ Resources\ (DISABLED\ -\/\ incompatible\ with\ mesh\ shaders)\ -\/-\/-\/}}
+\DoxyCodeLine{00170\ \ \ \ \ Pipeline\ \_frustumCullPipeline;}
+\DoxyCodeLine{00171\ \ \ \ \ VkPipelineLayout\ \_frustumCullPipelineLayout\ =\ VK\_NULL\_HANDLE;}
+\DoxyCodeLine{00172\ \ \ \ \ VkDescriptorSetLayout\ \_frustumCullSetLayout\ =\ VK\_NULL\_HANDLE;}
+\DoxyCodeLine{00173\ \ \ \ \ VkDescriptorSet\ \_frustumCullDescriptorSet\ =\ VK\_NULL\_HANDLE;}
+\DoxyCodeLine{00174\ }
+\DoxyCodeLine{00175\ \ \ \ \ \textcolor{comment}{//\ Buffers\ for\ compute\ culling}}
+\DoxyCodeLine{00176\ \ \ \ \ AllocatedBuffer\ \_frustumUniformBuffer;\ \ \textcolor{comment}{//\ GPUFrustumData\ uniform\ buffer}}
+\DoxyCodeLine{00177\ \ \ \ \ AllocatedBuffer\ \_culledIndirectBuffer;\ \ \textcolor{comment}{//\ Output\ indirect\ commands\ from\ compute}}
+\DoxyCodeLine{00178\ \ \ \ \ AllocatedBuffer\ \_culledChunkDataBuffer;\ \textcolor{comment}{//\ Output\ chunk\ data\ from\ compute}}
+\DoxyCodeLine{00179\ }
+\DoxyCodeLine{00180\ \ \ \ \ \textcolor{comment}{//\ Push\ constants\ for\ compute\ shader}}
+\DoxyCodeLine{00181\ \ \ \ \ \textcolor{keyword}{struct\ }ComputePushConstants\ \{}
+\DoxyCodeLine{00182\ \ \ \ \ \ \ \ \ uint32\_t\ totalChunks;}
+\DoxyCodeLine{00183\ \ \ \ \ \ \ \ \ \textcolor{keywordtype}{float}\ chunkSize;}
+\DoxyCodeLine{00184\ \ \ \ \ \ \ \ \ uint32\_t\ debugMode;\ \textcolor{comment}{//\ Bit\ flags:\ 1=skip\ distance,\ 2=skip\ sphere,\ 4=skip\ AABB}}
+\DoxyCodeLine{00185\ \ \ \ \ \ \ \ \ uint32\_t\ \_padding2;}
+\DoxyCodeLine{00186\ \ \ \ \ \};}
+\DoxyCodeLine{00187\ }
+\DoxyCodeLine{00188\ \ \ \ \ \textcolor{comment}{//\ Statistics}}
+\DoxyCodeLine{00189\ \ \ \ \ CullingStats\ \_cullingStats\{\};}
+\DoxyCodeLine{00190\ }
+\DoxyCodeLine{00191\ \ \ \ \ \textcolor{comment}{//\ GPU\ frustum\ culling\ is\ DISABLED\ -\/\ task\ shader\ does\ culling\ instead}}
+\DoxyCodeLine{00192\ \ \ \ \ \textcolor{comment}{//\ Compute\ shader\ path\ is\ fundamentally\ incompatible\ with\ mesh\ shader\ pipeline}}
+\DoxyCodeLine{00193\ \ \ \ \ \textcolor{comment}{//\ Task\ shader\ performs\ per-\/chunk\ culling\ before\ mesh\ shader\ dispatch}}
+\DoxyCodeLine{00194\ \ \ \ \ \textcolor{comment}{//\ For\ traditional\ path:\ overhead\ >\ savings\ (300μs\ culling\ vs\ 13.8μs\ draw)}}
+\DoxyCodeLine{00195\ \ \ \ \ \textcolor{keywordtype}{bool}\ \_enableGPUCulling\ =\ \textcolor{keyword}{false};\ \ \ \ \ \ \ \ \ \ \textcolor{comment}{//\ DISABLED\ -\/\ mesh\ shaders\ use\ task\ shader\ culling}}
+\DoxyCodeLine{00196\ \ \ \ \ \textcolor{keywordtype}{bool}\ \_supportsDrawIndirectCount\ =\ \textcolor{keyword}{false};\ \textcolor{comment}{//\ Runtime\ feature\ check}}
+\DoxyCodeLine{00197\ }
+\DoxyCodeLine{00198\ \ \ \ \ \textcolor{comment}{//\ Frustum\ caching\ (avoid\ rebuilding/uploading\ every\ frame)}}
+\DoxyCodeLine{00199\ \ \ \ \ \textcolor{keyword}{mutable}\ glm::mat4\ \_cachedProjection\{0.0f\};}
+\DoxyCodeLine{00200\ \ \ \ \ \textcolor{keyword}{mutable}\ std::array<glm::vec4,\ 6>\ \_cachedFrustumPlanes\{\};}
+\DoxyCodeLine{00201\ \ \ \ \ \textcolor{keyword}{mutable}\ glm::vec3\ \_cachedCameraPos\{0.0f\};}
+\DoxyCodeLine{00202\ \ \ \ \ \textcolor{keyword}{mutable}\ \textcolor{keywordtype}{bool}\ \_frustumDirty\ =\ \textcolor{keyword}{true};}
+\DoxyCodeLine{00203\ \};}
+
+\end{DoxyCode}

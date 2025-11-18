@@ -1,0 +1,41 @@
+\doxysection{Command\+Executor Class Reference}
+\hypertarget{classCommandExecutor}{}\label{classCommandExecutor}\index{CommandExecutor@{CommandExecutor}}
+\doxysubsubsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\Hypertarget{classCommandExecutor_af7e9307ee27cd198c3edcaa5739ea91c}\label{classCommandExecutor_af7e9307ee27cd198c3edcaa5739ea91c} 
+{\bfseries Command\+Executor} (\mbox{\hyperlink{classVulkanDevice}{Vulkan\+Device}} \&device, \mbox{\hyperlink{classRenderContext}{Render\+Context}} \&context)
+\item 
+\Hypertarget{classCommandExecutor_a4d14afa6f23c525da40aa1c9f223e79c}\label{classCommandExecutor_a4d14afa6f23c525da40aa1c9f223e79c} 
+{\bfseries Command\+Executor} (const \mbox{\hyperlink{classCommandExecutor}{Command\+Executor}} \&)=delete
+\item 
+\Hypertarget{classCommandExecutor_a50f2fe347fbe455cd18a797c4e9c5960}\label{classCommandExecutor_a50f2fe347fbe455cd18a797c4e9c5960} 
+\mbox{\hyperlink{classCommandExecutor}{Command\+Executor}} \& {\bfseries operator=} (const \mbox{\hyperlink{classCommandExecutor}{Command\+Executor}} \&)=delete
+\item 
+\Hypertarget{classCommandExecutor_acb095ef0e65bc17c14c3a36cc8a97327}\label{classCommandExecutor_acb095ef0e65bc17c14c3a36cc8a97327} 
+{\bfseries Command\+Executor} (\mbox{\hyperlink{classCommandExecutor}{Command\+Executor}} \&\&)=delete
+\item 
+\Hypertarget{classCommandExecutor_abc64760257143d5e727f99aa981e726e}\label{classCommandExecutor_abc64760257143d5e727f99aa981e726e} 
+\mbox{\hyperlink{classCommandExecutor}{Command\+Executor}} \& {\bfseries operator=} (\mbox{\hyperlink{classCommandExecutor}{Command\+Executor}} \&\&)=delete
+\item 
+\Hypertarget{classCommandExecutor_a8b4b58d51d55d84a991259e031f39338}\label{classCommandExecutor_a8b4b58d51d55d84a991259e031f39338} 
+void {\bfseries transition\+Image} (Vk\+Command\+Buffer cmd, Vk\+Image image, Vk\+Image\+Layout old\+Layout, Vk\+Image\+Layout new\+Layout) const
+\item 
+\Hypertarget{classCommandExecutor_aa237a08a3ecf6db0b8309ea85f1a0359}\label{classCommandExecutor_aa237a08a3ecf6db0b8309ea85f1a0359} 
+void {\bfseries copy\+Image\+To\+Image} (Vk\+Command\+Buffer cmd, Vk\+Image source, Vk\+Image destination, Vk\+Extent2D src\+Size, Vk\+Extent2D dst\+Size)
+\item 
+\Hypertarget{classCommandExecutor_a890e066c0688ab677ade2cce4331b663}\label{classCommandExecutor_a890e066c0688ab677ade2cce4331b663} 
+void {\bfseries immediate\+Submit} (std\+::function$<$ void(Vk\+Command\+Buffer cmd)$>$ \&\&function)
+\end{DoxyCompactItemize}
+\doxysubsubsection*{Static Public Attributes}
+\begin{DoxyCompactItemize}
+\item 
+\Hypertarget{classCommandExecutor_a9c10502364dbdbf0efdc5b83dccdc5e6}\label{classCommandExecutor_a9c10502364dbdbf0efdc5b83dccdc5e6} 
+static constexpr uint64\+\_\+t {\bfseries VULKAN\+\_\+\+TIMEOUT\+\_\+\+NS} = 10000000000
+\end{DoxyCompactItemize}
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+src/client/\+Graphics/\+Rendering/Command\+Executor.\+hpp\item 
+src/client/\+Graphics/\+Rendering/Command\+Executor.\+cpp\end{DoxyCompactItemize}

@@ -1,0 +1,24 @@
+\doxysection{Vulkan\+Types.\+hpp}
+\hypertarget{VulkanTypes_8hpp_source}{}\label{VulkanTypes_8hpp_source}\index{src/client/Graphics/Core/VulkanTypes.hpp@{src/client/Graphics/Core/VulkanTypes.hpp}}
+
+\begin{DoxyCode}{0}
+\DoxyCodeLine{00001\ \textcolor{preprocessor}{\#pragma\ once}}
+\DoxyCodeLine{00002\ }
+\DoxyCodeLine{00003\ \textcolor{preprocessor}{\#include\ <vk\_mem\_alloc.h>}}
+\DoxyCodeLine{00004\ }
+\DoxyCodeLine{00005\ \textcolor{preprocessor}{\#include\ <vulkan/vulkan.h>}}
+\DoxyCodeLine{00006\ }
+\DoxyCodeLine{00007\ \textcolor{keyword}{struct\ }\mbox{\hyperlink{structAllocatedBuffer}{AllocatedBuffer}}\ \{}
+\DoxyCodeLine{00008\ \ \ \ \ VkBuffer\ buffer;}
+\DoxyCodeLine{00009\ \ \ \ \ VmaAllocation\ allocation;}
+\DoxyCodeLine{00010\ \ \ \ \ VmaAllocationInfo\ info;}
+\DoxyCodeLine{00011\ \};}
+\DoxyCodeLine{00012\ }
+\DoxyCodeLine{00013\ \textcolor{comment}{//\ holds\ the\ resources\ needed\ for\ a\ mesh}}
+\DoxyCodeLine{00014\ \textcolor{keyword}{struct\ }\mbox{\hyperlink{structGPUMeshBuffers}{GPUMeshBuffers}}\ \{}
+\DoxyCodeLine{00015\ \ \ \ \ \mbox{\hyperlink{structAllocatedBuffer}{AllocatedBuffer}}\ indexBuffer;}
+\DoxyCodeLine{00016\ \ \ \ \ \mbox{\hyperlink{structAllocatedBuffer}{AllocatedBuffer}}\ vertexBuffer;}
+\DoxyCodeLine{00017\ \ \ \ \ VkDeviceAddress\ vertexBufferAddress;}
+\DoxyCodeLine{00018\ \};}
+
+\end{DoxyCode}

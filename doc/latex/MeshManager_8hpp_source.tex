@@ -1,0 +1,44 @@
+\doxysection{Mesh\+Manager.\+hpp}
+\hypertarget{MeshManager_8hpp_source}{}\label{MeshManager_8hpp_source}\index{src/client/Graphics/Voxel/MeshManager.hpp@{src/client/Graphics/Voxel/MeshManager.hpp}}
+
+\begin{DoxyCode}{0}
+\DoxyCodeLine{00001\ \textcolor{preprocessor}{\#pragma\ once}}
+\DoxyCodeLine{00002\ }
+\DoxyCodeLine{00003\ \textcolor{preprocessor}{\#include\ <functional>}}
+\DoxyCodeLine{00004\ \textcolor{preprocessor}{\#include\ <span>}}
+\DoxyCodeLine{00005\ }
+\DoxyCodeLine{00006\ \textcolor{preprocessor}{\#include\ <vulkan/vulkan.h>}}
+\DoxyCodeLine{00007\ }
+\DoxyCodeLine{00008\ \textcolor{preprocessor}{\#include\ "{}../Core/VulkanTypes.hpp"{}}}
+\DoxyCodeLine{00009\ \textcolor{preprocessor}{\#include\ "{}common/Types/RenderTypes.hpp"{}}}
+\DoxyCodeLine{00010\ }
+\DoxyCodeLine{00011\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classVulkanDevice}{VulkanDevice}};}
+\DoxyCodeLine{00012\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classVulkanBuffer}{VulkanBuffer}};}
+\DoxyCodeLine{00013\ }
+\DoxyCodeLine{00014\ \textcolor{keyword}{class\ }MeshManager\ \{}
+\DoxyCodeLine{00015\ \ \ \textcolor{keyword}{public}:}
+\DoxyCodeLine{00016\ \ \ \ \ MeshManager(\mbox{\hyperlink{classVulkanDevice}{VulkanDevice}}\&\ device,\ \mbox{\hyperlink{classVulkanBuffer}{VulkanBuffer}}\&\ bufferManager);}
+\DoxyCodeLine{00017\ \ \ \ \ \string~MeshManager()\ =\ \textcolor{keywordflow}{default};}
+\DoxyCodeLine{00018\ }
+\DoxyCodeLine{00019\ \ \ \ \ MeshManager(\textcolor{keyword}{const}\ MeshManager\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00020\ \ \ \ \ MeshManager\&\ operator=(\textcolor{keyword}{const}\ MeshManager\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00021\ \ \ \ \ MeshManager(MeshManager\&\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00022\ \ \ \ \ MeshManager\&\ operator=(MeshManager\&\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00023\ }
+\DoxyCodeLine{00024\ \ \ \ \ \textcolor{comment}{//\ Overload\ for\ packed\ uint32\_t\ voxel\ vertices}}
+\DoxyCodeLine{00025\ \ \ \ \ \mbox{\hyperlink{structGPUMeshBuffers}{GPUMeshBuffers}}}
+\DoxyCodeLine{00026\ \ \ \ \ uploadMesh(std::span<uint32\_t>\ indices,\ std::span<uint32\_t>\ vertices,}
+\DoxyCodeLine{00027\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \textcolor{keyword}{const}\ std::function<\textcolor{keywordtype}{void}(std::function<\textcolor{keywordtype}{void}(VkCommandBuffer)>\&\&)>\&\ immediateSubmit);}
+\DoxyCodeLine{00028\ }
+\DoxyCodeLine{00029\ \ \ \ \ \textcolor{comment}{//\ Original\ overload\ for\ general\ Vertex\ struct}}
+\DoxyCodeLine{00030\ \ \ \ \ \mbox{\hyperlink{structGPUMeshBuffers}{GPUMeshBuffers}}}
+\DoxyCodeLine{00031\ \ \ \ \ uploadMesh(std::span<uint32\_t>\ indices,\ std::span<Vertex>\ vertices,}
+\DoxyCodeLine{00032\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \textcolor{keyword}{const}\ std::function<\textcolor{keywordtype}{void}(std::function<\textcolor{keywordtype}{void}(VkCommandBuffer)>\&\&)>\&\ immediateSubmit);}
+\DoxyCodeLine{00033\ \ \ \ \ \textcolor{keywordtype}{void}\ destroyMesh(\textcolor{keyword}{const}\ \mbox{\hyperlink{structGPUMeshBuffers}{GPUMeshBuffers}}\&\ mesh);}
+\DoxyCodeLine{00034\ }
+\DoxyCodeLine{00035\ \ \ \textcolor{keyword}{private}:}
+\DoxyCodeLine{00036\ \ \ \ \ \mbox{\hyperlink{classVulkanDevice}{VulkanDevice}}\&\ \_device;}
+\DoxyCodeLine{00037\ \ \ \ \ \mbox{\hyperlink{classVulkanBuffer}{VulkanBuffer}}\&\ \_bufferManager;}
+\DoxyCodeLine{00038\ \};}
+
+\end{DoxyCode}

@@ -1,0 +1,275 @@
+\doxysection{Tracy\+Memory.\+hpp}
+\hypertarget{TracyMemory_8hpp_source}{}\label{TracyMemory_8hpp_source}\index{src/common/Util/TracyMemory.hpp@{src/common/Util/TracyMemory.hpp}}
+
+\begin{DoxyCode}{0}
+\DoxyCodeLine{00001\ \textcolor{preprocessor}{\#pragma\ once}}
+\DoxyCodeLine{00002\ }
+\DoxyCodeLine{00003\ \textcolor{preprocessor}{\#include\ <cstddef>}}
+\DoxyCodeLine{00004\ \textcolor{preprocessor}{\#include\ <cstdlib>}}
+\DoxyCodeLine{00005\ \textcolor{preprocessor}{\#include\ <new>}}
+\DoxyCodeLine{00006\ }
+\DoxyCodeLine{00007\ \textcolor{preprocessor}{\#include\ <tracy/Tracy.hpp>}}
+\DoxyCodeLine{00008\ }
+\DoxyCodeLine{00025\ }
+\DoxyCodeLine{00026\ \textcolor{comment}{//\ Regular\ new/delete\ (single\ object)}}
+\DoxyCodeLine{00027\ }
+\DoxyCodeLine{00028\ \textcolor{keywordtype}{void}*\ \textcolor{keyword}{operator}\ \textcolor{keyword}{new}(std::size\_t\ size)\ \{}
+\DoxyCodeLine{00029\ \ \ \ \ \textcolor{keywordtype}{void}*\ ptr\ =\ std::malloc(size);}
+\DoxyCodeLine{00030\ \ \ \ \ \textcolor{keywordflow}{if}\ (!ptr)\ \{}
+\DoxyCodeLine{00031\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{throw}\ std::bad\_alloc();}
+\DoxyCodeLine{00032\ \ \ \ \ \}}
+\DoxyCodeLine{00033\ \textcolor{preprocessor}{\#ifdef\ TRACY\_ENABLE}}
+\DoxyCodeLine{00034\ \ \ \ \ TracyAlloc(ptr,\ size);}
+\DoxyCodeLine{00035\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00036\ \ \ \ \ \textcolor{keywordflow}{return}\ ptr;}
+\DoxyCodeLine{00037\ \}}
+\DoxyCodeLine{00038\ }
+\DoxyCodeLine{00039\ \textcolor{keywordtype}{void}\ \textcolor{keyword}{operator}\ \textcolor{keyword}{delete}(\textcolor{keywordtype}{void}*\ ptr)\ \textcolor{keyword}{noexcept}\ \{}
+\DoxyCodeLine{00040\ \ \ \ \ \textcolor{keywordflow}{if}\ (!ptr)}
+\DoxyCodeLine{00041\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return};}
+\DoxyCodeLine{00042\ \textcolor{preprocessor}{\#ifdef\ TRACY\_ENABLE}}
+\DoxyCodeLine{00043\ \ \ \ \ TracyFree(ptr);}
+\DoxyCodeLine{00044\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00045\ \ \ \ \ std::free(ptr);}
+\DoxyCodeLine{00046\ \}}
+\DoxyCodeLine{00047\ }
+\DoxyCodeLine{00048\ \textcolor{comment}{//\ Array\ new[]/delete[]\ (arrays)}}
+\DoxyCodeLine{00049\ }
+\DoxyCodeLine{00050\ \textcolor{keywordtype}{void}*\ \textcolor{keyword}{operator}\ \textcolor{keyword}{new}[](std::size\_t\ size)\ \{}
+\DoxyCodeLine{00051\ \ \ \ \ \textcolor{keywordtype}{void}*\ ptr\ =\ std::malloc(size);}
+\DoxyCodeLine{00052\ \ \ \ \ \textcolor{keywordflow}{if}\ (!ptr)\ \{}
+\DoxyCodeLine{00053\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{throw}\ std::bad\_alloc();}
+\DoxyCodeLine{00054\ \ \ \ \ \}}
+\DoxyCodeLine{00055\ \textcolor{preprocessor}{\#ifdef\ TRACY\_ENABLE}}
+\DoxyCodeLine{00056\ \ \ \ \ TracyAlloc(ptr,\ size);}
+\DoxyCodeLine{00057\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00058\ \ \ \ \ \textcolor{keywordflow}{return}\ ptr;}
+\DoxyCodeLine{00059\ \}}
+\DoxyCodeLine{00060\ }
+\DoxyCodeLine{00061\ \textcolor{keywordtype}{void}\ \textcolor{keyword}{operator}\ \textcolor{keyword}{delete}[](\textcolor{keywordtype}{void}*\ ptr)\ \textcolor{keyword}{noexcept}\ \{}
+\DoxyCodeLine{00062\ \ \ \ \ \textcolor{keywordflow}{if}\ (!ptr)}
+\DoxyCodeLine{00063\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return};}
+\DoxyCodeLine{00064\ \textcolor{preprocessor}{\#ifdef\ TRACY\_ENABLE}}
+\DoxyCodeLine{00065\ \ \ \ \ TracyFree(ptr);}
+\DoxyCodeLine{00066\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00067\ \ \ \ \ std::free(ptr);}
+\DoxyCodeLine{00068\ \}}
+\DoxyCodeLine{00069\ }
+\DoxyCodeLine{00070\ \textcolor{comment}{//\ Sized\ delete\ (C++14)\ -\/\ provides\ size\ hint\ for\ better\ tracking}}
+\DoxyCodeLine{00071\ }
+\DoxyCodeLine{00072\ \textcolor{keywordtype}{void}\ \textcolor{keyword}{operator}\ \textcolor{keyword}{delete}(\textcolor{keywordtype}{void}*\ ptr,\ std::size\_t\ size)\ \textcolor{keyword}{noexcept}\ \{}
+\DoxyCodeLine{00073\ \ \ \ \ \textcolor{keywordflow}{if}\ (!ptr)}
+\DoxyCodeLine{00074\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return};}
+\DoxyCodeLine{00075\ \textcolor{preprocessor}{\#ifdef\ TRACY\_ENABLE}}
+\DoxyCodeLine{00076\ \ \ \ \ TracyFree(ptr);}
+\DoxyCodeLine{00077\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00078\ \ \ \ \ std::free(ptr);}
+\DoxyCodeLine{00079\ \ \ \ \ (void)size;\ \textcolor{comment}{//\ Size\ is\ primarily\ for\ optimization,\ not\ needed\ with\ malloc/free}}
+\DoxyCodeLine{00080\ \}}
+\DoxyCodeLine{00081\ }
+\DoxyCodeLine{00082\ \textcolor{keywordtype}{void}\ \textcolor{keyword}{operator}\ \textcolor{keyword}{delete}[](\textcolor{keywordtype}{void}*\ ptr,\ std::size\_t\ size)\ \textcolor{keyword}{noexcept}\ \{}
+\DoxyCodeLine{00083\ \ \ \ \ \textcolor{keywordflow}{if}\ (!ptr)}
+\DoxyCodeLine{00084\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return};}
+\DoxyCodeLine{00085\ \textcolor{preprocessor}{\#ifdef\ TRACY\_ENABLE}}
+\DoxyCodeLine{00086\ \ \ \ \ TracyFree(ptr);}
+\DoxyCodeLine{00087\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00088\ \ \ \ \ std::free(ptr);}
+\DoxyCodeLine{00089\ \ \ \ \ (void)size;\ \textcolor{comment}{//\ Size\ is\ primarily\ for\ optimization,\ not\ needed\ with\ malloc/free}}
+\DoxyCodeLine{00090\ \}}
+\DoxyCodeLine{00091\ }
+\DoxyCodeLine{00092\ \textcolor{comment}{//\ Aligned\ allocation\ (C++17)\ -\/\ for\ over-\/aligned\ types}}
+\DoxyCodeLine{00093\ }
+\DoxyCodeLine{00094\ \textcolor{preprocessor}{\#if\ \_\_cplusplus\ >=\ 201703L\ ||\ (defined(\_MSVC\_LANG)\ \&\&\ \_MSVC\_LANG\ >=\ 201703L)}}
+\DoxyCodeLine{00095\ }
+\DoxyCodeLine{00096\ \textcolor{keywordtype}{void}*\ \textcolor{keyword}{operator}\ \textcolor{keyword}{new}(std::size\_t\ size,\ std::align\_val\_t\ alignment)\ \{}
+\DoxyCodeLine{00097\ \textcolor{preprocessor}{\#ifdef\ \_WIN32}}
+\DoxyCodeLine{00098\ \ \ \ \ \textcolor{keywordtype}{void}*\ ptr\ =\ \_aligned\_malloc(size,\ \textcolor{keyword}{static\_cast<}std::size\_t\textcolor{keyword}{>}(alignment));}
+\DoxyCodeLine{00099\ \textcolor{preprocessor}{\#else}}
+\DoxyCodeLine{00100\ \ \ \ \ \textcolor{keywordtype}{void}*\ ptr\ =\ std::aligned\_alloc(\textcolor{keyword}{static\_cast<}std::size\_t\textcolor{keyword}{>}(alignment),\ size);}
+\DoxyCodeLine{00101\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00102\ \ \ \ \ \textcolor{keywordflow}{if}\ (!ptr)\ \{}
+\DoxyCodeLine{00103\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{throw}\ std::bad\_alloc();}
+\DoxyCodeLine{00104\ \ \ \ \ \}}
+\DoxyCodeLine{00105\ \textcolor{preprocessor}{\#ifdef\ TRACY\_ENABLE}}
+\DoxyCodeLine{00106\ \ \ \ \ TracyAlloc(ptr,\ size);}
+\DoxyCodeLine{00107\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00108\ \ \ \ \ \textcolor{keywordflow}{return}\ ptr;}
+\DoxyCodeLine{00109\ \}}
+\DoxyCodeLine{00110\ }
+\DoxyCodeLine{00111\ \textcolor{keywordtype}{void}\ \textcolor{keyword}{operator}\ \textcolor{keyword}{delete}(\textcolor{keywordtype}{void}*\ ptr,\ std::align\_val\_t\ alignment)\ \textcolor{keyword}{noexcept}\ \{}
+\DoxyCodeLine{00112\ \ \ \ \ \textcolor{keywordflow}{if}\ (!ptr)}
+\DoxyCodeLine{00113\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return};}
+\DoxyCodeLine{00114\ \textcolor{preprocessor}{\#ifdef\ TRACY\_ENABLE}}
+\DoxyCodeLine{00115\ \ \ \ \ TracyFree(ptr);}
+\DoxyCodeLine{00116\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00117\ \textcolor{preprocessor}{\#ifdef\ \_WIN32}}
+\DoxyCodeLine{00118\ \ \ \ \ \_aligned\_free(ptr);}
+\DoxyCodeLine{00119\ \textcolor{preprocessor}{\#else}}
+\DoxyCodeLine{00120\ \ \ \ \ std::free(ptr);}
+\DoxyCodeLine{00121\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00122\ \ \ \ \ (void)alignment;}
+\DoxyCodeLine{00123\ \}}
+\DoxyCodeLine{00124\ }
+\DoxyCodeLine{00125\ \textcolor{keywordtype}{void}*\ \textcolor{keyword}{operator}\ \textcolor{keyword}{new}[](std::size\_t\ size,\ std::align\_val\_t\ alignment)\ \{}
+\DoxyCodeLine{00126\ \textcolor{preprocessor}{\#ifdef\ \_WIN32}}
+\DoxyCodeLine{00127\ \ \ \ \ \textcolor{keywordtype}{void}*\ ptr\ =\ \_aligned\_malloc(size,\ \textcolor{keyword}{static\_cast<}std::size\_t\textcolor{keyword}{>}(alignment));}
+\DoxyCodeLine{00128\ \textcolor{preprocessor}{\#else}}
+\DoxyCodeLine{00129\ \ \ \ \ \textcolor{keywordtype}{void}*\ ptr\ =\ std::aligned\_alloc(\textcolor{keyword}{static\_cast<}std::size\_t\textcolor{keyword}{>}(alignment),\ size);}
+\DoxyCodeLine{00130\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00131\ \ \ \ \ \textcolor{keywordflow}{if}\ (!ptr)\ \{}
+\DoxyCodeLine{00132\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{throw}\ std::bad\_alloc();}
+\DoxyCodeLine{00133\ \ \ \ \ \}}
+\DoxyCodeLine{00134\ \textcolor{preprocessor}{\#ifdef\ TRACY\_ENABLE}}
+\DoxyCodeLine{00135\ \ \ \ \ TracyAlloc(ptr,\ size);}
+\DoxyCodeLine{00136\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00137\ \ \ \ \ \textcolor{keywordflow}{return}\ ptr;}
+\DoxyCodeLine{00138\ \}}
+\DoxyCodeLine{00139\ }
+\DoxyCodeLine{00140\ \textcolor{keywordtype}{void}\ \textcolor{keyword}{operator}\ \textcolor{keyword}{delete}[](\textcolor{keywordtype}{void}*\ ptr,\ std::align\_val\_t\ alignment)\ \textcolor{keyword}{noexcept}\ \{}
+\DoxyCodeLine{00141\ \ \ \ \ \textcolor{keywordflow}{if}\ (!ptr)}
+\DoxyCodeLine{00142\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return};}
+\DoxyCodeLine{00143\ \textcolor{preprocessor}{\#ifdef\ TRACY\_ENABLE}}
+\DoxyCodeLine{00144\ \ \ \ \ TracyFree(ptr);}
+\DoxyCodeLine{00145\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00146\ \textcolor{preprocessor}{\#ifdef\ \_WIN32}}
+\DoxyCodeLine{00147\ \ \ \ \ \_aligned\_free(ptr);}
+\DoxyCodeLine{00148\ \textcolor{preprocessor}{\#else}}
+\DoxyCodeLine{00149\ \ \ \ \ std::free(ptr);}
+\DoxyCodeLine{00150\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00151\ \ \ \ \ (void)alignment;}
+\DoxyCodeLine{00152\ \}}
+\DoxyCodeLine{00153\ }
+\DoxyCodeLine{00154\ \textcolor{comment}{//\ Sized\ +\ aligned\ delete\ (C++17)}}
+\DoxyCodeLine{00155\ \textcolor{keywordtype}{void}\ \textcolor{keyword}{operator}\ \textcolor{keyword}{delete}(\textcolor{keywordtype}{void}*\ ptr,\ std::size\_t\ size,\ std::align\_val\_t\ alignment)\ \textcolor{keyword}{noexcept}\ \{}
+\DoxyCodeLine{00156\ \ \ \ \ \textcolor{keywordflow}{if}\ (!ptr)}
+\DoxyCodeLine{00157\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return};}
+\DoxyCodeLine{00158\ \textcolor{preprocessor}{\#ifdef\ TRACY\_ENABLE}}
+\DoxyCodeLine{00159\ \ \ \ \ TracyFree(ptr);}
+\DoxyCodeLine{00160\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00161\ \textcolor{preprocessor}{\#ifdef\ \_WIN32}}
+\DoxyCodeLine{00162\ \ \ \ \ \_aligned\_free(ptr);}
+\DoxyCodeLine{00163\ \textcolor{preprocessor}{\#else}}
+\DoxyCodeLine{00164\ \ \ \ \ std::free(ptr);}
+\DoxyCodeLine{00165\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00166\ \ \ \ \ (void)size;}
+\DoxyCodeLine{00167\ \ \ \ \ (void)alignment;}
+\DoxyCodeLine{00168\ \}}
+\DoxyCodeLine{00169\ }
+\DoxyCodeLine{00170\ \textcolor{keywordtype}{void}\ \textcolor{keyword}{operator}\ \textcolor{keyword}{delete}[](\textcolor{keywordtype}{void}*\ ptr,\ std::size\_t\ size,\ std::align\_val\_t\ alignment)\ \textcolor{keyword}{noexcept}\ \{}
+\DoxyCodeLine{00171\ \ \ \ \ \textcolor{keywordflow}{if}\ (!ptr)}
+\DoxyCodeLine{00172\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return};}
+\DoxyCodeLine{00173\ \textcolor{preprocessor}{\#ifdef\ TRACY\_ENABLE}}
+\DoxyCodeLine{00174\ \ \ \ \ TracyFree(ptr);}
+\DoxyCodeLine{00175\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00176\ \textcolor{preprocessor}{\#ifdef\ \_WIN32}}
+\DoxyCodeLine{00177\ \ \ \ \ \_aligned\_free(ptr);}
+\DoxyCodeLine{00178\ \textcolor{preprocessor}{\#else}}
+\DoxyCodeLine{00179\ \ \ \ \ std::free(ptr);}
+\DoxyCodeLine{00180\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00181\ \ \ \ \ (void)size;}
+\DoxyCodeLine{00182\ \ \ \ \ (void)alignment;}
+\DoxyCodeLine{00183\ \}}
+\DoxyCodeLine{00184\ }
+\DoxyCodeLine{00185\ \textcolor{preprocessor}{\#endif\ }\textcolor{comment}{//\ C++17}}
+\DoxyCodeLine{00186\ }
+\DoxyCodeLine{00187\ \textcolor{comment}{//\ Nothrow\ variants\ -\/\ return\ nullptr\ instead\ of\ throwing\ on\ failure}}
+\DoxyCodeLine{00188\ }
+\DoxyCodeLine{00189\ \textcolor{keywordtype}{void}*\ \textcolor{keyword}{operator}\ \textcolor{keyword}{new}(std::size\_t\ size,\ \textcolor{keyword}{const}\ std::nothrow\_t\&)\ \textcolor{keyword}{noexcept}\ \{}
+\DoxyCodeLine{00190\ \ \ \ \ \textcolor{keywordtype}{void}*\ ptr\ =\ std::malloc(size);}
+\DoxyCodeLine{00191\ \textcolor{preprocessor}{\#ifdef\ TRACY\_ENABLE}}
+\DoxyCodeLine{00192\ \ \ \ \ \textcolor{keywordflow}{if}\ (ptr)\ \{}
+\DoxyCodeLine{00193\ \ \ \ \ \ \ \ \ TracyAlloc(ptr,\ size);}
+\DoxyCodeLine{00194\ \ \ \ \ \}}
+\DoxyCodeLine{00195\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00196\ \ \ \ \ \textcolor{keywordflow}{return}\ ptr;}
+\DoxyCodeLine{00197\ \}}
+\DoxyCodeLine{00198\ }
+\DoxyCodeLine{00199\ \textcolor{keywordtype}{void}*\ \textcolor{keyword}{operator}\ \textcolor{keyword}{new}[](std::size\_t\ size,\ \textcolor{keyword}{const}\ std::nothrow\_t\&)\ \textcolor{keyword}{noexcept}\ \{}
+\DoxyCodeLine{00200\ \ \ \ \ \textcolor{keywordtype}{void}*\ ptr\ =\ std::malloc(size);}
+\DoxyCodeLine{00201\ \textcolor{preprocessor}{\#ifdef\ TRACY\_ENABLE}}
+\DoxyCodeLine{00202\ \ \ \ \ \textcolor{keywordflow}{if}\ (ptr)\ \{}
+\DoxyCodeLine{00203\ \ \ \ \ \ \ \ \ TracyAlloc(ptr,\ size);}
+\DoxyCodeLine{00204\ \ \ \ \ \}}
+\DoxyCodeLine{00205\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00206\ \ \ \ \ \textcolor{keywordflow}{return}\ ptr;}
+\DoxyCodeLine{00207\ \}}
+\DoxyCodeLine{00208\ }
+\DoxyCodeLine{00209\ \textcolor{keywordtype}{void}\ \textcolor{keyword}{operator}\ \textcolor{keyword}{delete}(\textcolor{keywordtype}{void}*\ ptr,\ \textcolor{keyword}{const}\ std::nothrow\_t\&)\ \textcolor{keyword}{noexcept}\ \{}
+\DoxyCodeLine{00210\ \ \ \ \ \textcolor{keywordflow}{if}\ (!ptr)}
+\DoxyCodeLine{00211\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return};}
+\DoxyCodeLine{00212\ \textcolor{preprocessor}{\#ifdef\ TRACY\_ENABLE}}
+\DoxyCodeLine{00213\ \ \ \ \ TracyFree(ptr);}
+\DoxyCodeLine{00214\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00215\ \ \ \ \ std::free(ptr);}
+\DoxyCodeLine{00216\ \}}
+\DoxyCodeLine{00217\ }
+\DoxyCodeLine{00218\ \textcolor{keywordtype}{void}\ \textcolor{keyword}{operator}\ \textcolor{keyword}{delete}[](\textcolor{keywordtype}{void}*\ ptr,\ \textcolor{keyword}{const}\ std::nothrow\_t\&)\ \textcolor{keyword}{noexcept}\ \{}
+\DoxyCodeLine{00219\ \ \ \ \ \textcolor{keywordflow}{if}\ (!ptr)}
+\DoxyCodeLine{00220\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return};}
+\DoxyCodeLine{00221\ \textcolor{preprocessor}{\#ifdef\ TRACY\_ENABLE}}
+\DoxyCodeLine{00222\ \ \ \ \ TracyFree(ptr);}
+\DoxyCodeLine{00223\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00224\ \ \ \ \ std::free(ptr);}
+\DoxyCodeLine{00225\ \}}
+\DoxyCodeLine{00226\ }
+\DoxyCodeLine{00227\ \textcolor{preprocessor}{\#if\ \_\_cplusplus\ >=\ 201703L\ ||\ (defined(\_MSVC\_LANG)\ \&\&\ \_MSVC\_LANG\ >=\ 201703L)}}
+\DoxyCodeLine{00228\ }
+\DoxyCodeLine{00229\ \textcolor{keywordtype}{void}*\ \textcolor{keyword}{operator}\ \textcolor{keyword}{new}(std::size\_t\ size,\ std::align\_val\_t\ alignment,\ \textcolor{keyword}{const}\ std::nothrow\_t\&)\ \textcolor{keyword}{noexcept}\ \{}
+\DoxyCodeLine{00230\ \textcolor{preprocessor}{\#ifdef\ \_WIN32}}
+\DoxyCodeLine{00231\ \ \ \ \ \textcolor{keywordtype}{void}*\ ptr\ =\ \_aligned\_malloc(size,\ \textcolor{keyword}{static\_cast<}std::size\_t\textcolor{keyword}{>}(alignment));}
+\DoxyCodeLine{00232\ \textcolor{preprocessor}{\#else}}
+\DoxyCodeLine{00233\ \ \ \ \ \textcolor{keywordtype}{void}*\ ptr\ =\ std::aligned\_alloc(\textcolor{keyword}{static\_cast<}std::size\_t\textcolor{keyword}{>}(alignment),\ size);}
+\DoxyCodeLine{00234\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00235\ \textcolor{preprocessor}{\#ifdef\ TRACY\_ENABLE}}
+\DoxyCodeLine{00236\ \ \ \ \ \textcolor{keywordflow}{if}\ (ptr)\ \{}
+\DoxyCodeLine{00237\ \ \ \ \ \ \ \ \ TracyAlloc(ptr,\ size);}
+\DoxyCodeLine{00238\ \ \ \ \ \}}
+\DoxyCodeLine{00239\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00240\ \ \ \ \ \textcolor{keywordflow}{return}\ ptr;}
+\DoxyCodeLine{00241\ \}}
+\DoxyCodeLine{00242\ }
+\DoxyCodeLine{00243\ \textcolor{keywordtype}{void}*\ \textcolor{keyword}{operator}\ \textcolor{keyword}{new}[](std::size\_t\ size,\ std::align\_val\_t\ alignment,\ \textcolor{keyword}{const}\ std::nothrow\_t\&)\ \textcolor{keyword}{noexcept}\ \{}
+\DoxyCodeLine{00244\ \textcolor{preprocessor}{\#ifdef\ \_WIN32}}
+\DoxyCodeLine{00245\ \ \ \ \ \textcolor{keywordtype}{void}*\ ptr\ =\ \_aligned\_malloc(size,\ \textcolor{keyword}{static\_cast<}std::size\_t\textcolor{keyword}{>}(alignment));}
+\DoxyCodeLine{00246\ \textcolor{preprocessor}{\#else}}
+\DoxyCodeLine{00247\ \ \ \ \ \textcolor{keywordtype}{void}*\ ptr\ =\ std::aligned\_alloc(\textcolor{keyword}{static\_cast<}std::size\_t\textcolor{keyword}{>}(alignment),\ size);}
+\DoxyCodeLine{00248\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00249\ \textcolor{preprocessor}{\#ifdef\ TRACY\_ENABLE}}
+\DoxyCodeLine{00250\ \ \ \ \ \textcolor{keywordflow}{if}\ (ptr)\ \{}
+\DoxyCodeLine{00251\ \ \ \ \ \ \ \ \ TracyAlloc(ptr,\ size);}
+\DoxyCodeLine{00252\ \ \ \ \ \}}
+\DoxyCodeLine{00253\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00254\ \ \ \ \ \textcolor{keywordflow}{return}\ ptr;}
+\DoxyCodeLine{00255\ \}}
+\DoxyCodeLine{00256\ }
+\DoxyCodeLine{00257\ \textcolor{keywordtype}{void}\ \textcolor{keyword}{operator}\ \textcolor{keyword}{delete}(\textcolor{keywordtype}{void}*\ ptr,\ std::align\_val\_t\ alignment,\ \textcolor{keyword}{const}\ std::nothrow\_t\&)\ \textcolor{keyword}{noexcept}\ \{}
+\DoxyCodeLine{00258\ \ \ \ \ \textcolor{keywordflow}{if}\ (!ptr)}
+\DoxyCodeLine{00259\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return};}
+\DoxyCodeLine{00260\ \textcolor{preprocessor}{\#ifdef\ TRACY\_ENABLE}}
+\DoxyCodeLine{00261\ \ \ \ \ TracyFree(ptr);}
+\DoxyCodeLine{00262\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00263\ \textcolor{preprocessor}{\#ifdef\ \_WIN32}}
+\DoxyCodeLine{00264\ \ \ \ \ \_aligned\_free(ptr);}
+\DoxyCodeLine{00265\ \textcolor{preprocessor}{\#else}}
+\DoxyCodeLine{00266\ \ \ \ \ std::free(ptr);}
+\DoxyCodeLine{00267\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00268\ \ \ \ \ (void)alignment;}
+\DoxyCodeLine{00269\ \}}
+\DoxyCodeLine{00270\ }
+\DoxyCodeLine{00271\ \textcolor{keywordtype}{void}\ \textcolor{keyword}{operator}\ \textcolor{keyword}{delete}[](\textcolor{keywordtype}{void}*\ ptr,\ std::align\_val\_t\ alignment,\ \textcolor{keyword}{const}\ std::nothrow\_t\&)\ \textcolor{keyword}{noexcept}\ \{}
+\DoxyCodeLine{00272\ \ \ \ \ \textcolor{keywordflow}{if}\ (!ptr)}
+\DoxyCodeLine{00273\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return};}
+\DoxyCodeLine{00274\ \textcolor{preprocessor}{\#ifdef\ TRACY\_ENABLE}}
+\DoxyCodeLine{00275\ \ \ \ \ TracyFree(ptr);}
+\DoxyCodeLine{00276\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00277\ \textcolor{preprocessor}{\#ifdef\ \_WIN32}}
+\DoxyCodeLine{00278\ \ \ \ \ \_aligned\_free(ptr);}
+\DoxyCodeLine{00279\ \textcolor{preprocessor}{\#else}}
+\DoxyCodeLine{00280\ \ \ \ \ std::free(ptr);}
+\DoxyCodeLine{00281\ \textcolor{preprocessor}{\#endif}}
+\DoxyCodeLine{00282\ \ \ \ \ (void)alignment;}
+\DoxyCodeLine{00283\ \}}
+\DoxyCodeLine{00284\ }
+\DoxyCodeLine{00285\ \textcolor{preprocessor}{\#endif\ }\textcolor{comment}{//\ C++17}}
+
+\end{DoxyCode}

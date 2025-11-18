@@ -1,0 +1,33 @@
+\doxysection{Window.\+hpp}
+\hypertarget{Window_8hpp_source}{}\label{Window_8hpp_source}\index{src/client/Core/Window.hpp@{src/client/Core/Window.hpp}}
+
+\begin{DoxyCode}{0}
+\DoxyCodeLine{00001\ \textcolor{preprocessor}{\#pragma\ once}}
+\DoxyCodeLine{00002\ }
+\DoxyCodeLine{00003\ \textcolor{preprocessor}{\#include\ <string>}}
+\DoxyCodeLine{00004\ }
+\DoxyCodeLine{00005\ \textcolor{keyword}{struct\ }SDL\_Window;}
+\DoxyCodeLine{00006\ }
+\DoxyCodeLine{00007\ \textcolor{keyword}{class\ }Window\ \{}
+\DoxyCodeLine{00008\ \ \ \textcolor{keyword}{public}:}
+\DoxyCodeLine{00009\ \ \ \ \ Window(\textcolor{keywordtype}{int}\ w,\ \textcolor{keywordtype}{int}\ h,\ std::string\ name);}
+\DoxyCodeLine{00010\ \ \ \ \ \string~Window();}
+\DoxyCodeLine{00011\ }
+\DoxyCodeLine{00012\ \ \ \ \ Window(\textcolor{keyword}{const}\ Window\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00013\ \ \ \ \ Window\&\ operator=(\textcolor{keyword}{const}\ Window\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00014\ \ \ \ \ Window(Window\&\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00015\ \ \ \ \ Window\&\ operator=(Window\&\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00016\ }
+\DoxyCodeLine{00017\ \ \ \ \ [[nodiscard]]\ SDL\_Window*\ getSDLWindow()\textcolor{keyword}{\ const\ }\{\ \textcolor{keywordflow}{return}\ window;\ \}}
+\DoxyCodeLine{00018\ \ \ \ \ [[nodiscard]]\ \textcolor{keywordtype}{int}\ getWidth()\textcolor{keyword}{\ const\ }\{\ \textcolor{keywordflow}{return}\ width;\ \}}
+\DoxyCodeLine{00019\ \ \ \ \ [[nodiscard]]\ \textcolor{keywordtype}{int}\ getHeight()\textcolor{keyword}{\ const\ }\{\ \textcolor{keywordflow}{return}\ height;\ \}}
+\DoxyCodeLine{00020\ \ \ \ \ [[nodiscard]]\ \textcolor{keyword}{const}\ std::string\&\ getWindowName()\textcolor{keyword}{\ const\ }\{\ \textcolor{keywordflow}{return}\ windowName;\ \}}
+\DoxyCodeLine{00021\ }
+\DoxyCodeLine{00022\ \ \ \textcolor{keyword}{private}:}
+\DoxyCodeLine{00023\ \ \ \ \ \textcolor{keyword}{const}\ \textcolor{keywordtype}{int}\ width;}
+\DoxyCodeLine{00024\ \ \ \ \ \textcolor{keyword}{const}\ \textcolor{keywordtype}{int}\ height;}
+\DoxyCodeLine{00025\ \ \ \ \ std::string\ windowName;}
+\DoxyCodeLine{00026\ \ \ \ \ SDL\_Window*\ window;}
+\DoxyCodeLine{00027\ \};}
+
+\end{DoxyCode}

@@ -1,0 +1,100 @@
+\doxysection{App.\+hpp}
+\hypertarget{App_8hpp_source}{}\label{App_8hpp_source}\index{src/client/Core/App.hpp@{src/client/Core/App.hpp}}
+
+\begin{DoxyCode}{0}
+\DoxyCodeLine{00001\ \textcolor{preprocessor}{\#pragma\ once}}
+\DoxyCodeLine{00002\ }
+\DoxyCodeLine{00003\ \textcolor{preprocessor}{\#include\ <limits>}}
+\DoxyCodeLine{00004\ \textcolor{preprocessor}{\#include\ <memory>}}
+\DoxyCodeLine{00005\ \textcolor{preprocessor}{\#include\ <unordered\_set>}}
+\DoxyCodeLine{00006\ \textcolor{preprocessor}{\#include\ <vector>}}
+\DoxyCodeLine{00007\ }
+\DoxyCodeLine{00008\ \textcolor{preprocessor}{\#include\ <glm/vec3.hpp>}}
+\DoxyCodeLine{00009\ \textcolor{preprocessor}{\#define\ GLM\_ENABLE\_EXPERIMENTAL}}
+\DoxyCodeLine{00010\ \textcolor{preprocessor}{\#include\ <glm/gtx/hash.hpp>}}
+\DoxyCodeLine{00011\ }
+\DoxyCodeLine{00012\ \textcolor{preprocessor}{\#include\ "{}common/Protocol/Protocol.hpp"{}}}
+\DoxyCodeLine{00013\ \textcolor{preprocessor}{\#include\ "{}common/Util/ThreadSafeQueue.hpp"{}}}
+\DoxyCodeLine{00014\ }
+\DoxyCodeLine{00015\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classWindow}{Window}};}
+\DoxyCodeLine{00016\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classVulkanDevice}{VulkanDevice}};}
+\DoxyCodeLine{00017\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classRenderer}{Renderer}};}
+\DoxyCodeLine{00018\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classBlockRegistry}{BlockRegistry}};}
+\DoxyCodeLine{00019\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classWorldManager}{WorldManager}};}
+\DoxyCodeLine{00020\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classMeshingThread}{MeshingThread}};}
+\DoxyCodeLine{00021\ }
+\DoxyCodeLine{00022\ \textcolor{keyword}{class\ }App\ \{}
+\DoxyCodeLine{00023\ \ \ \textcolor{keyword}{public}:}
+\DoxyCodeLine{00024\ \ \ \ \ App();}
+\DoxyCodeLine{00025\ \ \ \ \ \string~App();}
+\DoxyCodeLine{00026\ }
+\DoxyCodeLine{00027\ \ \ \ \ App(\textcolor{keyword}{const}\ App\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00028\ \ \ \ \ App\&\ operator=(\textcolor{keyword}{const}\ App\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00029\ \ \ \ \ App(App\&\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00030\ \ \ \ \ App\&\ operator=(App\&\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00031\ }
+\DoxyCodeLine{00032\ \ \ \ \ \textcolor{keyword}{static}\ \textcolor{keyword}{constexpr}\ \textcolor{keywordtype}{int}\ WIDTH\ =\ 800;}
+\DoxyCodeLine{00033\ \ \ \ \ \textcolor{keyword}{static}\ \textcolor{keyword}{constexpr}\ \textcolor{keywordtype}{int}\ HEIGHT\ =\ 600;}
+\DoxyCodeLine{00034\ \ \ \ \ \textcolor{keyword}{static}\ \textcolor{keyword}{constexpr}\ \textcolor{keyword}{const}\ \textcolor{keywordtype}{char}*\ WINDOW\_TITLE\ =\ \textcolor{stringliteral}{"{}Vulkan\ App"{}};}
+\DoxyCodeLine{00035\ }
+\DoxyCodeLine{00036\ \ \ \ \ \textcolor{keywordtype}{void}\ run();}
+\DoxyCodeLine{00037\ }
+\DoxyCodeLine{00038\ \ \ \ \ [[nodiscard]]\ \textcolor{keywordtype}{float}\ getTimeOfDay()\textcolor{keyword}{\ const\ }\{\ \textcolor{keywordflow}{return}\ \_timeOfDay;\ \}}
+\DoxyCodeLine{00039\ \ \ \ \ \textcolor{keywordtype}{void}\ setTimeOfDay(\textcolor{keywordtype}{float}\ time)\ \{\ \_timeOfDay\ =\ time;\ \}}
+\DoxyCodeLine{00040\ }
+\DoxyCodeLine{00041\ \ \ \textcolor{keyword}{private}:}
+\DoxyCodeLine{00047\ \ \ \ \ \textcolor{keywordtype}{void}\ enqueueChunkRequests(\textcolor{keyword}{const}\ glm::ivec3\&\ centerChunk);}
+\DoxyCodeLine{00048\ }
+\DoxyCodeLine{00054\ \ \ \ \ \textcolor{keywordtype}{void}\ rebuildChunkOffsets(\textcolor{keywordtype}{int}\ radius);}
+\DoxyCodeLine{00055\ }
+\DoxyCodeLine{00056\ \ \ \ \ std::unique\_ptr<BlockRegistry>\ \_blockRegistry;}
+\DoxyCodeLine{00057\ \ \ \ \ std::unique\_ptr<Window>\ \_window;}
+\DoxyCodeLine{00058\ \ \ \ \ std::unique\_ptr<VulkanDevice>\ \_vulkanDevice;}
+\DoxyCodeLine{00059\ \ \ \ \ std::unique\_ptr<Renderer>\ \_renderer;}
+\DoxyCodeLine{00060\ }
+\DoxyCodeLine{00061\ \ \ \ \ \textcolor{comment}{//\ Time\ of\ day\ system\ (0.0\ =\ midnight,\ 0.5\ =\ noon,\ 1.0\ =\ midnight)}}
+\DoxyCodeLine{00062\ \ \ \ \ \textcolor{keywordtype}{float}\ \_timeOfDay\ =\ 0.5F;\ \ \textcolor{comment}{//\ Start\ at\ noon}}
+\DoxyCodeLine{00063\ \ \ \ \ \textcolor{keywordtype}{float}\ \_timeSpeed\ =\ 0.02F;\ \textcolor{comment}{//\ Speed\ of\ time\ progression\ (adjustable)}}
+\DoxyCodeLine{00064\ }
+\DoxyCodeLine{00065\ \ \ \ \ \textcolor{comment}{//\ UI\ mode\ for\ ImGui\ interaction}}
+\DoxyCodeLine{00066\ \ \ \ \ \textcolor{keywordtype}{bool}\ \_uiMode\ =\ \textcolor{keyword}{false};}
+\DoxyCodeLine{00067\ }
+\DoxyCodeLine{00068\ \ \ \ \ \textcolor{comment}{//\ ===\ Async\ chunk\ loading\ system\ ===}}
+\DoxyCodeLine{00069\ \ \ \ \ \textcolor{comment}{//\ Communication\ queues\ (owned\ by\ App,\ passed\ by\ reference\ to\ workers)}}
+\DoxyCodeLine{00070\ \ \ \ \ \mbox{\hyperlink{classThreadSafeQueue}{ThreadSafeQueue<ChunkRequest>}}\ \_chunkRequestQueue;}
+\DoxyCodeLine{00071\ \ \ \ \ \mbox{\hyperlink{classThreadSafeQueue}{ThreadSafeQueue<GenerationTask>}}\ \_meshingTaskQueue;}
+\DoxyCodeLine{00072\ \ \ \ \ \textcolor{comment}{//\ PER-\/THREAD\ mesh\ queues\ to\ eliminate\ lock\ contention\ (each\ thread\ gets\ its\ own\ queue)}}
+\DoxyCodeLine{00073\ \ \ \ \ std::vector<std::unique\_ptr<ThreadSafeQueue<MeshData>>>\ \_perThreadMeshQueues;}
+\DoxyCodeLine{00074\ \ \ \ \ \mbox{\hyperlink{classThreadSafeQueue}{ThreadSafeQueue<MeshingComplete>}}\ \_meshingCompleteQueue;}
+\DoxyCodeLine{00075\ }
+\DoxyCodeLine{00076\ \ \ \ \ \textcolor{comment}{//\ Configurable\ chunk\ load\ radius\ (in\ chunks)}}
+\DoxyCodeLine{00077\ \ \ \ \ \textcolor{keywordtype}{int}\ \_loadRadius\ =\ 8;}
+\DoxyCodeLine{00078\ \ \ \ \ \textcolor{keywordtype}{int}\ \_lastLoadRadius\ =\ -\/1;}
+\DoxyCodeLine{00079\ }
+\DoxyCodeLine{00080\ \ \ \ \ \textcolor{comment}{//\ Request\ throttling}}
+\DoxyCodeLine{00081\ \ \ \ \ \textcolor{keyword}{static}\ \textcolor{keyword}{constexpr}\ \textcolor{keywordtype}{int}\ MAX\_REQUESTS\_PER\_FRAME\ =\ 512;\ \textcolor{comment}{//\ Don't\ flood\ the\ queue}}
+\DoxyCodeLine{00082\ \ \ \ \ \textcolor{keywordtype}{int}\ \_currentShellRadius\ =\ 0;\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \textcolor{comment}{//\ For\ breadth-\/first\ chunk\ loading}}
+\DoxyCodeLine{00083\ \ \ \ \ std::unordered\_set<glm::ivec3>\ \_requestedChunks;\ \ \ \textcolor{comment}{//\ Track\ what\ we've\ already\ requested}}
+\DoxyCodeLine{00084\ }
+\DoxyCodeLine{00085\ \ \ \ \ \textcolor{comment}{//\ Worker\ threads}}
+\DoxyCodeLine{00086\ \ \ \ \ std::unique\_ptr<WorldManager>\ \_worldManager;}
+\DoxyCodeLine{00087\ \ \ \ \ std::vector<std::unique\_ptr<MeshingThread>>\ \_meshingThreads;}
+\DoxyCodeLine{00088\ \ \ \ \ \textcolor{keyword}{static}\ \textcolor{keyword}{constexpr}\ \textcolor{keywordtype}{int}\ NUM\_MESHING\_WORKERS\ =\ 4;\ \textcolor{comment}{//\ Parallel\ meshing\ workers}}
+\DoxyCodeLine{00089\ }
+\DoxyCodeLine{00090\ \ \ \ \ glm::ivec3\ \_lastRequestedCenter\{std::numeric\_limits<int>::min(),}
+\DoxyCodeLine{00091\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ std::numeric\_limits<int>::min(),}
+\DoxyCodeLine{00092\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ std::numeric\_limits<int>::min()\};}
+\DoxyCodeLine{00093\ \ \ \ \ \textcolor{keywordtype}{bool}\ \_needsRequestRefresh\ =\ \textcolor{keyword}{true};}
+\DoxyCodeLine{00094\ \ \ \ \ std::vector<glm::ivec3>\ \_chunkRequestOffsets;}
+\DoxyCodeLine{00095\ }
+\DoxyCodeLine{00096\ \ \ \ \ \textcolor{comment}{//\ ===\ Chunk\ unloading\ system\ ===}}
+\DoxyCodeLine{00097\ \ \ \ \ \textcolor{keyword}{static}\ \textcolor{keyword}{constexpr}\ \textcolor{keywordtype}{int}\ UNLOAD\_CHECK\_INTERVAL\ =\ 30;\ \ \ \textcolor{comment}{//\ Check\ every\ 0.5\ seconds\ at\ 60fps\ (was\ 120)}}
+\DoxyCodeLine{00098\ \ \ \ \ \textcolor{keyword}{static}\ \textcolor{keyword}{constexpr}\ \textcolor{keywordtype}{size\_t}\ REBUILD\_THRESHOLD\ =\ 200;\ \ \ \textcolor{comment}{//\ Minimum\ chunks\ to\ trigger\ rebuild}}
+\DoxyCodeLine{00099\ \ \ \ \ \textcolor{keyword}{static}\ \textcolor{keyword}{constexpr}\ \textcolor{keywordtype}{float}\ REBUILD\_PERCENTAGE\ =\ 0.10F;\ \textcolor{comment}{//\ OR\ 10\%\ of\ loaded\ chunks}}
+\DoxyCodeLine{00100\ \ \ \ \ \textcolor{keyword}{static}\ \textcolor{keyword}{constexpr}\ \textcolor{keywordtype}{int}\ VERTICAL\_CHUNK\_MIN\ =\ -\/400;\ \ \ \ \textcolor{comment}{//\ Minimum\ vertical\ chunk\ coordinate}}
+\DoxyCodeLine{00101\ \ \ \ \ \textcolor{keyword}{static}\ \textcolor{keyword}{constexpr}\ \textcolor{keywordtype}{int}\ VERTICAL\_CHUNK\_MAX\ =\ 400;\ \ \ \ \ \textcolor{comment}{//\ Maximum\ vertical\ chunk\ coordinate}}
+\DoxyCodeLine{00102\ \ \ \ \ \textcolor{keywordtype}{int}\ \_framesSinceUnloadCheck\ =\ 0;}
+\DoxyCodeLine{00103\ \ \ \ \ \textcolor{keywordtype}{float}\ \_unloadDistanceMultiplier\ =\ 2.5F;\ \textcolor{comment}{//\ Unload\ chunks\ 2.5x\ farther\ than\ load\ radius}}
+\DoxyCodeLine{00104\ \};}
+
+\end{DoxyCode}

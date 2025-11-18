@@ -1,0 +1,42 @@
+\doxysection{Vulkan\+Swapchain.\+hpp}
+\hypertarget{VulkanSwapchain_8hpp_source}{}\label{VulkanSwapchain_8hpp_source}\index{src/client/Graphics/Core/VulkanSwapchain.hpp@{src/client/Graphics/Core/VulkanSwapchain.hpp}}
+
+\begin{DoxyCode}{0}
+\DoxyCodeLine{00001\ \textcolor{preprocessor}{\#pragma\ once}}
+\DoxyCodeLine{00002\ }
+\DoxyCodeLine{00003\ \textcolor{preprocessor}{\#include\ <vector>}}
+\DoxyCodeLine{00004\ }
+\DoxyCodeLine{00005\ \textcolor{preprocessor}{\#include\ "{}VulkanDevice.hpp"{}}}
+\DoxyCodeLine{00006\ }
+\DoxyCodeLine{00007\ \textcolor{keyword}{class\ }\mbox{\hyperlink{classWindow}{Window}};}
+\DoxyCodeLine{00008\ }
+\DoxyCodeLine{00009\ \textcolor{keyword}{class\ }VulkanSwapchain\ \{}
+\DoxyCodeLine{00010\ \ \ \textcolor{keyword}{public}:}
+\DoxyCodeLine{00011\ \ \ \ \ VulkanSwapchain(\mbox{\hyperlink{classWindow}{Window}}\&\ window,\ \mbox{\hyperlink{classVulkanDevice}{VulkanDevice}}\&\ device);}
+\DoxyCodeLine{00012\ \ \ \ \ \string~VulkanSwapchain();}
+\DoxyCodeLine{00013\ }
+\DoxyCodeLine{00014\ \ \ \ \ VulkanSwapchain(\textcolor{keyword}{const}\ VulkanSwapchain\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00015\ \ \ \ \ VulkanSwapchain\&\ operator=(\textcolor{keyword}{const}\ VulkanSwapchain\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00016\ \ \ \ \ VulkanSwapchain(VulkanSwapchain\&\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00017\ \ \ \ \ VulkanSwapchain\&\ operator=(VulkanSwapchain\&\&)\ =\ \textcolor{keyword}{delete};}
+\DoxyCodeLine{00018\ }
+\DoxyCodeLine{00019\ \ \ \ \ [[nodiscard]]\ VkSwapchainKHR\ getSwapchain()\textcolor{keyword}{\ const\ }\{\ \textcolor{keywordflow}{return}\ \_swapchain;\ \}}
+\DoxyCodeLine{00020\ \ \ \ \ [[nodiscard]]\ VkFormat\ getSwapchainImageFormat()\textcolor{keyword}{\ const\ }\{\ \textcolor{keywordflow}{return}\ \_swapchainImageFormat;\ \}}
+\DoxyCodeLine{00021\ \ \ \ \ [[nodiscard]]\ \textcolor{keyword}{const}\ std::vector<VkImage>\&\ getSwapchainImages()\textcolor{keyword}{\ const\ }\{}
+\DoxyCodeLine{00022\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return}\ \_swapchainImages;}
+\DoxyCodeLine{00023\ \ \ \ \ \}}
+\DoxyCodeLine{00024\ \ \ \ \ [[nodiscard]]\ \textcolor{keyword}{const}\ std::vector<VkImageView>\&\ getSwapchainImageViews()\textcolor{keyword}{\ const\ }\{}
+\DoxyCodeLine{00025\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{return}\ \_swapchainImageViews;}
+\DoxyCodeLine{00026\ \ \ \ \ \}}
+\DoxyCodeLine{00027\ \ \ \ \ [[nodiscard]]\ VkExtent2D\ getSwapchainExtent()\textcolor{keyword}{\ const\ }\{\ \textcolor{keywordflow}{return}\ \_swapchainExtent;\ \}}
+\DoxyCodeLine{00028\ }
+\DoxyCodeLine{00029\ \ \ \textcolor{keyword}{private}:}
+\DoxyCodeLine{00030\ \ \ \ \ \mbox{\hyperlink{classVulkanDevice}{VulkanDevice}}\&\ \_device;}
+\DoxyCodeLine{00031\ \ \ \ \ VkSwapchainKHR\ \_swapchain;}
+\DoxyCodeLine{00032\ \ \ \ \ VkFormat\ \_swapchainImageFormat;}
+\DoxyCodeLine{00033\ \ \ \ \ std::vector<VkImage>\ \_swapchainImages;}
+\DoxyCodeLine{00034\ \ \ \ \ std::vector<VkImageView>\ \_swapchainImageViews;}
+\DoxyCodeLine{00035\ \ \ \ \ VkExtent2D\ \_swapchainExtent;}
+\DoxyCodeLine{00036\ \};}
+
+\end{DoxyCode}

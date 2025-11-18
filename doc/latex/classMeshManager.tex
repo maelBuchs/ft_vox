@@ -1,0 +1,35 @@
+\doxysection{Mesh\+Manager Class Reference}
+\hypertarget{classMeshManager}{}\label{classMeshManager}\index{MeshManager@{MeshManager}}
+\doxysubsubsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\Hypertarget{classMeshManager_ae8a3f8d5a06e9d32622a86de7fe64770}\label{classMeshManager_ae8a3f8d5a06e9d32622a86de7fe64770} 
+{\bfseries Mesh\+Manager} (\mbox{\hyperlink{classVulkanDevice}{Vulkan\+Device}} \&device, \mbox{\hyperlink{classVulkanBuffer}{Vulkan\+Buffer}} \&buffer\+Manager)
+\item 
+\Hypertarget{classMeshManager_a520857262ad1cdf8935d5c6cab703f8a}\label{classMeshManager_a520857262ad1cdf8935d5c6cab703f8a} 
+{\bfseries Mesh\+Manager} (const \mbox{\hyperlink{classMeshManager}{Mesh\+Manager}} \&)=delete
+\item 
+\Hypertarget{classMeshManager_a135e18721f731b7e479a1cd8102c54db}\label{classMeshManager_a135e18721f731b7e479a1cd8102c54db} 
+\mbox{\hyperlink{classMeshManager}{Mesh\+Manager}} \& {\bfseries operator=} (const \mbox{\hyperlink{classMeshManager}{Mesh\+Manager}} \&)=delete
+\item 
+\Hypertarget{classMeshManager_aa574325ab16239bdaf90720399e12aa0}\label{classMeshManager_aa574325ab16239bdaf90720399e12aa0} 
+{\bfseries Mesh\+Manager} (\mbox{\hyperlink{classMeshManager}{Mesh\+Manager}} \&\&)=delete
+\item 
+\Hypertarget{classMeshManager_abfb74498da4f1ad5e9780366008e4048}\label{classMeshManager_abfb74498da4f1ad5e9780366008e4048} 
+\mbox{\hyperlink{classMeshManager}{Mesh\+Manager}} \& {\bfseries operator=} (\mbox{\hyperlink{classMeshManager}{Mesh\+Manager}} \&\&)=delete
+\item 
+\Hypertarget{classMeshManager_a8d5008f818c3dca1994254b5d3f90455}\label{classMeshManager_a8d5008f818c3dca1994254b5d3f90455} 
+\mbox{\hyperlink{structGPUMeshBuffers}{GPUMesh\+Buffers}} {\bfseries upload\+Mesh} (std\+::span$<$ uint32\+\_\+t $>$ indices, std\+::span$<$ uint32\+\_\+t $>$ vertices, const std\+::function$<$ void(std\+::function$<$ void(Vk\+Command\+Buffer)$>$ \&\&)$>$ \&immediate\+Submit)
+\item 
+\Hypertarget{classMeshManager_ab9eb0ab6d71d1285af28b86fb89b33a8}\label{classMeshManager_ab9eb0ab6d71d1285af28b86fb89b33a8} 
+\mbox{\hyperlink{structGPUMeshBuffers}{GPUMesh\+Buffers}} {\bfseries upload\+Mesh} (std\+::span$<$ uint32\+\_\+t $>$ indices, std\+::span$<$ \mbox{\hyperlink{structVertex}{Vertex}} $>$ vertices, const std\+::function$<$ void(std\+::function$<$ void(Vk\+Command\+Buffer)$>$ \&\&)$>$ \&immediate\+Submit)
+\item 
+\Hypertarget{classMeshManager_acda4ea2ff8d22ac3a9ba963dac893780}\label{classMeshManager_acda4ea2ff8d22ac3a9ba963dac893780} 
+void {\bfseries destroy\+Mesh} (const \mbox{\hyperlink{structGPUMeshBuffers}{GPUMesh\+Buffers}} \&mesh)
+\end{DoxyCompactItemize}
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+src/client/\+Graphics/\+Voxel/Mesh\+Manager.\+hpp\item 
+src/client/\+Graphics/\+Voxel/Mesh\+Manager.\+cpp\end{DoxyCompactItemize}

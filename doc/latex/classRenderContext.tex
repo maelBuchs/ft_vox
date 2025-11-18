@@ -1,0 +1,58 @@
+\doxysection{Render\+Context Class Reference}
+\hypertarget{classRenderContext}{}\label{classRenderContext}\index{RenderContext@{RenderContext}}
+\doxysubsubsection*{Classes}
+\begin{DoxyCompactItemize}
+\item 
+struct \mbox{\hyperlink{structRenderContext_1_1AllocatedImage}{Allocated\+Image}}
+\end{DoxyCompactItemize}
+\doxysubsubsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\Hypertarget{classRenderContext_a93481f373c124f1ae1085e68c65cdc27}\label{classRenderContext_a93481f373c124f1ae1085e68c65cdc27} 
+{\bfseries Render\+Context} (\mbox{\hyperlink{classVulkanDevice}{Vulkan\+Device}} \&device)
+\item 
+\Hypertarget{classRenderContext_aa25de2f325e7aa976ac58ae6d9f2119f}\label{classRenderContext_aa25de2f325e7aa976ac58ae6d9f2119f} 
+{\bfseries Render\+Context} (const \mbox{\hyperlink{classRenderContext}{Render\+Context}} \&)=delete
+\item 
+\Hypertarget{classRenderContext_a4d07f1335930b9ba451f017de97ab4a7}\label{classRenderContext_a4d07f1335930b9ba451f017de97ab4a7} 
+\mbox{\hyperlink{classRenderContext}{Render\+Context}} \& {\bfseries operator=} (const \mbox{\hyperlink{classRenderContext}{Render\+Context}} \&)=delete
+\item 
+\Hypertarget{classRenderContext_a266a97906f2ef6b1d90023e27aa76f87}\label{classRenderContext_a266a97906f2ef6b1d90023e27aa76f87} 
+{\bfseries Render\+Context} (\mbox{\hyperlink{classRenderContext}{Render\+Context}} \&\&)=delete
+\item 
+\Hypertarget{classRenderContext_a31b7cf09bb1c84cfac5dffd9ab1ce43e}\label{classRenderContext_a31b7cf09bb1c84cfac5dffd9ab1ce43e} 
+\mbox{\hyperlink{classRenderContext}{Render\+Context}} \& {\bfseries operator=} (\mbox{\hyperlink{classRenderContext}{Render\+Context}} \&\&)=delete
+\item 
+\Hypertarget{classRenderContext_a6b69d2f173b234eeb8496ee1c85670f7}\label{classRenderContext_a6b69d2f173b234eeb8496ee1c85670f7} 
+void {\bfseries create\+Draw\+Images} (Vk\+Extent2D extent)
+\item 
+\Hypertarget{classRenderContext_a531e95f5ead4c5562e8be3280b6ee3f1}\label{classRenderContext_a531e95f5ead4c5562e8be3280b6ee3f1} 
+void {\bfseries destroy\+Draw\+Images} ()
+\item 
+\Hypertarget{classRenderContext_a566f7a1b97b0199033df441d4ea4e806}\label{classRenderContext_a566f7a1b97b0199033df441d4ea4e806} 
+void {\bfseries create\+Immediate\+Submit\+Structures} ()
+\item 
+\Hypertarget{classRenderContext_adb0147d235a467ac62ef776ed85026e3}\label{classRenderContext_adb0147d235a467ac62ef776ed85026e3} 
+const \mbox{\hyperlink{structRenderContext_1_1AllocatedImage}{Allocated\+Image}} \& {\bfseries get\+Draw\+Image} () const
+\item 
+\Hypertarget{classRenderContext_a89d49d6a183417e4357486e05f7551a2}\label{classRenderContext_a89d49d6a183417e4357486e05f7551a2} 
+const \mbox{\hyperlink{structRenderContext_1_1AllocatedImage}{Allocated\+Image}} \& {\bfseries get\+Depth\+Image} () const
+\item 
+\Hypertarget{classRenderContext_a0399f3c546147cc2253f2016e48d4b7a}\label{classRenderContext_a0399f3c546147cc2253f2016e48d4b7a} 
+Vk\+Extent2D {\bfseries get\+Draw\+Extent} () const
+\item 
+\Hypertarget{classRenderContext_a468de0dc68efbb0cb6fca96bfb09448b}\label{classRenderContext_a468de0dc68efbb0cb6fca96bfb09448b} 
+Vk\+Fence {\bfseries get\+Immediate\+Fence} () const
+\item 
+\Hypertarget{classRenderContext_aa8bf0285882f763f062ef181b550202b}\label{classRenderContext_aa8bf0285882f763f062ef181b550202b} 
+Vk\+Command\+Pool {\bfseries get\+Immediate\+Command\+Pool} () const
+\item 
+\Hypertarget{classRenderContext_a6a21df1319d035c1d0f8ba2263d31b4a}\label{classRenderContext_a6a21df1319d035c1d0f8ba2263d31b4a} 
+Vk\+Command\+Buffer {\bfseries get\+Immediate\+Command\+Buffer} () const
+\end{DoxyCompactItemize}
+
+
+The documentation for this class was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+src/client/\+Graphics/\+Rendering/Render\+Context.\+hpp\item 
+src/client/\+Graphics/\+Rendering/Render\+Context.\+cpp\end{DoxyCompactItemize}
