@@ -19,17 +19,17 @@ jobs:
         uses: mattnotmitt/doxygen-action@v1.9.5
         with:
           doxyfile-path: "Doxyfile"
-          
+
       - name: Deploy documentation to 'doc' branch
-              uses: peaceiris/actions-gh-pages@v3
-              with:
-                github_token: ${{ secrets.GITHUB_TOKEN }}
-                
-                publish_dir: ./docs/html 
-                
-                publish_branch: doc 
-                
-                user_name: 'github-actions[bot]'
-                user_email: 'github-actions[bot]@users.noreply.github.com'
-                
-                commit_message: 'Deploy Doxygen documentation to doc branch'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+          publish_dir: ./docs/html
+
+          publish_branch: doc
+
+          user_name: "github-actions[bot]"
+          user_email: "github-actions[bot]@users.noreply.github.com"
+
+          commit_message: "Deploy Doxygen documentation to doc branch"
