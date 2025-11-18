@@ -57,7 +57,7 @@ struct TaskPayloadEntry {
 
 struct TaskPayloadData {
     uint meshCount;
-    TaskPayloadEntry entries[2048]; // Must match task shader payload size
+    TaskPayloadEntry entries[1024]; // Must match task shader payload size (reduced to 1024)
 };
 
 taskPayloadSharedEXT TaskPayloadData payload;
@@ -123,6 +123,16 @@ void main() {
     //     debugPrintfEXT("[MESH] Rendering chunk=%u tile=%u\n", task.chunkIndex, task.tileIndex);
     // }
     GPUChunkData chunk = chunks[task.chunkIndex];
+
+    // --- SAFETY CHECK: Prevent GPU crash on iGPUs when chunk is unloaded ---
+    // If a chunk is unloaded but still referenced by the task payload, desktop GPUs
+    // often tolerate reading address 0, but integrated GPUs fault and crash the driver.
+    if (chunk.vertexBufferAddress == 0) {
+        if (localID == 0) {
+            SetMeshOutputsEXT(0, 0);
+        }
+        return;
+    }
 
     // Convert device address to buffer reference
     VertexBuffer vertexBuffer = VertexBuffer(chunk.vertexBufferAddress);

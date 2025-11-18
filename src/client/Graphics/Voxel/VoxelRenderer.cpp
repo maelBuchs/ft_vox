@@ -431,7 +431,9 @@ void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atla
     deviceProps.pNext = &meshProps;
     vkGetPhysicalDeviceProperties2(_device.getPhysicalDevice(), &deviceProps);
 
-    _maxMeshWorkgroupsPerTask = std::max(meshProps.maxMeshWorkGroupCount[0], 1u);
+    // Cap at 1024 to match shader payload size (safety margin for iGPUs)
+    uint32_t hardwareLimit = meshProps.maxMeshWorkGroupCount[0];
+    _maxMeshWorkgroupsPerTask = std::min<uint32_t>(hardwareLimit, 1024U);
 
     DescriptorLayoutBuilder meshLayoutBuilder;
     meshLayoutBuilder.addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); // Camera UBO

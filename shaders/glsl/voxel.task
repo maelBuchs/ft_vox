@@ -123,12 +123,12 @@ struct TaskPayloadEntry {
 
 struct TaskPayloadData {
     uint meshCount;                 // Total mesh workgroups emitted by this task workgroup
-    TaskPayloadEntry entries[2048]; // 2048 entries = 16KB (hardware limit)
+    TaskPayloadEntry entries[1024]; // 1024 entries = ~8KB (reduced to provide driver margin)
 };
 
-// Maximum possible mesh tasks with PHASE 1 fix:
-// 16 chunks per workgroup * 128 avg tiles per chunk = 2048 tiles (at limit)
-// This is 2x more headroom than 32 chunks * 64 avg tiles = 2048
+// Maximum possible mesh tasks with PHASE 1 fix (historical worst-case):
+// 16 chunks per workgroup * 128 avg tiles per chunk = 2048 tiles (worst-case).
+// We now cap payload capacity to 1024 entries to provide a safety margin on iGPUs.
 taskPayloadSharedEXT TaskPayloadData payload;
 
 // ===== MAIN TASK SHADER =====
@@ -220,7 +220,7 @@ void main() {
 
     // Only first thread emits mesh tasks
     if (localID == 0) {
-        const uint maxPayloadEntries = min(2048u, push.maxMeshWorkgroupsPerTask);
+            const uint maxPayloadEntries = min(1024u, push.maxMeshWorkgroupsPerTask);
 
         // DEBUG: Log task workgroup state
         // debugPrintfEXT("[TASK WG=%u] visibleCount=%u maxEntries=%u\n", workgroupID, visibleCount,
