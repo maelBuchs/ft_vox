@@ -46,6 +46,5 @@
 .cache/
 compile_commands.json
 subject.md
-.github/
 .serena/
 .claude/settings.local.json
