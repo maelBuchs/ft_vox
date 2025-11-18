@@ -13,6 +13,17 @@ int getHeightValue(int bx, int bz, float continentalness, BiomeType biome,
     float baseHeight = static_cast<float>(heightSpline(continentalness * 2.0F));
     return baseHeight;
 }
+
+/*
+ * @brief Adds surface layers to the given chunk based on height map and biome data.
+ *
+ * This function modifies the provided chunk by adding surface blocks according to
+ * the pre-computed height map and biome information. It sets different block IDs
+ * for the top layers based on the biome type at each (bx, bz) coordinate.
+ *
+ * @param chunk Pointer to the Chunk object to be modified.
+ * @param heightMap A 2D array representing the height values for each (bx, bz) coordinate.
+ */
 void addSurface(Chunk* chunk, const int heightMap[Chunk::CHUNK_SIZE][Chunk::CHUNK_SIZE]) {
     // Simple surface addition: set the top block to a different ID (e.g., grass)
     // Use pre-computed heightMap to avoid redundant getHeightValue() calls
