@@ -153,6 +153,15 @@ case "$ACTION" in
         show_help
         exit 0
         ;;
+    doc)
+        echo -e "${CYAN}📚 Generating documentation...${NC}"
+        if ! command -v doxygen &> /dev/null; then
+            echo -e "${RED}❌ Doxygen not found. Please install it to generate documentation.${NC}"
+            exit 1
+        fi
+        doxygen Doxyfile
+        echo -e "${GREEN}✓ Documentation generated in the 'docs' directory${NC}"
+        ;;
     *)
         echo -e "${RED}❌ Unknown action: $ACTION${NC}"
         show_help
