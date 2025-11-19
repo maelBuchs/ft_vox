@@ -45,6 +45,7 @@
 .vscode/
 .cache/
 compile_commands.json
+doc/
 subject.md
 .serena/
 .claude/settings.local.json
