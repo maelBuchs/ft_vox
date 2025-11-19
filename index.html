@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.5"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>ft_minecraft: Main Page</title>
+<title>ft_vox: ft_vox</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
@@ -25,7 +25,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">ft_minecraft<span id="projectnumber">&#160;dev</span>
+   <div id="projectname">ft_vox<span id="projectnumber">&#160;dev</span>
    </div>
    <div id="projectbrief">An absolutely original voxel game</div>
   </td>
@@ -89,10 +89,63 @@ $(document).ready(function(){initNavTree('index.html',''); initResizable(); });
 </div>
 </div>
 
-<div class="header">
-  <div class="headertitle"><div class="title">ft_minecraft Documentation</div></div>
+<div><div class="header">
+  <div class="headertitle"><div class="title">ft_vox </div></div>
 </div><!--header-->
 <div class="contents">
+<div class="textblock"><p ><a class="anchor" id="md_README"></a></p>
+<h1><a class="anchor" id="autotoc_md0"></a>
+ft_vox</h1>
+<p ><a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License" style="pointer-events: none;" class="inline"/></a> <img src="https://img.shields.io/badge/Language-C++-blue.svg" alt="Language" style="pointer-events: none;" class="inline"/></p>
+<p ><b>ft_vox</b> is a procedurally generated voxel world rendering engine, using the <a href="https://www.vulkan.org/">Vulkan</a> graphics API and C++.</p>
+<p >This project is part of the <a href="https://42.fr">42 school</a> graphics curriculum and serves as the technical foundation to build <code>ft_minecraft</code>.</p>
+<h2><a class="anchor" id="autotoc_md1"></a>
+Features</h2>
+<ul>
+<li><b>Procedural Generation:</b> The world is generated on-the-fly using noise algorithms (e.g., Perlin Noise).</li>
+<li><b>High-Performance Rendering with Vulkan:</b> Leverages the modern Vulkan API for optimal performance.</li>
+<li><b><a class="el" href="classChunk.html">Chunk</a> System:</b> The world is divided into chunks to optimize both rendering and generation.</li>
+<li><b>Free <a class="el" href="classCamera.html">Camera</a>:</b> A first-person camera to explore the generated world.</li>
+</ul>
+<h2><a class="anchor" id="autotoc_md2"></a>
+Getting Started</h2>
+<h3><a class="anchor" id="autotoc_md3"></a>
+Prerequisites</h3>
+<p >Make sure you have the following dependencies installed:</p>
+<ul>
+<li><a href="https://vulkan.lunarg.com/sdk/home">Vulkan SDK</a></li>
+<li><a href="https://cmake.org/">CMake</a> (version 3.10 or higher)</li>
+<li>A compatible C++ compiler (GCC, Clang, MSVC)</li>
+</ul>
+<h3><a class="anchor" id="autotoc_md4"></a>
+Building and Running</h3>
+<ol type="1">
+<li><b>Clone the repository:</b> <pre class="fragment">git clone https://github.com/maelBuchs/ft_vox.git
+cd ft_vox
+</pre></li>
+<li><b>Run the build script for your operating system:</b><ul>
+<li><b>Linux</b> <pre class="fragment"># Compile only
+./build.sh
+
+# Compile and run in debug mode
+./build.sh run-debug
+</pre></li>
+<li><b>Windows (in Powershell)</b> <pre class="fragment"># Compile only
+.\build.ps1
+
+# Compile and run
+.\build.ps1 run
+</pre> </li>
+</ul>
+</li>
+</ol>
+<h2><a class="anchor" id="autotoc_md5"></a>
+Project Status</h2>
+<p >🚧 <b>Under Active Development</b> 🚧 This project is a work in progress. New features are added regularly.</p>
+<h2><a class="anchor" id="autotoc_md6"></a>
+License</h2>
+<p >This project is distributed under the Apache 2.0 License. See the <code>LICENSE</code> file for more information. </p>
+</div></div><!-- PageDoc -->
 </div><!-- contents -->
 </div><!-- doc-content -->
 <!-- start footer part -->
