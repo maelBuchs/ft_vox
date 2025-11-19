@@ -103,6 +103,9 @@ VoxelRenderer::~VoxelRenderer() {
     if (_chunkSetLayout != VK_NULL_HANDLE) {
         vkDestroyDescriptorSetLayout(_device.getDevice(), _chunkSetLayout, nullptr);
     }
+    if (_traditionalFragSetLayout != VK_NULL_HANDLE) {
+        vkDestroyDescriptorSetLayout(_device.getDevice(), _traditionalFragSetLayout, nullptr);
+    }
     if (_meshShaderSetLayout != VK_NULL_HANDLE) {
         vkDestroyDescriptorSetLayout(_device.getDevice(), _meshShaderSetLayout, nullptr);
     }
@@ -188,13 +191,15 @@ void VoxelRenderer::initPipelines(VkImageView atlasView, VkSampler atlasSampler,
         VkPushConstantRange pushConstantRange{
             .stageFlags = VK_SHADER_STAGE_VERTEX_BIT, .offset = 0, .size = sizeof(glm::mat4)};
 
-        // Update pipeline layout to include descriptor set for chunk data SSBO
+        // Update pipeline layout to include TWO descriptor sets (Set 0: chunk data, Set 1: texture atlas)
+        VkDescriptorSetLayout setLayouts[] = {_chunkSetLayout, _traditionalFragSetLayout};
+
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{
             .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
             .pNext = nullptr,
             .flags = 0,
-            .setLayoutCount = 1,
-            .pSetLayouts = &_chunkSetLayout, // Include descriptor set for SSBO
+            .setLayoutCount = 2,
+            .pSetLayouts = setLayouts,
             .pushConstantRangeCount = 1,
             .pPushConstantRanges = &pushConstantRange};
 
@@ -271,6 +276,12 @@ void VoxelRenderer::initMDI(VkImageView atlasView, VkSampler atlasSampler, int t
     _chunkSetLayout = layoutBuilder.build(_device.getDevice(), VK_SHADER_STAGE_VERTEX_BIT |
                                                                    VK_SHADER_STAGE_FRAGMENT_BIT);
 
+    // Create descriptor layout for fragment shader (Set 1: texture atlas only)
+    DescriptorLayoutBuilder fragLayoutBuilder;
+    fragLayoutBuilder.addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); // Texture atlas
+    fragLayoutBuilder.addBinding(1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);         // Atlas config
+    _traditionalFragSetLayout = fragLayoutBuilder.build(_device.getDevice(), VK_SHADER_STAGE_FRAGMENT_BIT);
+
     // Initialize with default capacity
     _currentMaxChunks = MAX_CHUNKS;
 
@@ -309,6 +320,17 @@ void VoxelRenderer::initMDI(VkImageView atlasView, VkSampler atlasSampler, int t
                            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
         writer.updateSet(_device.getDevice(), _chunkDescriptorSets[i]);
     }
+
+    // Allocate and populate fragment descriptor set (Set 1) for traditional path
+    _traditionalFragDescriptorSet =
+        _descriptorAllocator.allocate(_device.getDevice(), _traditionalFragSetLayout, nullptr);
+
+    DescriptorWriter fragWriter;
+    fragWriter.writeImage(0, atlasView, atlasSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                          VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    fragWriter.writeBuffer(1, _atlasConfigBuffer.buffer, sizeof(int), 0,
+                           VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    fragWriter.updateSet(_device.getDevice(), _traditionalFragDescriptorSet);
 }
 
 void VoxelRenderer::initComputeCulling() {
@@ -402,6 +424,10 @@ void VoxelRenderer::initComputeCulling() {
 
 void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atlasSampler) {
     ZoneScoped;
+
+    // HERE DEACTIVATE MESH SHADERS FOR TESTING PURPOSES
+    // _useMeshShaders = false;
+    // return;
 
     // Initialize camera UBO to null first to prevent corruption
     _cameraUniformBuffer.buffer = VK_NULL_HANDLE;
@@ -1272,8 +1298,11 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
         const uint32_t frameIndex = static_cast<uint32_t>(_renderer.getFrameNumber() % CHUNK_BUFFER_COUNT);
         VkDescriptorSet activeChunkSet =
             _enableGPUCulling ? _culledChunkDescriptorSet : _chunkDescriptorSets[frameIndex];
+
+        // Bind BOTH descriptor sets: Set 0 (chunk data) and Set 1 (texture atlas)
+        VkDescriptorSet descriptorSets[] = {activeChunkSet, _traditionalFragDescriptorSet};
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _voxelPipeline.getLayout(), 0,
-                                1, &activeChunkSet, 0, nullptr);
+                                2, descriptorSets, 0, nullptr);
 
         // Set up view-projection matrix
         glm::mat4 view = camera.getViewMatrix();

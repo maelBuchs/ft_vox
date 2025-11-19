@@ -150,6 +150,10 @@ class VoxelRenderer {
     VkDescriptorSet _culledChunkDescriptorSet =
         VK_NULL_HANDLE; // Points to _culledChunkDataBuffer (output)
 
+    // Traditional path fragment descriptor (Set 1: texture atlas)
+    VkDescriptorSetLayout _traditionalFragSetLayout = VK_NULL_HANDLE; // Set 1: Texture atlas for fragment
+    VkDescriptorSet _traditionalFragDescriptorSet = VK_NULL_HANDLE;   // Set 1 descriptor set
+
     // Mesh shader pipeline resources
     VkDescriptorSetLayout _meshShaderSetLayout =
         VK_NULL_HANDLE; // Set 0: Camera, chunk data, index buffer
