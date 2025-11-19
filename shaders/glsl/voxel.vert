@@ -29,11 +29,13 @@ struct GPUChunkData {
     vec3 chunkWorldPos;
     uint indexCount;
     uint64_t vertexBufferAddress;   // Device address of this chunk's vertex buffer
+    uint firstIndex;                 // First index in the mega index buffer
+    uint _padding;                   // Padding to match C++ struct alignment
     // Note: Index buffer is shared (mega buffer), accessed via traditional binding
 };
 
 // SSBO containing per-chunk data
-layout(set = 0, binding = 0) readonly buffer ChunkDataBuffer {
+layout(set = 0, binding = 0, std430) readonly buffer ChunkDataBuffer {
     GPUChunkData chunks[];
 }
 chunkBuffer;
