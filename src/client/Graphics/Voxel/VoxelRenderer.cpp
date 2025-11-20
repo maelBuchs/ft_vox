@@ -1085,6 +1085,18 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
                                           sizeof(GPUFrustumData));
         }
 
+        // Prevents GPU from reading stale buffer data
+        {
+            VkMemoryBarrier hostBarrier{};
+            hostBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+            hostBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+            hostBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
+                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &hostBarrier, 0, nullptr,
+                                 0, nullptr);
+        }
+
         // 2. Reset atomic counter (drawCount = 0) using GPU command
         // vkCmdFillBuffer is faster than CPU upload (no staging buffer needed)
         {
@@ -1169,6 +1181,15 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
         _bufferManager.uploadToBuffer(_indirectBuffer, _indirectCommands.data(),
                                       _indirectCommands.size() *
                                           sizeof(VkDrawIndexedIndirectCommand));
+
+        VkMemoryBarrier hostBarrier{};
+        hostBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        hostBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+        hostBarrier.dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
+                             VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, 0, 1, &hostBarrier, 0, nullptr,
+                             0, nullptr);
     }
 
     VkRenderingAttachmentInfo colorAttachment{

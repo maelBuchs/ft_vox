@@ -78,6 +78,8 @@ void VulkanBuffer::uploadToBuffer(const AllocatedBuffer& dst, const void* data, 
     }
 
     std::memcpy(dst.info.pMappedData, data, size);
+
+    vmaFlushAllocation(_device.getAllocator(), dst.allocation, 0, size);
 }
 
 AllocatedBuffer VulkanBuffer::createStagingBuffer(size_t size) {
