@@ -1237,34 +1237,8 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
                                .pDepthAttachment = &depthAttachment,
                                .pStencilAttachment = nullptr};
 
-    vkCmdBeginRendering(cmd, &renderInfo);
-
-    // Set viewport and scissor
-    VkViewport viewport{.x = 0.0F,
-                        .y = 0.0F,
-                        .width = static_cast<float>(drawExtent.width),
-                        .height = static_cast<float>(drawExtent.height),
-                        .minDepth = 0.0F,
-                        .maxDepth = 1.0F};
-    vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-    VkRect2D scissor{.offset = {0, 0}, .extent = drawExtent};
-    vkCmdSetScissor(cmd, 0, 1, &scissor);
-
-    // Mesh shader path vs traditional path
     if (_useMeshShaders) {
-        ZoneScopedN("Mesh Shader Rendering");
-        TracyVkZone(_device.getTracyCtx(), cmd, "GPU Mesh Shader Rendering");
-
-        // Bind mesh shader pipeline (wireframe or filled based on F1 toggle)
-        VkPipeline activePipeline = wireframeMode ? _meshShaderWireframePipeline.getPipeline()
-                                                  : _meshShaderPipeline.getPipeline();
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, activePipeline);
-
-        const uint32_t frameIndex = static_cast<uint32_t>(_renderer.getFrameNumber() % CHUNK_BUFFER_COUNT);
-        VkDescriptorSet descriptorSets[] = {_meshShaderDescriptorSets[frameIndex], _meshShaderFragDescriptorSet};
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshShaderPipelineLayout, 0,
-                                2, descriptorSets, 0, nullptr);
+        ZoneScopedN("Upload Mesh Shader Camera Data");
 
         // Set up camera data for UBO
         glm::mat4 view = camera.getViewMatrix();
@@ -1305,6 +1279,36 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
                                  VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT | VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT,
                                  0, 1, &uploadBarrier, 0, nullptr, 0, nullptr);
         }
+    }
+
+    vkCmdBeginRendering(cmd, &renderInfo);
+
+    // Set viewport and scissor
+    VkViewport viewport{.x = 0.0F,
+                        .y = 0.0F,
+                        .width = static_cast<float>(drawExtent.width),
+                        .height = static_cast<float>(drawExtent.height),
+                        .minDepth = 0.0F,
+                        .maxDepth = 1.0F};
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+    VkRect2D scissor{.offset = {0, 0}, .extent = drawExtent};
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+    // Mesh shader path vs traditional path
+    if (_useMeshShaders) {
+        ZoneScopedN("Mesh Shader Rendering");
+        TracyVkZone(_device.getTracyCtx(), cmd, "GPU Mesh Shader Rendering");
+
+        // Bind mesh shader pipeline (wireframe or filled based on F1 toggle)
+        VkPipeline activePipeline = wireframeMode ? _meshShaderWireframePipeline.getPipeline()
+                                                  : _meshShaderPipeline.getPipeline();
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, activePipeline);
+
+        const uint32_t frameIndex = static_cast<uint32_t>(_renderer.getFrameNumber() % CHUNK_BUFFER_COUNT);
+        VkDescriptorSet descriptorSets[] = {_meshShaderDescriptorSets[frameIndex], _meshShaderFragDescriptorSet};
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshShaderPipelineLayout, 0,
+                                2, descriptorSets, 0, nullptr);
 
         // Push constants for task shader
         struct MeshShaderPushConstants {
