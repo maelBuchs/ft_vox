@@ -18,10 +18,11 @@ class Window {
     [[nodiscard]] int getWidth() const { return width; }
     [[nodiscard]] int getHeight() const { return height; }
     [[nodiscard]] const std::string& getWindowName() const { return windowName; }
+    void updateSize(int w, int h) { width = w; height = h; }
 
   private:
-    const int width;
-    const int height;
+    int width;
+    int height;
     std::string windowName;
     SDL_Window* window;
 };

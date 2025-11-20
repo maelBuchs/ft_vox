@@ -4,6 +4,7 @@
 #include <utility>
 
 #include <SDL3/SDL_init.h>
+#include <SDL3/SDL_video.h>
 
 Window::Window(int w, int h, std::string name) : width(w), height(h), windowName(std::move(name)) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -18,6 +19,9 @@ Window::Window(int w, int h, std::string name) : width(w), height(h), windowName
         SDL_Quit();
         throw std::runtime_error("Failed to create SDL window");
     }
+
+    // Query actual pixel size (important for Wayland where compositor controls size)
+    SDL_GetWindowSizeInPixels(window, &width, &height);
 }
 
 Window::~Window() {

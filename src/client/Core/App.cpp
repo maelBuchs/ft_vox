@@ -123,6 +123,9 @@ void App::run() {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_WINDOW_RESIZED ||
                 event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
+                int w, h;
+                SDL_GetWindowSizeInPixels(_window->getSDLWindow(), &w, &h);
+                _window->updateSize(w, h);
                 _renderer->resizeSwapchain();
             }
 
