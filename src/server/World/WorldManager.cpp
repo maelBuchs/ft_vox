@@ -116,11 +116,11 @@ void WorldManager::generationWorkerLoop() {
         auto endTime = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
 
-        // Log slow generation (>5ms)
-        if (duration.count() > 5000) {
-            std::cout << "[WorldManager] Chunk generation at (" << pos[0] << ", " << pos[1] << ", "
-                      << pos[2] << ") took " << duration.count() / 1000.0F << "ms\n";
-        }
+        // // Log slow generation (>5ms)
+        // if (duration.count() > 5000) {
+        //     std::cout << "[WorldManager] Chunk generation at (" << pos[0] << ", " << pos[1] << ", "
+        //               << pos[2] << ") took " << duration.count() / 1000.0F << "ms\n";
+        // }
 
         {
             std::lock_guard<std::mutex> lock(_chunkMutex);

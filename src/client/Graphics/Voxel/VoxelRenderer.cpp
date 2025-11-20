@@ -688,6 +688,12 @@ void VoxelRenderer::update(const glm::ivec3& cameraChunkPos, int maxLoadDistance
     ZoneScoped;
     _maxLoadDistance = maxLoadDistance;
 
+    static bool firstUpdate = true;
+    if (firstUpdate) {
+        std::cout << "[VoxelRenderer] First update() call\n" << std::flush;
+        firstUpdate = false;
+    }
+
     {
         const auto now = std::chrono::steady_clock::now();
         const float frameTimeMs = std::chrono::duration<float, std::milli>(now - _lastFrameTime).count();
@@ -787,11 +793,21 @@ void VoxelRenderer::update(const glm::ivec3& cameraChunkPos, int maxLoadDistance
             ChunkMeshBuffers chunkBuffers;
             {
                 ZoneScopedN("Allocate Chunk Buffers");
+                static int allocCount = 0;
+                if (allocCount < 3) {
+                    std::cout << "[VoxelRenderer] Allocating chunk buffers #" << allocCount
+                              << " (vertices=" << meshData.vertices.size()
+                              << ", indices=" << meshData.indices.size() << ")\n" << std::flush;
+                }
                 chunkBuffers = _meshPool->allocateChunkBuffers(
                     meshData.indices, meshData.vertices,
                     [this](std::function<void(VkCommandBuffer)>&& func) {
                         _executor.immediateSubmit(std::move(func));
                     });
+                if (allocCount < 3) {
+                    std::cout << "[VoxelRenderer] Chunk buffers #" << allocCount << " allocated successfully\n" << std::flush;
+                    allocCount++;
+                }
             }
 
             const glm::vec3 chunkWorldPos{static_cast<float>(chunkCoords[0] * Chunk::CHUNK_SIZE),
@@ -860,9 +876,17 @@ void VoxelRenderer::update(const glm::ivec3& cameraChunkPos, int maxLoadDistance
 
     if (!meshBatch.empty()) {
         ZoneScopedN("Submit Batched Uploads");
+        static bool firstUpload = true;
+        if (firstUpload) {
+            std::cout << "[VoxelRenderer] First submitPendingUploads call\n" << std::flush;
+        }
         _meshPool->submitPendingUploads([this](std::function<void(VkCommandBuffer)>&& func) {
             _executor.immediateSubmit(std::move(func));
         });
+        if (firstUpload) {
+            std::cout << "[VoxelRenderer] First submitPendingUploads completed\n" << std::flush;
+            firstUpload = false;
+        }
     }
 
     const auto now = std::chrono::steady_clock::now();
@@ -955,6 +979,11 @@ void VoxelRenderer::update(const glm::ivec3& cameraChunkPos, int maxLoadDistance
 
 void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wireframeMode) {
     ZoneScopedN("VoxelRenderer::drawVoxels");
+
+    static bool firstDraw = true;
+    if (firstDraw) {
+        std::cout << "[VoxelRenderer] First drawVoxels() call, chunks=" << _chunkDrawInfos.size() << "\n" << std::flush;
+    }
 
     const uint32_t frameIndex = static_cast<uint32_t>(_renderer.getFrameNumber() % CHUNK_BUFFER_COUNT);
     _meshPool->setCurrentFrameIndex(frameIndex);
@@ -1258,7 +1287,14 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
         {
             ZoneScopedN("Dispatch Mesh Tasks");
             uint32_t taskWorkgroups = (pushConstants.totalChunks + 15) / 16;
+            if (firstDraw) {
+                std::cout << "[VoxelRenderer] First mesh shader draw: taskWorkgroups=" << taskWorkgroups << "\n" << std::flush;
+            }
             _vkCmdDrawMeshTasksEXT(cmd, taskWorkgroups, 1, 1);
+            if (firstDraw) {
+                std::cout << "[VoxelRenderer] First mesh shader draw completed\n" << std::flush;
+                firstDraw = false;
+            }
         }
 
     } else {
@@ -1295,6 +1331,9 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
         vkCmdBindIndexBuffer(cmd, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
         // Multi-Draw Indirect
+        if (firstDraw) {
+            std::cout << "[VoxelRenderer] First traditional draw: commands=" << _indirectCommands.size() << "\n" << std::flush;
+        }
         if (_enableGPUCulling && _supportsDrawIndirectCount) {
             vkCmdDrawIndexedIndirectCount(cmd, _culledIndirectBuffer.buffer, sizeof(uint32_t),
                                           _culledIndirectBuffer.buffer, 0,
@@ -1308,6 +1347,10 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
             vkCmdDrawIndexedIndirect(cmd, _indirectBuffer.buffer, 0,
                                      static_cast<uint32_t>(_indirectCommands.size()),
                                      sizeof(VkDrawIndexedIndirectCommand));
+        }
+        if (firstDraw) {
+            std::cout << "[VoxelRenderer] First traditional draw completed\n" << std::flush;
+            firstDraw = false;
         }
     }
 

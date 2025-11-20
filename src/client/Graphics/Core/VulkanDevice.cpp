@@ -99,6 +99,27 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
     const vkb::PhysicalDevice& vkbPhysicalDevice = physicalDeviceRet.value();
     _physicalDevice = vkbPhysicalDevice.physical_device;
 
+    // Log GPU info for debugging
+    {
+        VkPhysicalDeviceProperties props;
+        vkGetPhysicalDeviceProperties(_physicalDevice, &props);
+
+        const char* deviceType = "Unknown";
+        switch (props.deviceType) {
+            case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: deviceType = "Integrated GPU"; break;
+            case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU: deviceType = "Discrete GPU"; break;
+            case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU: deviceType = "Virtual GPU"; break;
+            case VK_PHYSICAL_DEVICE_TYPE_CPU: deviceType = "CPU"; break;
+            default: break;
+        }
+
+        std::cout << "[VulkanDevice] Selected GPU: " << props.deviceName << "\n";
+        std::cout << "[VulkanDevice] Device type: " << deviceType << "\n";
+        std::cout << "[VulkanDevice] API version: " << VK_VERSION_MAJOR(props.apiVersion) << "."
+                  << VK_VERSION_MINOR(props.apiVersion) << "." << VK_VERSION_PATCH(props.apiVersion) << "\n";
+        std::cout << std::flush;
+    }
+
     // Check for mesh shader support
     VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeatures{};
     meshShaderFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT;
@@ -264,6 +285,25 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
                                             .pDeviceMemoryCallbacks = &vmaCallbacks,
                                             .instance = _instance};
     vmaCreateAllocator(&allocatorInfo, &_allocator);
+
+    // Log memory budget for debugging (especially useful for integrated GPUs)
+    {
+        VmaBudget budgets[VK_MAX_MEMORY_HEAPS];
+        vmaGetHeapBudgets(_allocator, budgets);
+
+        VkPhysicalDeviceMemoryProperties memProps;
+        vkGetPhysicalDeviceMemoryProperties(_physicalDevice, &memProps);
+
+        std::cout << "[VulkanDevice] Memory heaps:\n";
+        for (uint32_t i = 0; i < memProps.memoryHeapCount; i++) {
+            const uint64_t budgetMB = budgets[i].budget / (1024 * 1024);
+            const char* heapType = (memProps.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)
+                                   ? "Device Local" : "Host Visible";
+            std::cout << "  Heap " << i << " (" << heapType << "): " << budgetMB << " MB\n";
+        }
+        std::cout << "[VulkanDevice] Mesh shaders: " << (_meshShaderSupported ? "Supported" : "Not supported") << "\n";
+        std::cout << std::flush;
+    }
 
     // Create Tracy command pool and buffer
     VkCommandPoolCreateInfo poolInfo{.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,

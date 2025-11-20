@@ -122,6 +122,10 @@ MeshBufferPool::MeshBufferPool(VulkanDevice& device, VulkanBuffer& bufferManager
 MeshBufferPool::~MeshBufferPool() {
     flushDeletionQueue();
 
+    // Clear pending uploads before destroying staging pools
+    // (staging buffers in pendingUploads are from the pools and will be destroyed with them)
+    _pendingUploads.clear();
+
     for (auto& staging : _stagingVertexPool) {
         _bufferManager.destroyBuffer(staging.buffer);
     }
