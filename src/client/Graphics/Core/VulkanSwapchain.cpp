@@ -7,7 +7,7 @@
 #include "VulkanDevice.hpp"
 
 VulkanSwapchain::VulkanSwapchain(Window& window, VulkanDevice& device)
-    : _device(device), _swapchainImageFormat(VK_FORMAT_A2B10G10R10_UNORM_PACK32) {
+    : _device(device) {
 
     vkb::SwapchainBuilder swapchainBuilder{_device.getPhysicalDevice(), _device.getDevice(),
                                            _device.getSurface()};
@@ -40,6 +40,7 @@ VulkanSwapchain::VulkanSwapchain(Window& window, VulkanDevice& device)
     _swapchain = vkbSwapchain.swapchain;
     _swapchainImages = vkbSwapchain.get_images().value();
     _swapchainImageViews = vkbSwapchain.get_image_views().value();
+    _swapchainImageFormat = vkbSwapchain.image_format;
 }
 
 VulkanSwapchain::~VulkanSwapchain() {
