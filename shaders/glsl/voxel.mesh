@@ -109,9 +109,9 @@ void main() {
     // }
 
     if (payloadIdx >= payload.meshCount) {
-        if (localID == 0 && payloadIdx < 5) {
-            // debugPrintfEXT("[MESH] OUT OF BOUNDS: payloadIdx=%u meshCount=%u\n", payloadIdx,
-            //                payload.meshCount);
+        // CRITICAL: Must call SetMeshOutputsEXT for ALL out-of-bounds workgroups
+        // Missing this causes GPU hang on AMD RADV (undefined behavior)
+        if (localID == 0) {
             SetMeshOutputsEXT(0, 0);
         }
         return;
