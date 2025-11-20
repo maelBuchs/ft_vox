@@ -1,7 +1,7 @@
 #version 460
 #extension GL_EXT_mesh_shader : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
-// #extension GL_EXT_debug_printf : enable  // DISABLED: Causes massive performance overhead (~1,900 GPU→CPU syncs per frame)
+#extension GL_EXT_debug_printf : enable  // ENABLED for AMD debugging
 
 // Task shader for GPU-driven frustum culling and dynamic chunk tiling
 // Performs frustum culling on chunks and subdivides large chunks for mesh shader
@@ -213,10 +213,10 @@ void main() {
     barrier();
 
     // DEBUG: Log visible count per workgroup
-    // if (localID == 0) {
-    //     debugPrintfEXT("[TASK WG=%u] After culling: visibleCount=%u (out of 32 possible chunks)\n",
-    //                    workgroupID, visibleCount);
-    // }
+    if (localID == 0 && workgroupID < 2) {
+        debugPrintfEXT("[TASK WG=%u] After culling: visibleCount=%u\n",
+                       workgroupID, visibleCount);
+    }
 
     // Only first thread emits mesh tasks
     if (localID == 0) {
@@ -256,9 +256,10 @@ void main() {
 
         payload.meshCount = payloadIndex;
 
-        // debugPrintfEXT("[TASK WG=%u] Emitting: visibleChunks=%u totalTilesNeeded=%u actualEmitting=%u (maxEntries=%u)\n",
-        //                workgroupID, safeVisibleCount, totalTilesNeeded, payload.meshCount,
-        //                maxPayloadEntries);
+        if (workgroupID < 2) {
+            debugPrintfEXT("[TASK WG=%u] Emitting: chunks=%u tiles=%u meshCount=%u\n",
+                           workgroupID, safeVisibleCount, totalTilesNeeded, payload.meshCount);
+        }
 
         // Emit mesh shader workgroups
         // Each mesh workgroup handles one tile of one chunk

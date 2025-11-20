@@ -136,6 +136,25 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
         (meshShaderFeatures.taskShader == VK_TRUE && meshShaderFeatures.meshShader == VK_TRUE);
 
     if (_meshShaderSupported) {
+        // Log mesh shader properties for debugging AMD issues
+        VkPhysicalDeviceMeshShaderPropertiesEXT meshProps{};
+        meshProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_EXT;
+        meshProps.pNext = nullptr;
+
+        VkPhysicalDeviceProperties2 props2{};
+        props2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+        props2.pNext = &meshProps;
+        vkGetPhysicalDeviceProperties2(_physicalDevice, &props2);
+
+        std::cout << "[VulkanDevice] Mesh shader properties:\n";
+        std::cout << "  maxTaskWorkGroupInvocations: " << meshProps.maxTaskWorkGroupInvocations << "\n";
+        std::cout << "  maxMeshWorkGroupInvocations: " << meshProps.maxMeshWorkGroupInvocations << "\n";
+        std::cout << "  maxTaskPayloadSize: " << meshProps.maxTaskPayloadSize << " bytes\n";
+        std::cout << "  maxMeshOutputVertices: " << meshProps.maxMeshOutputVertices << "\n";
+        std::cout << "  maxMeshOutputPrimitives: " << meshProps.maxMeshOutputPrimitives << "\n";
+        std::cout << "  maxMeshWorkGroupCount[0]: " << meshProps.maxMeshWorkGroupCount[0] << "\n";
+        std::cout << std::flush;
+
         // Reset mesh shader features for device creation
         meshShaderFeatures.taskShader = VK_TRUE;
         meshShaderFeatures.meshShader = VK_TRUE;
