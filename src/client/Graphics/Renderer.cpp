@@ -191,7 +191,12 @@ void Renderer::draw(float timeOfDay) {
     ret = vkAcquireNextImageKHR(
         _device.getDevice(), _swapchain->getSwapchain(), CommandExecutor::VULKAN_TIMEOUT_NS,
         _swapchainSemaphores[semaphoreIndex], nullptr, &swapchainImageIndex);
-    checkVkResult(ret, "Failed to acquire next image");
+    if (ret == VK_ERROR_OUT_OF_DATE_KHR) {
+        resizeSwapchain();
+        return;
+    } else if (ret != VK_SUCCESS && ret != VK_SUBOPTIMAL_KHR) {
+        throw std::runtime_error("Failed to acquire next image");
+    }
 
     if (_imagesInFlight[swapchainImageIndex] != VK_NULL_HANDLE) {
         ret = vkWaitForFences(_device.getDevice(), 1, &_imagesInFlight[swapchainImageIndex],
@@ -342,7 +347,11 @@ void Renderer::draw(float timeOfDay) {
                                  .pImageIndices = &swapchainImageIndex,
                                  .pResults = nullptr};
     ret = vkQueuePresentKHR(_device.getQueue(), &presentInfo);
-    checkVkResult(ret, "Failed to present swapchain image");
+    if (ret == VK_ERROR_OUT_OF_DATE_KHR || ret == VK_SUBOPTIMAL_KHR) {
+        resizeSwapchain();
+    } else if (ret != VK_SUCCESS) {
+        throw std::runtime_error("Failed to present swapchain image");
+    }
 
     _frameManager->incrementFrame();
 }
