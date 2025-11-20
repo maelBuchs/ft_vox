@@ -47,7 +47,7 @@ layout(set = 0, binding = 1, std430) readonly buffer ChunkDataBuffer {
 
 // ===== PUSH CONSTANTS =====
 layout(push_constant) uniform PushConstants {
-    uint totalChunks;
+    layout(offset = 68) uint totalChunks;
     float chunkSize;
     uint maxVerticesPerMeshWorkgroup; // Typically 256
     uint maxMeshWorkgroupsPerTask;    // Device limit for mesh groups emitted per task

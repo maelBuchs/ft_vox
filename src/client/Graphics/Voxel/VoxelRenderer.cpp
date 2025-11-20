@@ -189,7 +189,9 @@ void VoxelRenderer::initPipelines(VkImageView atlasView, VkSampler atlasSampler,
             Pipeline::loadShaderModule(_device, "shaders/voxel.vert.spv");
 
         VkPushConstantRange pushConstantRange{
-            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT, .offset = 0, .size = sizeof(glm::mat4)};
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+            .offset = 0,
+            .size = sizeof(glm::mat4) + sizeof(uint32_t)};
 
         // Update pipeline layout to include TWO descriptor sets (Set 0: chunk data, Set 1: texture atlas)
         VkDescriptorSetLayout setLayouts[] = {_chunkSetLayout, _traditionalFragSetLayout};
@@ -480,17 +482,22 @@ void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atla
                                                            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                                                        VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-    struct MeshShaderPushConstants {
+    struct MeshShaderTaskPushConstants {
         uint32_t totalChunks;
         float chunkSize;
         uint32_t maxVerticesPerMeshWorkgroup;
         uint32_t maxMeshWorkgroupsPerTask;
     };
 
-    VkPushConstantRange meshPushRange{};
-    meshPushRange.stageFlags = VK_SHADER_STAGE_TASK_BIT_EXT;
-    meshPushRange.offset = 0;
-    meshPushRange.size = sizeof(MeshShaderPushConstants);
+    VkPushConstantRange pushRanges[2] = {};
+
+    pushRanges[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    pushRanges[0].offset = 0;
+    pushRanges[0].size = sizeof(glm::mat4) + sizeof(uint32_t);
+
+    pushRanges[1].stageFlags = VK_SHADER_STAGE_TASK_BIT_EXT;
+    pushRanges[1].offset = 68;
+    pushRanges[1].size = sizeof(MeshShaderTaskPushConstants);
 
     VkDescriptorSetLayout setLayouts[] = {_meshShaderSetLayout, _meshShaderFragSetLayout};
 
@@ -498,8 +505,8 @@ void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atla
     meshLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     meshLayoutInfo.setLayoutCount = 2; // Two descriptor sets
     meshLayoutInfo.pSetLayouts = setLayouts;
-    meshLayoutInfo.pushConstantRangeCount = 1;
-    meshLayoutInfo.pPushConstantRanges = &meshPushRange;
+    meshLayoutInfo.pushConstantRangeCount = 2;
+    meshLayoutInfo.pPushConstantRanges = pushRanges;
 
     if (vkCreatePipelineLayout(_device.getDevice(), &meshLayoutInfo, nullptr,
                                &_meshShaderPipelineLayout) != VK_SUCCESS) {
@@ -1310,26 +1317,35 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshShaderPipelineLayout, 0,
                                 2, descriptorSets, 0, nullptr);
 
-        // Push constants for task shader
-        struct MeshShaderPushConstants {
+        struct FragmentPushConstants {
+            glm::mat4 viewProj;
+            uint32_t needsGammaCorrection;
+        } fragPushConstants{};
+
+        fragPushConstants.viewProj = glm::mat4(1.0F);
+        fragPushConstants.needsGammaCorrection = _renderer.needsGammaCorrection() ? 1u : 0u;
+
+        vkCmdPushConstants(cmd, _meshShaderPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                           sizeof(FragmentPushConstants), &fragPushConstants);
+
+        struct TaskPushConstants {
             uint32_t totalChunks;
             float chunkSize;
             uint32_t maxVerticesPerMeshWorkgroup;
             uint32_t maxMeshWorkgroupsPerTask;
-        };
+        } taskPushConstants{};
 
-        MeshShaderPushConstants pushConstants{};
-        pushConstants.totalChunks = static_cast<uint32_t>(_chunkDrawData.size());
-        pushConstants.chunkSize = 32.0F;
-        pushConstants.maxVerticesPerMeshWorkgroup = 256;
-        pushConstants.maxMeshWorkgroupsPerTask = _maxMeshWorkgroupsPerTask;
+        taskPushConstants.totalChunks = static_cast<uint32_t>(_chunkDrawData.size());
+        taskPushConstants.chunkSize = 32.0F;
+        taskPushConstants.maxVerticesPerMeshWorkgroup = 256;
+        taskPushConstants.maxMeshWorkgroupsPerTask = _maxMeshWorkgroupsPerTask;
 
-        vkCmdPushConstants(cmd, _meshShaderPipelineLayout, VK_SHADER_STAGE_TASK_BIT_EXT, 0,
-                           sizeof(MeshShaderPushConstants), &pushConstants);
+        vkCmdPushConstants(cmd, _meshShaderPipelineLayout, VK_SHADER_STAGE_TASK_BIT_EXT, 68,
+                           sizeof(TaskPushConstants), &taskPushConstants);
 
         {
             ZoneScopedN("Dispatch Mesh Tasks");
-            uint32_t taskWorkgroups = (pushConstants.totalChunks + 15) / 16;
+            uint32_t taskWorkgroups = (taskPushConstants.totalChunks + 15) / 16;
             _vkCmdDrawMeshTasksEXT(cmd, taskWorkgroups, 1, 1);
         }
 
@@ -1361,9 +1377,17 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
         projection[1][1] *= -1.0F;
         glm::mat4 viewProjection = projection * view;
 
-        // Push constants
-        vkCmdPushConstants(cmd, _voxelPipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0,
-                           sizeof(glm::mat4), &viewProjection);
+        struct VoxelPushConstants {
+            glm::mat4 viewProj;
+            uint32_t needsGammaCorrection;
+        } pushConstants;
+
+        pushConstants.viewProj = viewProjection;
+        pushConstants.needsGammaCorrection = _renderer.needsGammaCorrection() ? 1u : 0u;
+
+        vkCmdPushConstants(cmd, _voxelPipeline.getLayout(),
+                           VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                           sizeof(VoxelPushConstants), &pushConstants);
 
         // Bind mega index buffer
         VkBuffer indexBuffer = _meshPool->getIndexBuffer();

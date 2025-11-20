@@ -488,6 +488,10 @@ float Renderer::getMeshPoolUsage() const {
     return 0.0f;
 }
 
+bool Renderer::needsGammaCorrection() const {
+    return _swapchain->getSwapchainImageFormat() == VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+}
+
 uint64_t Renderer::getFrameNumber() const {
     if (_frameManager) {
         return _frameManager->getFrameNumber();
@@ -1141,14 +1145,15 @@ void Renderer::drawSky(VkCommandBuffer cmd, float timeOfDay) {
     struct SkyPushConstants {
         glm::mat4 inverseViewProj;
         float timeOfDay;
-        float padding1;
+        float needsGammaCorrection;
         float padding2;
         float padding3;
     } pushConstants;
 
     pushConstants.inverseViewProj = inverseViewProj;
     pushConstants.timeOfDay = timeOfDay;
-    pushConstants.padding1 = 0.0F;
+    pushConstants.needsGammaCorrection =
+        (_swapchain->getSwapchainImageFormat() == VK_FORMAT_A2B10G10R10_UNORM_PACK32) ? 1.0F : 0.0F;
     pushConstants.padding2 = 0.0F;
     pushConstants.padding3 = 0.0F;
 

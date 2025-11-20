@@ -12,8 +12,8 @@ layout(set = 0, binding = 0) uniform sampler2D blueNoiseTexture;
 // Push constants (same as vertex shader)
 layout(push_constant) uniform constants {
     mat4 inverseViewProj;
-    float timeOfDay; // 0.0 to 1.0
-    float padding1;
+    float timeOfDay;
+    float needsGammaCorrection;
     float padding2;
     float padding3;
 }
@@ -283,6 +283,8 @@ void main() {
         // Add procedural stars here if desired
     }
 
-    vec3 encoded = pow(skyColor, vec3(1.0 / 2.2));
+    vec3 encoded = (PushConstants.needsGammaCorrection > 0.5)
+        ? pow(skyColor, vec3(1.0 / 2.2))
+        : skyColor;
     outFragColor = vec4(encoded, 1.0);
 }

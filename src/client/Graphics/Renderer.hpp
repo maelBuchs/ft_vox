@@ -65,6 +65,8 @@ class Renderer {
     [[nodiscard]] size_t getLoadedChunkCount() const;
     [[nodiscard]] float getMeshPoolUsage() const;
 
+    [[nodiscard]] bool needsGammaCorrection() const;
+
   private:
     static void checkVkResult(VkResult result, const char* errorMessage);
     void initImGui();

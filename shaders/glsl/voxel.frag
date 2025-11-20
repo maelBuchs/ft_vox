@@ -18,6 +18,12 @@ layout(set = 1, binding = 1) uniform AtlasConfig {
 }
 atlasConfig;
 
+layout(push_constant) uniform constants {
+    mat4 viewProj;
+    uint needsGammaCorrection;
+}
+PushConstants;
+
 // Hardcoded ID for grass top texture (must match load order in C++)
 const uint GRASS_TOP_TEXTURE_ID = 2u;
 
@@ -75,7 +81,9 @@ void main() {
 
     // Apply lighting, directional brightness, and ambient occlusion
     vec3 finalOutputColor = finalColor * lighting * faceBrightness * inAO;
-    vec3 encoded = pow(finalOutputColor, vec3(1.0 / 2.2));
+    vec3 encoded = (PushConstants.needsGammaCorrection == 1u)
+        ? pow(finalOutputColor, vec3(1.0 / 2.2))
+        : finalOutputColor;
     outFragColor = vec4(encoded, textureColor.a);
 
     // Note: Transparent fragment discarding disabled to avoid requiring
