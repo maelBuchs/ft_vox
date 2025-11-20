@@ -33,3 +33,4 @@ jobs:
           user_email: "github-actions[bot]@users.noreply.github.com"
 
           commit_message: "Deploy Doxygen documentation to doc branch"
+          cname: "ft-minecraft.maem.lol"
