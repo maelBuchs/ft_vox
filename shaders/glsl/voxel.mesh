@@ -109,11 +109,7 @@ void main() {
     }
 
     if (payloadIdx >= payload.meshCount) {
-        // CRITICAL: Must call SetMeshOutputsEXT for ALL out-of-bounds workgroups
-        // Missing this causes GPU hang on AMD RADV (undefined behavior)
-        if (localID == 0) {
-            SetMeshOutputsEXT(0, 0);
-        }
+        SetMeshOutputsEXT(0, 0);
         return;
     }
 
@@ -128,9 +124,7 @@ void main() {
     // If a chunk is unloaded but still referenced by the task payload, desktop GPUs
     // often tolerate reading address 0, but integrated GPUs fault and crash the driver.
     if (chunk.vertexBufferAddress == 0) {
-        if (localID == 0) {
-            SetMeshOutputsEXT(0, 0);
-        }
+        SetMeshOutputsEXT(0, 0);
         return;
     }
 
@@ -162,10 +156,8 @@ void main() {
                        tileStart, tileEnd, actualPrimitives, actualVertices, chunk.vertexBufferAddress);
     }
 
-    // Set mesh output counts (must be done by all threads, or just first thread)
-    if (localID == 0) {
-        SetMeshOutputsEXT(actualVertices, actualPrimitives);
-    }
+    // Set mesh output counts - all threads must call uniformly
+    SetMeshOutputsEXT(actualVertices, actualPrimitives);
 
     // ===== PROCESS VERTICES IN PARALLEL =====
     // Each thread processes multiple vertices (strided access)
