@@ -47,11 +47,10 @@ std::vector<BiomeType> determineBiome(Chunk& chunk, int64_t seed) {
             BiomeType biome = BiomeType::kNONE;
             if (continent < 0) {
                 biome = BiomeType::kNONE;
+            } else if (continent > 0.38F) {
+                biome = BiomeType::kMOUNTAINS;
             } else {
                 biome = BiomeType::kPLAINS;
-            }
-            if (BiomeType::kPLAINS == biome && humidity < -0.3F) {
-                biome = BiomeType::kMOUNTAINS;
             }
 
             biomeData.push_back(biome);

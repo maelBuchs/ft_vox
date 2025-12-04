@@ -78,5 +78,15 @@
       "transparent": true,
       "fluid": true
     }
+  },
+  {
+    "id": 7,
+    "name": "sand",
+    "textures": {
+      "all": "../../assets/textures/block/sand.png"
+    },
+    "tags": {
+      "gravity": true
+    }
   }
 ]

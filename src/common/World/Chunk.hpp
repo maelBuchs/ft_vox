@@ -147,6 +147,6 @@ class Chunk {
     std::vector<BiomeType> _biomeData;
     void generateChunk();
     bool loadChunk();
-    int64_t kSEED = 42L;
+    int64_t kSEED;
     // void saveChunk();
 };

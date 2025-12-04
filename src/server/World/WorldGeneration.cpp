@@ -52,16 +52,39 @@ void addSurface(Chunk* chunk, const int heightMap[Chunk::CHUNK_SIZE][Chunk::CHUN
                 } else if (biome == BiomeType::kMOUNTAINS) {
                     chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 1);
                 } else if (biome == BiomeType::kOCEAN) {
-                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 3);
+                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 7);
                 } else if (biome == BiomeType::kNONE) {
-                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 4);
+                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 7);
                 } else {
-                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 5);
+                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 7);
                 }
             }
 
             if (chunk->getPosition()[1] == 0) {
                 chunk->setBlock(bx, 0, bz, 5);
+            }
+        }
+    }
+}
+
+void addCaves(Chunk* chunk, int64_t seed) {
+    // Simple cave generation using 3D Perlin noise
+    for (int bx = 0; bx < Chunk::CHUNK_SIZE; bx++) {
+        for (int by = 0; by < Chunk::CHUNK_SIZE; by++) {
+            for (int bz = 0; bz < Chunk::CHUNK_SIZE; bz++) {
+                int worldX = CHUNK_TO_WORLD(bx, chunk->getPosition()[0]);
+                int worldY = CHUNK_TO_WORLD(by, chunk->getPosition()[1]);
+                int worldZ = CHUNK_TO_WORLD(bz, chunk->getPosition()[2]);
+
+                float caveNoise = perlinNoise3D(worldX, worldY, worldZ, noise_config::kCAVE, seed);
+
+                // Threshold to determine if block is part of a cave
+                // if (caveNoise < 0.0F) {
+                if (caveNoise > 0.2F && caveNoise < 0.25F) {
+                    auto block = chunk->getBlock(bx, by, bz);
+                    if (block != 5 && block != 6)
+                        chunk->setBlock(bx, by, bz, 0); // Set block to air
+                }
             }
         }
     }
@@ -107,7 +130,7 @@ std::shared_ptr<Chunk> WorldManager::generateChunk(const glm::ivec3& pos) {
             }
         }
     }
-    // addCaves(chunk.get());
+    addCaves(chunk.get(), getSeed());
     // Add surface layers using same height map
     return chunk;
 }

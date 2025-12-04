@@ -20,8 +20,13 @@ WorldManager::WorldManager(ThreadSafeQueue<ChunkRequest>& requestQueue,
     // // y = {20, 31, 45, 60, 70, 80, 119, 137, 148, 200, 255};
     // x = {-1.0, -0.8, -0.5, -0.3, 0.0, 0.1, 0.5, 0.7, 0.75, 0.8, 1.0, 1.2};
     // y = {20, 31, 35, 40, 50, 65, 69, 90, 100, 150, 200, 255};
-    x = {-1.0, -0.8, -0.5, -0.3, 0.0, 0.5, 0.7, 0.75, 0.8, 1.0, 1.2};
-    y = {20, 31, 35, 40, 50, 69, 90, 100, 130, 220, 255};
+    // x = {-1.0, -0.8, -0.5, -0.3, 0.0, 0.5, 0.7, 0.75, 0.8, 1.0, 1.2};
+    // y = {20, 31, 35, 40, 50, 55, 60, 100, 130, 220, 255};
+    x = {-1.0, -0.6, -0.15, -0.05, 0.0, 0.05, 0.3, 0.6, 0.8, 1.0, 1.2};
+
+    // Y : Hauteur (0-255)
+    // 63 = Niveau de l'eau
+    y = {20, 45, 58, 62, 63, 68, 80, 110, 170, 240, 255};
     _heightSpline.set_points(x, y, tk::spline::cspline);
 }
 
@@ -118,7 +123,8 @@ void WorldManager::generationWorkerLoop() {
 
         // Log slow generation (>5ms)
         // if (duration.count() > 5000) {
-        //     std::cout << "[WorldManager] Chunk generation at (" << pos[0] << ", " << pos[1] << ", "
+        //     std::cout << "[WorldManager] Chunk generation at (" << pos[0] << ", " << pos[1] << ",
+        //     "
         //               << pos[2] << ") took " << duration.count() / 1000.0F << "ms\n";
         // }
 
