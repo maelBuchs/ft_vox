@@ -5,6 +5,18 @@
 
 #include "common/World/Chunk.hpp"
 #include "WorldManager.hpp"
+
+enum BlockType : uint8_t {
+    kAIR = 0,
+    kSTONE = 1,
+    kGRASS = 2,
+    kDIRT = 3,
+    kOAK = 4,
+    kBEDROCK = 5,
+    kWATER = 6,
+    kSAND = 7,
+    kCAVE_AIR = 8
+};
 namespace {
 
 int getHeightValue(int bx, int bz, float continentalness, BiomeType biome,
@@ -38,30 +50,26 @@ void addSurface(Chunk* chunk, const int heightMap[Chunk::CHUNK_SIZE][Chunk::CHUN
             }
             if (maxHeight + 1 >= CHUNK_TO_WORLD(0, chunk->getPosition()[1]) &&
                 maxHeight + 1 < CHUNK_TO_WORLD(Chunk::CHUNK_SIZE, chunk->getPosition()[1])) {
-                chunk->setBlock(bx, (maxHeight + 1) % Chunk::CHUNK_SIZE, bz, 3);
+                chunk->setBlock(bx, (maxHeight + 1) % Chunk::CHUNK_SIZE, bz, kDIRT);
             }
             if (maxHeight + 2 >= CHUNK_TO_WORLD(0, chunk->getPosition()[1]) &&
                 maxHeight + 2 < CHUNK_TO_WORLD(Chunk::CHUNK_SIZE, chunk->getPosition()[1])) {
-                chunk->setBlock(bx, (maxHeight + 2) % Chunk::CHUNK_SIZE, bz, 3);
+                chunk->setBlock(bx, (maxHeight + 2) % Chunk::CHUNK_SIZE, bz, kDIRT);
             }
             if (maxHeight + 3 >= CHUNK_TO_WORLD(0, chunk->getPosition()[1]) &&
                 maxHeight + 3 < CHUNK_TO_WORLD(Chunk::CHUNK_SIZE, chunk->getPosition()[1])) {
                 auto biome = chunk->getBiomeDataAt(bx, bz);
                 if (biome == BiomeType::kPLAINS) {
-                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 2);
+                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, kGRASS);
                 } else if (biome == BiomeType::kMOUNTAINS) {
-                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 1);
-                } else if (biome == BiomeType::kOCEAN) {
-                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 7);
-                } else if (biome == BiomeType::kNONE) {
-                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 7);
+                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, kSTONE);
                 } else {
-                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 7);
+                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, kSAND);
                 }
             }
 
             if (chunk->getPosition()[1] == 0) {
-                chunk->setBlock(bx, 0, bz, 5);
+                chunk->setBlock(bx, 0, bz, kBEDROCK);
             }
         }
     }
@@ -82,8 +90,8 @@ void addCaves(Chunk* chunk, int64_t seed) {
                 // if (caveNoise < 0.0F) {
                 if (caveNoise > 0.2F && caveNoise < 0.25F) {
                     auto block = chunk->getBlock(bx, by, bz);
-                    if (block != 5 && block != 6)
-                        chunk->setBlock(bx, by, bz, 0); // Set block to air
+                    if (block != kBEDROCK && block != kWATER)
+                        chunk->setBlock(bx, by, bz, kAIR); // Set block to air
                 }
             }
         }
@@ -94,23 +102,12 @@ std::shared_ptr<Chunk> WorldManager::generateChunk(const glm::ivec3& pos) {
     ZoneScoped;
 
     auto chunk = std::make_shared<Chunk>(pos[0], pos[1], pos[2], *this);
-    // Pre-compute height map once to avoid redundant calculations
-    // This cuts height calculations in half (was called in both generateChunk and addSurface)
-    if (chunk->getPosition()[1] > 10) {
+
+    if (pos[1] > 8 || pos[1] < 0) {
         return chunk; // Return empty chunk for Y < 0
     }
     int heightMap[Chunk::CHUNK_SIZE][Chunk::CHUNK_SIZE];
 
-    // for (int bx = 0; bx < Chunk::CHUNK_SIZE; bx++) {
-    //     for (int bz = 0; bz < Chunk::CHUNK_SIZE; bz++) {
-    //         heightMap[bx][bz] =
-    //             getHeightValue(CHUNK_TO_WORLD(bx, pos[0]), CHUNK_TO_WORLD(bz, pos[2]),
-    //                            chunk->getNoise(bx, bz, NoiseType::kCONTINENT),
-    //                            chunk->getBiomeDataAt(bx, bz), getHeightSpline());
-    //     }
-    // }
-
-    // Fill chunk with terrain using pre-computed height map
     for (int bx = 0; bx < Chunk::CHUNK_SIZE; bx++) {
         for (int bz = 0; bz < Chunk::CHUNK_SIZE; bz++) {
             heightMap[bx][bz] =
@@ -118,73 +115,63 @@ std::shared_ptr<Chunk> WorldManager::generateChunk(const glm::ivec3& pos) {
                                chunk->getNoise(bx, bz, NoiseType::kCONTINENT),
                                chunk->getBiomeDataAt(bx, bz), getHeightSpline());
             int maxHeight = heightMap[bx][bz];
-            for (int by = 0; by < Chunk::CHUNK_SIZE; by++) {
-                if (CHUNK_TO_WORLD(by, pos[1]) < maxHeight) {
-                    chunk->setBlock(bx, by, bz, 1); // Set block ID to 1 (solid block)
+            /* Under-surface fill */
+            // TODO - Cleaner way to do this?
+            if (maxHeight >= CHUNK_TO_WORLD(0, pos[1]) &&
+                maxHeight < CHUNK_TO_WORLD(Chunk::CHUNK_SIZE, pos[1])) {
+                chunk->setBlock(bx, maxHeight % Chunk::CHUNK_SIZE, bz, kDIRT);
+            }
+            if (maxHeight + 1 >= CHUNK_TO_WORLD(0, pos[1]) &&
+                maxHeight + 1 < CHUNK_TO_WORLD(Chunk::CHUNK_SIZE, pos[1])) {
+                chunk->setBlock(bx, (maxHeight + 1) % Chunk::CHUNK_SIZE, bz, kDIRT);
+            }
+            if (maxHeight + 2 >= CHUNK_TO_WORLD(0, pos[1]) &&
+                maxHeight + 2 < CHUNK_TO_WORLD(Chunk::CHUNK_SIZE, pos[1])) {
+                chunk->setBlock(bx, (maxHeight + 2) % Chunk::CHUNK_SIZE, bz, kDIRT);
+            }
+            /* Surface block based on biome */
+            if (maxHeight + 3 >= CHUNK_TO_WORLD(0, pos[1]) &&
+                maxHeight + 3 < CHUNK_TO_WORLD(Chunk::CHUNK_SIZE, pos[1])) {
+                auto biome = chunk->getBiomeDataAt(bx, bz);
+                if (biome == BiomeType::kPLAINS) {
+                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, kGRASS);
+                } else if (biome == BiomeType::kMOUNTAINS) {
+                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, kSTONE);
+                } else {
+                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, kSAND);
                 }
-                if (CHUNK_TO_WORLD(by, pos[1]) < 60 && chunk->getBlock(bx, by, bz) == 0) {
-                    chunk->setBlock(bx, by, bz, 6); // Set block ID to 6 (water block)
+            }
+
+            for (int by = 0; by < Chunk::CHUNK_SIZE; by++) {
+                auto block = chunk->getBlock(bx, by, bz);
+                if (CHUNK_TO_WORLD(by, pos[1]) < maxHeight) {
+                    chunk->setBlock(bx, by, bz, kSTONE); // Set block ID to 1 (solid block)
+                }
+                if (CHUNK_TO_WORLD(by, pos[1]) < 60 && block == 0) {
+                    chunk->setBlock(bx, by, bz, kWATER); // Set block ID to 6 (water block)
                 }
                 float caveNoise =
                     perlinNoise3D(CHUNK_TO_WORLD(bx, pos[0]), CHUNK_TO_WORLD(by, pos[1]),
                                   CHUNK_TO_WORLD(bz, pos[2]), noise_config::kCAVE, kSEED);
 
-                // Threshold to determine if block is part of a cave
-                // if (caveNoise < 0.0F) {
-                if ((caveNoise > 0.0F && caveNoise < 0.2F) || caveNoise > 0.8F) {
-                    auto block = chunk->getBlock(bx, by, bz);
-                    if (block != 5 && block != 6)
-                        chunk->setBlock(bx, by, bz, 0); // Set block to air
+                /* Spaghetti ave generation */
+                if ((caveNoise > 0.0F && caveNoise < 0.2F)) {
+                    if (block != kBEDROCK && block != kWATER && block != kGRASS && block != kSAND) {
+                        chunk->setBlock(bx, by, bz, kCAVE_AIR); // Set block to cave air
+                    }
                 }
-            }
-            // heightMap[bx][bz];
-
-            if (maxHeight >= CHUNK_TO_WORLD(0, chunk->getPosition()[1]) &&
-                maxHeight < CHUNK_TO_WORLD(Chunk::CHUNK_SIZE, chunk->getPosition()[1])) {
-                chunk->setBlock(bx, maxHeight % Chunk::CHUNK_SIZE, bz, 3);
-            }
-            if (maxHeight + 1 >= CHUNK_TO_WORLD(0, chunk->getPosition()[1]) &&
-                maxHeight + 1 < CHUNK_TO_WORLD(Chunk::CHUNK_SIZE, chunk->getPosition()[1])) {
-                chunk->setBlock(bx, (maxHeight + 1) % Chunk::CHUNK_SIZE, bz, 3);
-            }
-            if (maxHeight + 2 >= CHUNK_TO_WORLD(0, chunk->getPosition()[1]) &&
-                maxHeight + 2 < CHUNK_TO_WORLD(Chunk::CHUNK_SIZE, chunk->getPosition()[1])) {
-                chunk->setBlock(bx, (maxHeight + 2) % Chunk::CHUNK_SIZE, bz, 3);
-            }
-            if (maxHeight + 3 >= CHUNK_TO_WORLD(0, chunk->getPosition()[1]) &&
-                maxHeight + 3 < CHUNK_TO_WORLD(Chunk::CHUNK_SIZE, chunk->getPosition()[1])) {
-                auto biome = chunk->getBiomeDataAt(bx, bz);
-                if (biome == BiomeType::kPLAINS) {
-                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 2);
-                } else if (biome == BiomeType::kMOUNTAINS) {
-                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 1);
-                } else if (biome == BiomeType::kOCEAN) {
-                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 7);
-                } else if (biome == BiomeType::kNONE) {
-                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 7);
-                } else {
-                    chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, 7);
+                /* Cheese cave generation */
+                if (caveNoise > 0.8F) {
+                    if (block != kBEDROCK && block != kWATER) {
+                        chunk->setBlock(bx, by, bz, kCAVE_AIR); // Set block to cave air
+                    }
                 }
             }
 
-            if (chunk->getPosition()[1] == 0) {
+            if (pos[1] == 0) {
                 chunk->setBlock(bx, 0, bz, 5);
             }
         }
     }
-    // addSurface(chunk.get(), heightMap);
-    // addCaves(chunk.get(), getSeed());
-
-    // for (int bx = 0; bx < Chunk::CHUNK_SIZE; bx++) {
-    //     for (int bz = 0; bz < Chunk::CHUNK_SIZE; bz++) {
-    //         // int maxHeight = heightMap[bx][bz];
-    //         for (int by = 0; by < Chunk::CHUNK_SIZE; by++) {
-    //             if (CHUNK_TO_WORLD(by, pos[1]) < 60 && chunk->getBlock(bx, by, bz) == 0) {
-    //                 chunk->setBlock(bx, by, bz, 6); // Set block ID to 6 (water block)
-    //             }
-    //         }
-    //     }
-    // }
-    // Add surface layers using same height map
     return chunk;
 }

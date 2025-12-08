@@ -88,5 +88,12 @@
     "tags": {
       "gravity": true
     }
+  },
+  {
+    "id": 8,
+    "name": "cave_air",
+    "tags": {
+      "transparent": true
+    }
   }
 ]
