@@ -163,7 +163,7 @@ $(document).ready(function(){initNavTree('Chunk_8hpp_source.html',''); initResiz
 <div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>    <span class="keywordtype">void</span> setBlock(<span class="keywordtype">int</span> x, <span class="keywordtype">int</span> y, <span class="keywordtype">int</span> z, uint8_t blockId);</div>
 <div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span> </div>
 <div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>    <span class="comment">// Helper functions</span></div>
-<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>    [[nodiscard]] <span class="keywordtype">bool</span> isBlockSolid(<span class="keywordtype">int</span> x, <span class="keywordtype">int</span> y, <span class="keywordtype">int</span> z) <span class="keyword">const</span>;</div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>    [[nodiscard]] <span class="keywordtype">bool</span> isBlockSolid(<span class="keywordtype">int</span> x, <span class="keywordtype">int</span> y, <span class="keywordtype">int</span> z, <span class="keyword">const</span> <a class="code hl_class" href="classBlockRegistry.html">BlockRegistry</a>&amp; registry) <span class="keyword">const</span>;</div>
 <div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>    [[nodiscard]] <span class="keyword">static</span> <span class="keywordtype">bool</span> isInBounds(<span class="keywordtype">int</span> x, <span class="keywordtype">int</span> y, <span class="keywordtype">int</span> z);</div>
 <div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>    [[nodiscard]] <span class="keyword">static</span> <span class="keywordtype">int</span> getIndex(<span class="keywordtype">int</span> x, <span class="keywordtype">int</span> y, <span class="keywordtype">int</span> z);</div>
 <div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>    <span class="comment">// [[nodiscard]] uint8_t getBiomeDataAt(int x, int z) const {</span></div>
@@ -245,6 +245,7 @@ $(document).ready(function(){initNavTree('Chunk_8hpp_source.html',''); initResiz
 <div class="line"><a id="l00150" name="l00150"></a><span class="lineno">  150</span>    int64_t kSEED;</div>
 <div class="line"><a id="l00151" name="l00151"></a><span class="lineno">  151</span>    <span class="comment">// void saveChunk();</span></div>
 <div class="line"><a id="l00152" name="l00152"></a><span class="lineno">  152</span>};</div>
+<div class="ttc" id="aclassBlockRegistry_html"><div class="ttname"><a href="classBlockRegistry.html">BlockRegistry</a></div><div class="ttdef"><b>Definition:</b> BlockRegistry.hpp:33</div></div>
 <div class="ttc" id="aclassChunk_html"><div class="ttname"><a href="classChunk.html">Chunk</a></div><div class="ttdef"><b>Definition:</b> Chunk.hpp:46</div></div>
 <div class="ttc" id="aclassWorldManager_html"><div class="ttname"><a href="classWorldManager.html">WorldManager</a></div><div class="ttdef"><b>Definition:</b> WorldManager.hpp:35</div></div>
 <div class="ttc" id="astructBiomeParams_html"><div class="ttname"><a href="structBiomeParams.html">BiomeParams</a></div><div class="ttdef"><b>Definition:</b> Util.hpp:15</div></div>
