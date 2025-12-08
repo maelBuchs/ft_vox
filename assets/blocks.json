@@ -3,7 +3,8 @@
     "id": 0,
     "name": "air",
     "tags": {
-      "transparent": true
+      "displayable": false,
+      "solid": false
     }
   },
   {
@@ -13,8 +14,6 @@
       "all": "../../assets/textures/block/stone.png"
     },
     "tags": {
-      "displayable": true,
-      "solid": true
     }
   },
   {
@@ -26,8 +25,6 @@
       "side": "../../assets/textures/block/grass_block_side.png"
     },
     "tags": {
-      "displayable": true,
-      "solid": true
     }
   },
   {
@@ -37,8 +34,6 @@
       "all": "../../assets/textures/block/dirt.png"
     },
     "tags": {
-      "displayable": true,
-      "solid": true
     }
   },
   {
@@ -50,9 +45,7 @@
       "side": "../../assets/textures/block/oak_log.png"
     },
     "tags": {
-      "displayable": true,
-      "flammable": true,
-      "solid": true
+      "flammable": true
     }
   },
   {
@@ -62,9 +55,6 @@
       "all": "../../assets/textures/block/bedrock.png"
     },
     "tags": {
-      "displayable": true,
-      "transparent": true,
-      "fluid": true
     }
   },
   {
@@ -74,7 +64,6 @@
       "all": "../../assets/textures/block/water.png"
     },
     "tags": {
-      "displayable": true,
       "transparent": true,
       "fluid": true
     }
@@ -93,7 +82,8 @@
     "id": 8,
     "name": "cave_air",
     "tags": {
-      "transparent": true
+      "displayable": false,
+      "solid": false
     }
   }
 ]
