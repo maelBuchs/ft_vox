@@ -68,7 +68,7 @@ class Chunk {
     void setBlock(int x, int y, int z, uint8_t blockId);
 
     // Helper functions
-    [[nodiscard]] bool isBlockSolid(int x, int y, int z) const;
+    [[nodiscard]] bool isBlockSolid(int x, int y, int z, const BlockRegistry& registry) const;
     [[nodiscard]] static bool isInBounds(int x, int y, int z);
     [[nodiscard]] static int getIndex(int x, int y, int z);
     // [[nodiscard]] uint8_t getBiomeDataAt(int x, int z) const {

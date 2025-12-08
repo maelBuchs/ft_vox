@@ -72,62 +72,62 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                     // North (+Z)
                     bool isNorthSolid =
                         (z == Chunk::CHUNK_SIZE - 1)
-                            ? (neighborNorth != nullptr && neighborNorth->isBlockSolid(x, y, 0))
-                            : mainChunk.isBlockSolid(x, y, z + 1);
+                            ? (neighborNorth != nullptr && neighborNorth->isBlockSolid(x, y, 0, registry))
+                            : mainChunk.isBlockSolid(x, y, z + 1, registry);
                     if (!isNorthSolid) {
                         addFace(FaceDirection::North, x, y, z, blockId, vertices, indices,
-                                textureCache, mainChunk);
+                                textureCache, mainChunk, registry);
                         faceCount++;
                     }
 
                     // South (-Z)
                     bool isSouthSolid =
                         (z == 0) ? (neighborSouth != nullptr &&
-                                    neighborSouth->isBlockSolid(x, y, Chunk::CHUNK_SIZE - 1))
-                                 : mainChunk.isBlockSolid(x, y, z - 1);
+                                    neighborSouth->isBlockSolid(x, y, Chunk::CHUNK_SIZE - 1, registry))
+                                 : mainChunk.isBlockSolid(x, y, z - 1, registry);
                     if (!isSouthSolid) {
                         addFace(FaceDirection::South, x, y, z, blockId, vertices, indices,
-                                textureCache, mainChunk);
+                                textureCache, mainChunk, registry);
                     }
 
                     // East (+X)
                     bool isEastSolid =
                         (x == Chunk::CHUNK_SIZE - 1)
-                            ? (neighborEast != nullptr && neighborEast->isBlockSolid(0, y, z))
-                            : mainChunk.isBlockSolid(x + 1, y, z);
+                            ? (neighborEast != nullptr && neighborEast->isBlockSolid(0, y, z, registry))
+                            : mainChunk.isBlockSolid(x + 1, y, z, registry);
                     if (!isEastSolid) {
                         addFace(FaceDirection::East, x, y, z, blockId, vertices, indices,
-                                textureCache, mainChunk);
+                                textureCache, mainChunk, registry);
                     }
 
                     // West (-X)
                     bool isWestSolid =
                         (x == 0) ? (neighborWest != nullptr &&
-                                    neighborWest->isBlockSolid(Chunk::CHUNK_SIZE - 1, y, z))
-                                 : mainChunk.isBlockSolid(x - 1, y, z);
+                                    neighborWest->isBlockSolid(Chunk::CHUNK_SIZE - 1, y, z, registry))
+                                 : mainChunk.isBlockSolid(x - 1, y, z, registry);
                     if (!isWestSolid) {
                         addFace(FaceDirection::West, x, y, z, blockId, vertices, indices,
-                                textureCache, mainChunk);
+                                textureCache, mainChunk, registry);
                     }
 
                     // Top (+Y)
                     bool isTopSolid =
                         (y == Chunk::CHUNK_SIZE - 1)
-                            ? (neighborTop != nullptr && neighborTop->isBlockSolid(x, 0, z))
-                            : mainChunk.isBlockSolid(x, y + 1, z);
+                            ? (neighborTop != nullptr && neighborTop->isBlockSolid(x, 0, z, registry))
+                            : mainChunk.isBlockSolid(x, y + 1, z, registry);
                     if (!isTopSolid) {
                         addFace(FaceDirection::Top, x, y, z, blockId, vertices, indices,
-                                textureCache, mainChunk);
+                                textureCache, mainChunk, registry);
                     }
 
                     // Bottom (-Y)
                     bool isBottomSolid =
                         (y == 0) ? (neighborBottom != nullptr &&
-                                    neighborBottom->isBlockSolid(x, Chunk::CHUNK_SIZE - 1, z))
-                                 : mainChunk.isBlockSolid(x, y - 1, z);
+                                    neighborBottom->isBlockSolid(x, Chunk::CHUNK_SIZE - 1, z, registry))
+                                 : mainChunk.isBlockSolid(x, y - 1, z, registry);
                     if (!isBottomSolid) {
                         addFace(FaceDirection::Bottom, x, y, z, blockId, vertices, indices,
-                                textureCache, mainChunk);
+                                textureCache, mainChunk, registry);
                     }
                 }
             }
@@ -144,7 +144,7 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
 
 void ChunkMesh::addFace(FaceDirection direction, int x, int y, int z, int blockId,
                         std::vector<VoxelVertex>& vertices, std::vector<uint32_t>& indices,
-                        const std::vector<uint32_t>& textureCache, const Chunk& chunk) {
+                        const std::vector<uint32_t>& textureCache, const Chunk& chunk, const BlockRegistry& registry) {
     // Fast texture lookup from cache - no expensive string operations!
     // faceType: 0=top, 1=bottom, 2=side
     // Flat indexing: textureCache[blockId * 3 + faceType]
@@ -182,21 +182,21 @@ void ChunkMesh::addFace(FaceDirection direction, int x, int y, int z, int blockI
     switch (direction) {
     case FaceDirection::East: // +X
         normalId = 0;
-        s1 = chunk.isBlockSolid(x + 1, y + 1, z);
-        c = chunk.isBlockSolid(x + 1, y + 1, z - 1);
-        s2 = chunk.isBlockSolid(x + 1, y, z - 1);
+        s1 = chunk.isBlockSolid(x + 1, y + 1, z, registry);
+        c = chunk.isBlockSolid(x + 1, y + 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x + 1, y, z - 1, registry);
         ao[3] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x + 1, y + 1, z);
-        c = chunk.isBlockSolid(x + 1, y + 1, z + 1);
-        s2 = chunk.isBlockSolid(x + 1, y, z + 1);
+        s1 = chunk.isBlockSolid(x + 1, y + 1, z, registry);
+        c = chunk.isBlockSolid(x + 1, y + 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x + 1, y, z + 1, registry);
         ao[2] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x + 1, y - 1, z);
-        c = chunk.isBlockSolid(x + 1, y - 1, z + 1);
-        s2 = chunk.isBlockSolid(x + 1, y, z + 1);
+        s1 = chunk.isBlockSolid(x + 1, y - 1, z, registry);
+        c = chunk.isBlockSolid(x + 1, y - 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x + 1, y, z + 1, registry);
         ao[1] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x + 1, y - 1, z);
-        c = chunk.isBlockSolid(x + 1, y - 1, z - 1);
-        s2 = chunk.isBlockSolid(x + 1, y, z - 1);
+        s1 = chunk.isBlockSolid(x + 1, y - 1, z, registry);
+        c = chunk.isBlockSolid(x + 1, y - 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x + 1, y, z - 1, registry);
         ao[0] = calculateAO(s1, s2, c);
         v0 = packVertex(px + 1, py, pz, normalId, 0, textureId, ao[0]);
         v1 = packVertex(px + 1, py, pz + 1, normalId, 1, textureId, ao[1]);
@@ -205,21 +205,21 @@ void ChunkMesh::addFace(FaceDirection direction, int x, int y, int z, int blockI
         break;
     case FaceDirection::West: // -X
         normalId = 1;
-        s1 = chunk.isBlockSolid(x - 1, y + 1, z);
-        c = chunk.isBlockSolid(x - 1, y + 1, z + 1);
-        s2 = chunk.isBlockSolid(x - 1, y, z + 1);
+        s1 = chunk.isBlockSolid(x - 1, y + 1, z, registry);
+        c = chunk.isBlockSolid(x - 1, y + 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x - 1, y, z + 1, registry);
         ao[3] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x - 1, y + 1, z);
-        c = chunk.isBlockSolid(x - 1, y + 1, z - 1);
-        s2 = chunk.isBlockSolid(x - 1, y, z - 1);
+        s1 = chunk.isBlockSolid(x - 1, y + 1, z, registry);
+        c = chunk.isBlockSolid(x - 1, y + 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x - 1, y, z - 1, registry);
         ao[2] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x - 1, y - 1, z);
-        c = chunk.isBlockSolid(x - 1, y - 1, z - 1);
-        s2 = chunk.isBlockSolid(x - 1, y, z - 1);
+        s1 = chunk.isBlockSolid(x - 1, y - 1, z, registry);
+        c = chunk.isBlockSolid(x - 1, y - 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x - 1, y, z - 1, registry);
         ao[1] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x - 1, y - 1, z);
-        c = chunk.isBlockSolid(x - 1, y - 1, z + 1);
-        s2 = chunk.isBlockSolid(x - 1, y, z + 1);
+        s1 = chunk.isBlockSolid(x - 1, y - 1, z, registry);
+        c = chunk.isBlockSolid(x - 1, y - 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x - 1, y, z + 1, registry);
         ao[0] = calculateAO(s1, s2, c);
         v0 = packVertex(px, py, pz + 1, normalId, 1, textureId, ao[0]);
         v1 = packVertex(px, py, pz, normalId, 0, textureId, ao[1]);
@@ -228,21 +228,21 @@ void ChunkMesh::addFace(FaceDirection direction, int x, int y, int z, int blockI
         break;
     case FaceDirection::Top: // +Y
         normalId = 2;
-        s1 = chunk.isBlockSolid(x, y + 1, z - 1);
-        c = chunk.isBlockSolid(x - 1, y + 1, z - 1);
-        s2 = chunk.isBlockSolid(x - 1, y + 1, z);
+        s1 = chunk.isBlockSolid(x, y + 1, z - 1, registry);
+        c = chunk.isBlockSolid(x - 1, y + 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x - 1, y + 1, z, registry);
         ao[0] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x, y + 1, z - 1);
-        c = chunk.isBlockSolid(x + 1, y + 1, z - 1);
-        s2 = chunk.isBlockSolid(x + 1, y + 1, z);
+        s1 = chunk.isBlockSolid(x, y + 1, z - 1, registry);
+        c = chunk.isBlockSolid(x + 1, y + 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x + 1, y + 1, z, registry);
         ao[1] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x, y + 1, z + 1);
-        c = chunk.isBlockSolid(x + 1, y + 1, z + 1);
-        s2 = chunk.isBlockSolid(x + 1, y + 1, z);
+        s1 = chunk.isBlockSolid(x, y + 1, z + 1, registry);
+        c = chunk.isBlockSolid(x + 1, y + 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x + 1, y + 1, z, registry);
         ao[2] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x, y + 1, z + 1);
-        c = chunk.isBlockSolid(x - 1, y + 1, z + 1);
-        s2 = chunk.isBlockSolid(x - 1, y + 1, z);
+        s1 = chunk.isBlockSolid(x, y + 1, z + 1, registry);
+        c = chunk.isBlockSolid(x - 1, y + 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x - 1, y + 1, z, registry);
         ao[3] = calculateAO(s1, s2, c);
         v0 = packVertex(px, py + 1, pz, normalId, 0, textureId, ao[0]);
         v1 = packVertex(px + 1, py + 1, pz, normalId, 1, textureId, ao[1]);
@@ -251,21 +251,21 @@ void ChunkMesh::addFace(FaceDirection direction, int x, int y, int z, int blockI
         break;
     case FaceDirection::Bottom: // -Y
         normalId = 3;
-        s1 = chunk.isBlockSolid(x, y - 1, z + 1);
-        c = chunk.isBlockSolid(x - 1, y - 1, z + 1);
-        s2 = chunk.isBlockSolid(x - 1, y - 1, z);
+        s1 = chunk.isBlockSolid(x, y - 1, z + 1, registry);
+        c = chunk.isBlockSolid(x - 1, y - 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x - 1, y - 1, z, registry);
         ao[0] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x, y - 1, z + 1);
-        c = chunk.isBlockSolid(x + 1, y - 1, z + 1);
-        s2 = chunk.isBlockSolid(x + 1, y - 1, z);
+        s1 = chunk.isBlockSolid(x, y - 1, z + 1, registry);
+        c = chunk.isBlockSolid(x + 1, y - 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x + 1, y - 1, z, registry);
         ao[1] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x, y - 1, z - 1);
-        c = chunk.isBlockSolid(x + 1, y - 1, z - 1);
-        s2 = chunk.isBlockSolid(x + 1, y - 1, z);
+        s1 = chunk.isBlockSolid(x, y - 1, z - 1, registry);
+        c = chunk.isBlockSolid(x + 1, y - 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x + 1, y - 1, z, registry);
         ao[2] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x, y - 1, z - 1);
-        c = chunk.isBlockSolid(x - 1, y - 1, z - 1);
-        s2 = chunk.isBlockSolid(x - 1, y - 1, z);
+        s1 = chunk.isBlockSolid(x, y - 1, z - 1, registry);
+        c = chunk.isBlockSolid(x - 1, y - 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x - 1, y - 1, z, registry);
         ao[3] = calculateAO(s1, s2, c);
         v0 = packVertex(px, py, pz + 1, normalId, 3, textureId, ao[0]);
         v1 = packVertex(px + 1, py, pz + 1, normalId, 2, textureId, ao[1]);
@@ -274,21 +274,21 @@ void ChunkMesh::addFace(FaceDirection direction, int x, int y, int z, int blockI
         break;
     case FaceDirection::North: // +Z
         normalId = 4;
-        s1 = chunk.isBlockSolid(x + 1, y, z + 1);
-        c = chunk.isBlockSolid(x + 1, y + 1, z + 1);
-        s2 = chunk.isBlockSolid(x, y + 1, z + 1);
+        s1 = chunk.isBlockSolid(x + 1, y, z + 1, registry);
+        c = chunk.isBlockSolid(x + 1, y + 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x, y + 1, z + 1, registry);
         ao[3] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x - 1, y, z + 1);
-        c = chunk.isBlockSolid(x - 1, y + 1, z + 1);
-        s2 = chunk.isBlockSolid(x, y + 1, z + 1);
+        s1 = chunk.isBlockSolid(x - 1, y, z + 1, registry);
+        c = chunk.isBlockSolid(x - 1, y + 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x, y + 1, z + 1, registry);
         ao[2] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x - 1, y, z + 1);
-        c = chunk.isBlockSolid(x - 1, y - 1, z + 1);
-        s2 = chunk.isBlockSolid(x, y - 1, z + 1);
+        s1 = chunk.isBlockSolid(x - 1, y, z + 1, registry);
+        c = chunk.isBlockSolid(x - 1, y - 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x, y - 1, z + 1, registry);
         ao[1] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x + 1, y, z + 1);
-        c = chunk.isBlockSolid(x + 1, y - 1, z + 1);
-        s2 = chunk.isBlockSolid(x, y - 1, z + 1);
+        s1 = chunk.isBlockSolid(x + 1, y, z + 1, registry);
+        c = chunk.isBlockSolid(x + 1, y - 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x, y - 1, z + 1, registry);
         ao[0] = calculateAO(s1, s2, c);
         v0 = packVertex(px + 1, py, pz + 1, normalId, 1, textureId, ao[0]);
         v1 = packVertex(px, py, pz + 1, normalId, 0, textureId, ao[1]);
@@ -297,21 +297,21 @@ void ChunkMesh::addFace(FaceDirection direction, int x, int y, int z, int blockI
         break;
     case FaceDirection::South: // -Z
         normalId = 5;
-        s1 = chunk.isBlockSolid(x - 1, y, z - 1);
-        c = chunk.isBlockSolid(x - 1, y + 1, z - 1);
-        s2 = chunk.isBlockSolid(x, y + 1, z - 1);
+        s1 = chunk.isBlockSolid(x - 1, y, z - 1, registry);
+        c = chunk.isBlockSolid(x - 1, y + 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x, y + 1, z - 1, registry);
         ao[3] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x + 1, y, z - 1);
-        c = chunk.isBlockSolid(x + 1, y + 1, z - 1);
-        s2 = chunk.isBlockSolid(x, y + 1, z - 1);
+        s1 = chunk.isBlockSolid(x + 1, y, z - 1, registry);
+        c = chunk.isBlockSolid(x + 1, y + 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x, y + 1, z - 1, registry);
         ao[2] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x + 1, y, z - 1);
-        c = chunk.isBlockSolid(x + 1, y - 1, z - 1);
-        s2 = chunk.isBlockSolid(x, y - 1, z - 1);
+        s1 = chunk.isBlockSolid(x + 1, y, z - 1, registry);
+        c = chunk.isBlockSolid(x + 1, y - 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x, y - 1, z - 1, registry);
         ao[1] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x - 1, y, z - 1);
-        c = chunk.isBlockSolid(x - 1, y - 1, z - 1);
-        s2 = chunk.isBlockSolid(x, y - 1, z - 1);
+        s1 = chunk.isBlockSolid(x - 1, y, z - 1, registry);
+        c = chunk.isBlockSolid(x - 1, y - 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x, y - 1, z - 1, registry);
         ao[0] = calculateAO(s1, s2, c);
         v0 = packVertex(px, py, pz, normalId, 0, textureId, ao[0]);
         v1 = packVertex(px + 1, py, pz, normalId, 1, textureId, ao[1]);

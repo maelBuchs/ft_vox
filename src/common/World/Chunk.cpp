@@ -88,11 +88,12 @@ void Chunk::setBlock(int x, int y, int z, uint8_t blockId) {
     }
 }
 
-bool Chunk::isBlockSolid(int x, int y, int z) const {
+bool Chunk::isBlockSolid(int x, int y, int z, const BlockRegistry& registry) const {
     if (!isInBounds(x, y, z)) {
         return false;
     }
-    return getBlock(x, y, z) != 0;
+    uint8_t blockId = getBlock(x, y, z);
+    return blockId != 0 && registry.isSolid(static_cast<int>(blockId));
 }
 
 bool Chunk::isInBounds(int x, int y, int z) {
