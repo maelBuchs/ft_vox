@@ -145,10 +145,16 @@ std::shared_ptr<Chunk> WorldManager::generateChunk(const glm::ivec3& pos) {
             for (int by = 0; by < Chunk::CHUNK_SIZE; by++) {
                 auto block = chunk->getBlock(bx, by, bz);
                 if (CHUNK_TO_WORLD(by, pos[1]) < maxHeight) {
-                    chunk->setBlock(bx, by, bz, kSTONE); // Set block ID to 1 (solid block)
+                    chunk->setBlock(bx, by, bz, kSTONE);
+                    block = kSTONE; // Set block ID to 1 (solid block)
                 }
                 if (CHUNK_TO_WORLD(by, pos[1]) < 60 && block == 0) {
                     chunk->setBlock(bx, by, bz, kWATER); // Set block ID to 6 (water block)
+                    block = kWATER;
+                    continue;
+                }
+                if (block == kWATER) {
+                    chunk->setBlock(bx, by, bz, kOAK);
                 }
                 float caveNoise =
                     perlinNoise3D(CHUNK_TO_WORLD(bx, pos[0]), CHUNK_TO_WORLD(by, pos[1]),
@@ -158,12 +164,14 @@ std::shared_ptr<Chunk> WorldManager::generateChunk(const glm::ivec3& pos) {
                 if ((caveNoise > 0.0F && caveNoise < 0.2F)) {
                     if (block != kBEDROCK && block != kWATER && block != kGRASS && block != kSAND) {
                         chunk->setBlock(bx, by, bz, kCAVE_AIR); // Set block to cave air
+                        block = kCAVE_AIR;
                     }
                 }
                 /* Cheese cave generation */
                 if (caveNoise > 0.8F) {
                     if (block != kBEDROCK && block != kWATER) {
                         chunk->setBlock(bx, by, bz, kCAVE_AIR); // Set block to cave air
+                        block = kCAVE_AIR;
                     }
                 }
             }
