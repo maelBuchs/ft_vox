@@ -1,0 +1,5 @@
+<map id="GraphicsUtils::createVulkanProjectionFromExtent" name="GraphicsUtils::createVulkanProjectionFromExtent">
+<area shape="rect" id="node1" title="Creates a Vulkan&#45;compatible projection matrix from extent dimensions." alt="" coords="5,37,188,77"/>
+<area shape="rect" id="node2" href="$namespaceGraphicsUtils.html#a84701a52f6f5409cd712568c27417232" title="Calculates aspect ratio from extent dimensions." alt="" coords="248,5,407,45"/>
+<area shape="rect" id="node3" href="$namespaceGraphicsUtils.html#a16281c6769ba5c30ecb9aebb4dcb0bc9" title="Creates a Vulkan&#45;compatible perspective projection matrix." alt="" coords="236,69,419,109"/>
+</map>

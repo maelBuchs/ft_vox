@@ -21,7 +21,6 @@ var annotated_dup =
     [ "DescriptorLayoutBuilder", "classDescriptorLayoutBuilder.html", null ],
     [ "DescriptorWriter", "classDescriptorWriter.html", null ],
     [ "FrameManager", "classFrameManager.html", "classFrameManager" ],
-    [ "Frustum", "classFrustum.html", "classFrustum" ],
     [ "GenerationTask", "structGenerationTask.html", null ],
     [ "GPUCameraData", "structGPUCameraData.html", null ],
     [ "GPUChunkData", "structGPUChunkData.html", null ],

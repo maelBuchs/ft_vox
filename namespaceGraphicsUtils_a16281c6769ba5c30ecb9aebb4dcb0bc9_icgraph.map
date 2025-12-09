@@ -1,0 +1,4 @@
+<map id="GraphicsUtils::createVulkanProjection" name="GraphicsUtils::createVulkanProjection">
+<area shape="rect" id="node1" title="Creates a Vulkan&#45;compatible perspective projection matrix." alt="" coords="236,5,419,45"/>
+<area shape="rect" id="node2" href="$namespaceGraphicsUtils.html#a8a526467104e82bf022bb18c13a2530b" title="Creates a Vulkan&#45;compatible projection matrix from extent dimensions." alt="" coords="5,5,188,45"/>
+</map>
