@@ -29,6 +29,7 @@
 #include "Rendering/CommandExecutor.hpp"
 #include "Rendering/FrameManager.hpp"
 #include "Rendering/RenderContext.hpp"
+#include "GraphicsUtils.hpp"
 #include "Voxel/MeshManager.hpp"
 #include "Voxel/VoxelRenderer.hpp"
 
@@ -1129,13 +1130,14 @@ void Renderer::drawSky(VkCommandBuffer cmd, float timeOfDay) {
     glm::mat4 view = _camera->getViewMatrix();
     glm::mat4 viewNoTranslation = glm::mat4(glm::mat3(view)); // Remove translation component
 
-    // Calculate projection matrix (80 degree FOV as per requirements)
-    float aspect =
-        static_cast<float>(drawImage.extent.width) / static_cast<float>(drawImage.extent.height);
-    glm::mat4 projection = glm::perspective(glm::radians(80.0F), aspect, 0.1F, 1000.0F);
-
-    // Vulkan uses inverted Y axis
-    projection[1][1] *= -1.0F;
+    // Calculate projection matrix (sky uses shorter far plane)
+    float aspect = GraphicsUtils::calculateAspectRatio(drawImage.extent.width, drawImage.extent.height);
+    glm::mat4 projection = GraphicsUtils::createVulkanProjection(
+        aspect,
+        GraphicsUtils::Projection::FOV,
+        GraphicsUtils::Projection::NEAR_PLANE,
+        GraphicsUtils::Projection::SKY_FAR_PLANE
+    );
 
     // Calculate inverse of viewProjection
     glm::mat4 viewProjection = projection * viewNoTranslation;

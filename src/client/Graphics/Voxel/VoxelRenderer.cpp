@@ -12,6 +12,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "../../Game/Camera.hpp"
+#include "../GraphicsUtils.hpp"
 #include "../Core/VulkanBuffer.hpp"
 #include "../Core/VulkanDevice.hpp"
 #include "../Memory/DescriptorAllocator.hpp"
@@ -426,10 +427,6 @@ void VoxelRenderer::initComputeCulling() {
 
 void VoxelRenderer::initMeshShaderPipeline(VkImageView atlasView, VkSampler atlasSampler) {
     ZoneScoped;
-
-    // HERE DEACTIVATE MESH SHADERS FOR TESTING PURPOSES
-    // _useMeshShaders = false;
-    // return;
 
     // Initialize camera UBO to null first to prevent corruption
     _cameraUniformBuffer.buffer = VK_NULL_HANDLE;
@@ -1069,13 +1066,7 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
         ZoneScopedN("GPU Frustum Culling");
 
         // 1. Build and upload frustum data (with caching optimization)
-        glm::mat4 view = camera.getViewMatrix();
-        glm::mat4 projection = glm::perspective(glm::radians(80.0F),
-                                                static_cast<float>(drawExtent.width) /
-                                                    static_cast<float>(drawExtent.height),
-                                                0.1F, 10000.0F);
-        projection[1][1] *= -1.0F; // Flip Y for Vulkan
-
+        glm::mat4 projection = GraphicsUtils::createVulkanProjectionFromExtent(drawExtent.width, drawExtent.height);
         glm::vec3 cameraPos = camera.getPosition();
 
         // ALWAYS rebuild frustum data (cache was broken - didn't track view matrix rotation)
@@ -1092,9 +1083,7 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
         }
         frustumData.cameraPos = cameraPos;
         // Dynamic render distance based on actual load radius + margin
-        // Add 2 chunks margin to prevent pop-in at distance boundary
-        const float renderDistanceChunks = static_cast<float>(_maxLoadDistance + 2);
-        frustumData.maxRenderDistance = renderDistanceChunks * 32.0F; // chunks * chunkSize
+        frustumData.maxRenderDistance = GraphicsUtils::calculateRenderDistance(_maxLoadDistance);
 
         {
             ZoneScopedN("Upload Frustum Data");
@@ -1142,7 +1131,7 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
         // 4. Push constants for compute shader
         ComputePushConstants pushConstants{};
         pushConstants.totalChunks = static_cast<uint32_t>(_chunkDrawData.size());
-        pushConstants.chunkSize = 32.0f; // CHUNK_SIZE
+        pushConstants.chunkSize = GraphicsUtils::Chunk::SIZE_FLOAT;
         // Debug mode: 0=all tests, 1=skip distance, 2=skip sphere, 4=skip AABB, 7=skip all
         // Enable frustum tests (sphere+AABB), disable distance culling
         // Bit 0 set = skip distance culling (no circular effect)
@@ -1153,10 +1142,10 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
         vkCmdPushConstants(cmd, _frustumCullPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
                            sizeof(ComputePushConstants), &pushConstants);
 
-        // 5. Dispatch compute shader (64 threads per workgroup)
+        // 5. Dispatch compute shader
         {
             ZoneScopedN("Compute Dispatch");
-            const uint32_t workgroupCount = (pushConstants.totalChunks + 63) / 64;
+            const uint32_t workgroupCount = GraphicsUtils::calculateCullWorkgroups(pushConstants.totalChunks);
             vkCmdDispatch(cmd, workgroupCount, 1, 1);
         }
 
@@ -1171,11 +1160,6 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
                              VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT |
                                  VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
                              0, 1, &memoryBarrier, 0, nullptr, 0, nullptr);
-
-        _cullingStats.totalChunks = pushConstants.totalChunks;
-        _cullingStats.visibleChunks = 0;
-        _cullingStats.culledChunks = 0;
-        _cullingStats.cullingPercentage = 0.0f;
     } else {
         // CPU fallback path (for debugging)
         _indirectCommands.clear();
@@ -1249,11 +1233,7 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
 
         // Set up camera data for UBO
         glm::mat4 view = camera.getViewMatrix();
-        glm::mat4 projection = glm::perspective(glm::radians(80.0F),
-                                                static_cast<float>(drawExtent.width) /
-                                                    static_cast<float>(drawExtent.height),
-                                                0.1F, 10000.0F);
-        projection[1][1] *= -1.0F;
+        glm::mat4 projection = GraphicsUtils::createVulkanProjectionFromExtent(drawExtent.width, drawExtent.height);
 
         GPUCameraData cameraData{};
         cameraData.viewProjection = projection * view;
@@ -1265,8 +1245,7 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
         }
         cameraData.cameraPos = camera.getPosition();
         // Dynamic render distance based on actual load radius + margin
-        const float renderDistanceChunks = static_cast<float>(_maxLoadDistance + 2);
-        cameraData.maxRenderDistance = renderDistanceChunks * 32.0F; // chunks * chunkSize
+        cameraData.maxRenderDistance = GraphicsUtils::calculateRenderDistance(_maxLoadDistance);
 
         // Upload camera data to UBO
         {
@@ -1336,8 +1315,8 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
         } taskPushConstants{};
 
         taskPushConstants.totalChunks = static_cast<uint32_t>(_chunkDrawData.size());
-        taskPushConstants.chunkSize = 32.0F;
-        taskPushConstants.maxVerticesPerMeshWorkgroup = 256;
+        taskPushConstants.chunkSize = GraphicsUtils::Chunk::SIZE_FLOAT;
+        taskPushConstants.maxVerticesPerMeshWorkgroup = GraphicsUtils::Workgroup::MAX_MESH_VERTICES;
         taskPushConstants.maxMeshWorkgroupsPerTask = _maxMeshWorkgroupsPerTask;
 
         vkCmdPushConstants(cmd, _meshShaderPipelineLayout, VK_SHADER_STAGE_TASK_BIT_EXT, 68,
@@ -1345,7 +1324,7 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
 
         {
             ZoneScopedN("Dispatch Mesh Tasks");
-            uint32_t taskWorkgroups = (taskPushConstants.totalChunks + 15) / 16;
+            uint32_t taskWorkgroups = GraphicsUtils::calculateTaskWorkgroups(taskPushConstants.totalChunks);
             _vkCmdDrawMeshTasksEXT(cmd, taskWorkgroups, 1, 1);
         }
 
@@ -1370,11 +1349,7 @@ void VoxelRenderer::drawVoxels(VkCommandBuffer cmd, Camera& camera, bool wirefra
 
         // Set up view-projection matrix
         glm::mat4 view = camera.getViewMatrix();
-        glm::mat4 projection = glm::perspective(glm::radians(80.0F),
-                                                static_cast<float>(drawExtent.width) /
-                                                    static_cast<float>(drawExtent.height),
-                                                0.1F, 10000.0F);
-        projection[1][1] *= -1.0F;
+        glm::mat4 projection = GraphicsUtils::createVulkanProjectionFromExtent(drawExtent.width, drawExtent.height);
         glm::mat4 viewProjection = projection * view;
 
         struct VoxelPushConstants {
