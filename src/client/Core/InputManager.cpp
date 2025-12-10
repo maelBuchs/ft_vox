@@ -42,10 +42,6 @@ bool InputManager::isKeyPressed(SDL_Scancode key) const {
     return keystate[key];
 }
 
-bool InputManager::isKeyDown(SDL_Scancode key) const {
-    return isKeyPressed(key);
-}
-
 bool InputManager::isWireframeToggled() {
     if (_wireframeToggled) {
         _wireframeToggled = false;

@@ -189,19 +189,10 @@ class VoxelRenderer {
         uint32_t _padding2;
     };
 
-    // Statistics
-    CullingStats _cullingStats{};
-
     // GPU frustum culling is DISABLED - task shader does culling instead
     // Compute shader path is fundamentally incompatible with mesh shader pipeline
     // Task shader performs per-chunk culling before mesh shader dispatch
     // For traditional path: overhead > savings (300μs culling vs 13.8μs draw)
     bool _enableGPUCulling = false;          // DISABLED - mesh shaders use task shader culling
     bool _supportsDrawIndirectCount = false; // Runtime feature check
-
-    // Frustum caching (avoid rebuilding/uploading every frame)
-    mutable glm::mat4 _cachedProjection{0.0f};
-    mutable std::array<glm::vec4, 6> _cachedFrustumPlanes{};
-    mutable glm::vec3 _cachedCameraPos{0.0f};
-    mutable bool _frustumDirty = true;
 };

@@ -22,7 +22,6 @@ class InputManager {
 
     // Keyboard state
     [[nodiscard]] bool isKeyPressed(SDL_Scancode key) const;
-    [[nodiscard]] bool isKeyDown(SDL_Scancode key) const;
 
     // Special actions
     [[nodiscard]] bool shouldQuit() const { return _shouldQuit; }
