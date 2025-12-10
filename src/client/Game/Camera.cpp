@@ -20,15 +20,31 @@ void Camera::processMouseMovement(float xoffset, float yoffset) {
 }
 
 void Camera::processKeyboard(CameraMovement direction, float deltaTime) {
-    float velocity = _speed * deltaTime * 60.0F; // Normalize for 60fps
+    float velocity = _speed * deltaTime * 10; // Normalize for 60fps
 
     switch (direction) {
-    case CameraMovement::Forward:
-        _position += _front * velocity;
+    case CameraMovement::Forward: {
+        glm::vec3 direction = _front;
+        direction.y = 0.0f;
+
+        // On ne normalise que si le vecteur n'est pas nul
+        // (0.0001f est une marge de sécurité)
+        if (glm::length(direction) > 0.0001f) {
+            direction = glm::normalize(direction);
+            _position += direction * velocity;
+        }
         break;
-    case CameraMovement::Backward:
-        _position -= _front * velocity;
+    }
+    case CameraMovement::Backward: {
+        glm::vec3 direction = _front;
+        direction.y = 0.0f;
+
+        if (glm::length(direction) > 0.0001f) {
+            direction = glm::normalize(direction);
+            _position -= direction * velocity;
+        }
         break;
+    }
     case CameraMovement::Left:
         _position -= glm::normalize(glm::cross(_front, _up)) * velocity;
         break;
