@@ -31,6 +31,9 @@
 #endif
 #define WORLD_TO_CHUNK(b) ((((b) % 32) + 32) % 32)
 
+const double TPS = 60.0;
+const double TIME_PER_TICK = 1.0 / TPS;
+
 App::App() {
     try {
         _blockRegistry = std::make_unique<BlockRegistry>();
@@ -91,6 +94,207 @@ App::~App() {
     _window.reset();
 }
 
+void App::updateUI(Renderer& renderer, InputManager& inputManager, Camera& camera,
+                   const glm::ivec3& currentCenter, const Chunk* currentChunk) {
+
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
+    ImGui::NewFrame();
+
+    ImGui::Begin("Debug Info", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+    ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+    ImGui::Text("Frame Time: %.3f ms", 1000.0f / ImGui::GetIO().Framerate);
+    ImGui::Separator();
+
+    ImGui::Text("Workers: %d meshing threads", NUM_MESHING_WORKERS);
+
+    auto queueStats = _worldManager->getQueueStats();
+    ImGui::Separator();
+    ImGui::Text("Queue Statistics:");
+    ImGui::Text("  Request Queue: %zu", queueStats.requestQueueSize);
+    ImGui::Text("  Meshing Queue: %zu", queueStats.meshingQueueSize);
+    ImGui::Text("  Loaded Chunks (RAM): %zu", queueStats.loadedChunksCount);
+    ImGui::Text("  Loaded Chunks (VRAM): %zu", renderer.getLoadedChunkCount());
+
+    // Display mesh pool usage with color coding
+    float poolUsage = renderer.getMeshPoolUsage();
+    ImVec4 usageColor;
+    if (poolUsage < 0.7F) {
+        usageColor = ImVec4(0.0F, 1.0F, 0.0F, 1.0F); // Green < 70%
+    } else if (poolUsage < 0.9F) {
+        usageColor = ImVec4(1.0F, 1.0F, 0.0F, 1.0F); // Yellow 70-90%
+    }
+    ImGui::Text("  Generating: %zu", queueStats.generatingChunksCount);
+    ImGui::Text("  Meshing: %zu", queueStats.meshingChunksCount);
+    ImGui::Text("  Requested: %zu", _requestedChunks.size());
+    ImGui::Text("  Marked for Unload: %zu", queueStats.chunksToUnloadCount);
+    ImGui::Separator();
+
+    bool wireframeMode = renderer.isWireframeMode();
+    if (ImGui::Checkbox("Wireframe Mode (F1)", &wireframeMode)) {
+        renderer.setWireframeMode(wireframeMode);
+    }
+
+    if (ImGui::SliderInt("Chunk Load Radius", &_loadRadius, 1, 64)) {
+        _needsRequestRefresh = true;
+    }
+
+    ImGui::SliderFloat("Unload Distance Multiplier", &_unloadDistanceMultiplier, 1.5F, 4.0F);
+    const int current_unload_radius =
+        static_cast<int>(static_cast<float>(_loadRadius) * _unloadDistanceMultiplier);
+    ImGui::Text("  Unload Radius: %d chunks (buffer: %d)", current_unload_radius,
+                current_unload_radius - _loadRadius);
+
+    ImGui::Separator();
+    const glm::vec3 cam_pos = camera.getPosition();
+    ImGui::Text("Camera Position: (%.1f, %.1f, %.1f)", cam_pos.x, cam_pos.y, cam_pos.z);
+    ImGui::Text("Camera Chunk: (%d, %d, %d)", currentCenter.x, currentCenter.y, currentCenter.z);
+
+    ImGui::Separator();
+    ImGui::Text("Sky System");
+    if (ImGui::SliderFloat("Time of Day", &_timeOfDay, 0.0F, 1.0F)) {
+        // Slider changed, time is now manually controlled
+    }
+    ImGui::SliderFloat("Time Speed", &_timeSpeed, 0.0F, 0.2F);
+
+    auto current_biome_data = (currentChunk != nullptr) ? BiomeType::kPLAINS : BiomeType::kNONE;
+    auto currentBiomeData = (currentChunk != nullptr);
+    // ? currentChunk.getBiomeDataAt(WORLD_TO_CHUNK(static_cast<int>(cameraPos[0])),
+    // std::string biome_name;
+    // switch (current_biome_data) {
+    // case BiomeType::kPLAINS:
+    //     biome_name = "Plains";
+    //     break;
+    // case BiomeType::kMOUNTAINS:
+    //     biome_name = "Mountains";
+    //     break;
+    // case BiomeType::kOCEAN:
+    //     biome_name = "Ocean";
+    //     break;
+    // case BiomeType::kNONE:
+    //     biome_name = "Unknown";
+    //     break;
+    // default:
+    //     biome_name = "Unknown";
+    //     break;
+    // }
+    // ImGui::Text("Biome: %s", biome_name.c_str());
+    if (currentChunk != nullptr) {
+        auto current_block_noise =
+            currentChunk->getNoiseParams(WORLD_TO_CHUNK(static_cast<int>(cam_pos.x)),
+                                         WORLD_TO_CHUNK(static_cast<int>(cam_pos.z)));
+        std::array<char, 256> noise_text{};
+        std::snprintf(noise_text.data(), noise_text.size(),
+                      "T = %.3f, H = %.3f, C = %.3f, E = %.3f, W = %.3f, D = %.3f",
+                      current_block_noise.kTEMPERATURE, current_block_noise.humidity,
+                      current_block_noise.continent, current_block_noise.erosion,
+                      current_block_noise.weirdness, current_block_noise.depth);
+        ImGui::TextUnformatted(noise_text.data());
+    } else {
+        ImGui::TextUnformatted("Out Of Boundaries");
+    }
+    ImGui::Separator();
+    if (ImGui::Button("Quit")) {
+        inputManager.setShouldQuit(true);
+    }
+    ImGui::End();
+    ImGui::EndFrame();
+    ImGui::Render();
+}
+
+void App::updateRender(Camera& camera, InputManager& inputManager) {
+
+    const glm::vec3 cameraPos = camera.getPosition();
+    const float chunkSizeFloat = static_cast<float>(Chunk::CHUNK_SIZE);
+    const int chunkX = static_cast<int>(std::floor(cameraPos.x / chunkSizeFloat));
+    const int chunkY = static_cast<int>(std::floor(cameraPos.y / chunkSizeFloat));
+    const int chunkZ = static_cast<int>(std::floor(cameraPos.z / chunkSizeFloat));
+
+    const glm::ivec3 currentCenter(chunkX, chunkY, chunkZ);
+    if (_needsRequestRefresh || currentCenter != _lastRequestedCenter ||
+        _loadRadius != _lastLoadRadius) {
+        enqueueChunkRequests(currentCenter);
+    }
+
+    _framesSinceUnloadCheck++;
+    if (_framesSinceUnloadCheck >= UNLOAD_CHECK_INTERVAL) {
+        _framesSinceUnloadCheck = 0;
+
+        // Use Chebyshev distance (same as loading) for consistent behavior
+        const int unloadRadius =
+            static_cast<int>(static_cast<float>(_loadRadius) * _unloadDistanceMultiplier);
+
+        std::vector<glm::ivec3> loadedChunks = _worldManager->getLoadedChunkPositions();
+
+        for (const glm::ivec3& chunkPos : loadedChunks) {
+            const glm::ivec3 offset = chunkPos - currentCenter;
+
+            // Use Chebyshev distance (max of absolute values) - same as loading pattern
+            const int chebyshevDistance =
+                std::max({std::abs(offset.x), std::abs(offset.y), std::abs(offset.z)});
+
+            if (chebyshevDistance > unloadRadius) {
+                _worldManager->markChunkForUnload(chunkPos);
+                _requestedChunks.erase(chunkPos); // Remove from requested set
+            } else if (chebyshevDistance <= _loadRadius) {
+                // Chunk is within LOAD radius (not just unload radius) - unmark if previously
+                // marked Only unmark chunks that are close enough to be actively used
+                _worldManager->unmarkChunkForUnload(chunkPos);
+            }
+            // Chunks in the "buffer zone" (between loadRadius and unloadRadius) stay as they
+            // are
+        }
+
+        // Get current unload queue size
+        auto queueStats = _worldManager->getQueueStats();
+        const size_t totalMarkedForUnload = queueStats.chunksToUnloadCount;
+
+        if (totalMarkedForUnload >= REBUILD_THRESHOLD ||
+            (totalMarkedForUnload > 0 && loadedChunks.size() > 0 &&
+             static_cast<float>(totalMarkedForUnload) / static_cast<float>(loadedChunks.size()) >=
+                 REBUILD_PERCENTAGE)) {
+
+            std::vector<glm::ivec3> unloadedChunks = _worldManager->unloadMarkedChunks();
+            if (!unloadedChunks.empty()) {
+                // Note: This does NOT reset the mesh pool, so other chunks keep their
+                // allocations
+                _renderer->rebuildMeshPool(unloadedChunks);
+
+                // No need to re-mesh other chunks - they keep their existing mesh allocations
+            }
+        }
+    }
+
+    updateUI(*_renderer, inputManager, camera, currentCenter,
+             _worldManager->getCurrentChunk(currentCenter));
+
+    const int acceptDistance =
+        static_cast<int>(static_cast<float>(_loadRadius) * _unloadDistanceMultiplier);
+    _renderer->updateMeshes(currentCenter, acceptDistance);
+
+    _renderer->draw(_timeOfDay);
+}
+
+void manageWindowResize(InputManager& inputManager, Window& window, SDL_Event event,
+                        Renderer& renderer) {
+    while (SDL_PollEvent(&event)) {
+        if (event.type == SDL_EVENT_WINDOW_RESIZED ||
+            event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
+            int w, h;
+            SDL_GetWindowSizeInPixels(window.getSDLWindow(), &w, &h);
+            window.updateSize(w, h);
+            renderer.resizeSwapchain();
+        }
+
+        if (event.type == SDL_EVENT_QUIT) {
+            SDL_HideWindow(window.getSDLWindow());
+        }
+
+        inputManager.processEvent(event);
+        ImGui_ImplSDL3_ProcessEvent(&event);
+    }
+}
+
 void App::run() {
     ZoneScoped;
 
@@ -104,234 +308,48 @@ void App::run() {
 
     SDL_SetWindowRelativeMouseMode(_window->getSDLWindow(), true);
 
-    uint64_t lastTime = SDL_GetPerformanceCounter();
-    const uint64_t perfFrequency = SDL_GetPerformanceFrequency();
+    // uint64_t lastTime = SDL_GetPerformanceCounter();
+    // const uint64_t perfFrequency = SDL_GetPerformanceFrequency();
+
+    auto lastTime = std::chrono::steady_clock::now();
+    double accumulator = 0.0;
 
     while (!inputManager.shouldQuit()) {
-        uint64_t currentTime = SDL_GetPerformanceCounter();
-        float deltaTime =
-            static_cast<float>(currentTime - lastTime) / static_cast<float>(perfFrequency);
-        lastTime = currentTime;
 
         inputManager.newFrame();
 
+        Camera& camera = _renderer->getCamera();
+        auto currentTime = std::chrono::steady_clock::now();
+        std::chrono::duration<double> elapsed = currentTime - lastTime;
+        lastTime = currentTime;
+        double frameTime = elapsed.count();
+        if (frameTime > 0.25) {
+            frameTime = 0.25; // Cap to avoid spiral of death
+            std::cout << "Long frame time detected: " << frameTime << " seconds\n";
+        }
+        accumulator += frameTime;
         if (inputManager.isEscapePressed()) {
             _uiMode = !_uiMode;
             SDL_SetWindowRelativeMouseMode(_window->getSDLWindow(), !_uiMode);
         }
+        manageWindowResize(inputManager, *_window, event, *_renderer);
 
-        while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_EVENT_WINDOW_RESIZED ||
-                event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
-                int w, h;
-                SDL_GetWindowSizeInPixels(_window->getSDLWindow(), &w, &h);
-                _window->updateSize(w, h);
-                _renderer->resizeSwapchain();
+        while (accumulator >= TIME_PER_TICK) {
+            // LOGIC UPDATE GOES HERE
+            if (inputManager.isWireframeToggled()) {
+                _renderer->setWireframeMode(!_renderer->isWireframeMode());
             }
 
-            if (event.type == SDL_EVENT_QUIT) {
-                SDL_HideWindow(_window->getSDLWindow());
+            if (!_uiMode) {
+                inputManager.updateCamera(camera, TIME_PER_TICK);
             }
-
-            inputManager.processEvent(event);
-            ImGui_ImplSDL3_ProcessEvent(&event);
+            accumulator -= TIME_PER_TICK;
         }
 
-        if (inputManager.isWireframeToggled()) {
-            _renderer->setWireframeMode(!_renderer->isWireframeMode());
-        }
+        // double alpha = accumulator / TIME_PER_TICK;
+        // if u want to interpolate
 
-        // Update camera based on input (only if not in UI mode)
-        Camera& camera = _renderer->getCamera();
-        if (!_uiMode) {
-            inputManager.updateCamera(camera, deltaTime);
-        }
-
-        const glm::vec3 cameraPos = camera.getPosition();
-        const float chunkSizeFloat = static_cast<float>(Chunk::CHUNK_SIZE);
-        const int chunkX = static_cast<int>(std::floor(cameraPos.x / chunkSizeFloat));
-        const int chunkY = static_cast<int>(std::floor(cameraPos.y / chunkSizeFloat));
-        const int chunkZ = static_cast<int>(std::floor(cameraPos.z / chunkSizeFloat));
-
-        const glm::ivec3 currentCenter(chunkX, chunkY, chunkZ);
-        if (_needsRequestRefresh || currentCenter != _lastRequestedCenter ||
-            _loadRadius != _lastLoadRadius) {
-            enqueueChunkRequests(currentCenter);
-        }
-
-        _framesSinceUnloadCheck++;
-        if (_framesSinceUnloadCheck >= UNLOAD_CHECK_INTERVAL) {
-            _framesSinceUnloadCheck = 0;
-
-            // Use Chebyshev distance (same as loading) for consistent behavior
-            const int unloadRadius =
-                static_cast<int>(static_cast<float>(_loadRadius) * _unloadDistanceMultiplier);
-
-            std::vector<glm::ivec3> loadedChunks = _worldManager->getLoadedChunkPositions();
-
-            for (const glm::ivec3& chunkPos : loadedChunks) {
-                const glm::ivec3 offset = chunkPos - currentCenter;
-
-                // Use Chebyshev distance (max of absolute values) - same as loading pattern
-                const int chebyshevDistance =
-                    std::max({std::abs(offset.x), std::abs(offset.y), std::abs(offset.z)});
-
-                if (chebyshevDistance > unloadRadius) {
-                    _worldManager->markChunkForUnload(chunkPos);
-                    _requestedChunks.erase(chunkPos); // Remove from requested set
-                } else if (chebyshevDistance <= _loadRadius) {
-                    // Chunk is within LOAD radius (not just unload radius) - unmark if previously
-                    // marked Only unmark chunks that are close enough to be actively used
-                    _worldManager->unmarkChunkForUnload(chunkPos);
-                }
-                // Chunks in the "buffer zone" (between loadRadius and unloadRadius) stay as they
-                // are
-            }
-
-            // Get current unload queue size
-            auto queueStats = _worldManager->getQueueStats();
-            const size_t totalMarkedForUnload = queueStats.chunksToUnloadCount;
-
-            if (totalMarkedForUnload >= REBUILD_THRESHOLD ||
-                (totalMarkedForUnload > 0 && loadedChunks.size() > 0 &&
-                 static_cast<float>(totalMarkedForUnload) /
-                         static_cast<float>(loadedChunks.size()) >=
-                     REBUILD_PERCENTAGE)) {
-
-                std::vector<glm::ivec3> unloadedChunks = _worldManager->unloadMarkedChunks();
-                if (!unloadedChunks.empty()) {
-                    // Note: This does NOT reset the mesh pool, so other chunks keep their allocations
-                    _renderer->rebuildMeshPool(unloadedChunks);
-
-                    // No need to re-mesh other chunks - they keep their existing mesh allocations
-                }
-            }
-        }
-
-        _timeOfDay += _timeSpeed * deltaTime;
-        if (_timeOfDay > 1.0F) {
-            _timeOfDay -= 1.0F;
-        }
-
-        ImGui_ImplVulkan_NewFrame();
-        ImGui_ImplSDL3_NewFrame();
-        ImGui::NewFrame();
-
-        ImGui::Begin("Debug Info", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        ImGui::Text("FPS: %.1f", _renderer->getFPS());
-        ImGui::Text("Frame Time: %.3f ms", deltaTime * 1000.0F);
-        ImGui::Separator();
-
-        ImGui::Text("Workers: %d meshing threads", NUM_MESHING_WORKERS);
-
-        auto queueStats = _worldManager->getQueueStats();
-        ImGui::Separator();
-        ImGui::Text("Queue Statistics:");
-        ImGui::Text("  Request Queue: %zu", queueStats.requestQueueSize);
-        ImGui::Text("  Meshing Queue: %zu", queueStats.meshingQueueSize);
-        ImGui::Text("  Loaded Chunks (RAM): %zu", queueStats.loadedChunksCount);
-        ImGui::Text("  Loaded Chunks (VRAM): %zu", _renderer->getLoadedChunkCount());
-
-        // Display mesh pool usage with color coding
-        float poolUsage = _renderer->getMeshPoolUsage();
-        ImVec4 usageColor = poolUsage < 0.7f   ? ImVec4(0.0f, 1.0f, 0.0f, 1.0f)  // Green < 70%
-                            : poolUsage < 0.9f ? ImVec4(1.0f, 1.0f, 0.0f, 1.0f)  // Yellow 70-90%
-                                               : ImVec4(1.0f, 0.0f, 0.0f, 1.0f); // Red > 90%
-        ImGui::TextColored(usageColor, "  Mesh Pool Usage: %.1f%%", poolUsage * 100.0f);
-
-        ImGui::Text("  Generating: %zu", queueStats.generatingChunksCount);
-        ImGui::Text("  Meshing: %zu", queueStats.meshingChunksCount);
-        ImGui::Text("  Requested: %zu", _requestedChunks.size());
-        ImGui::Text("  Marked for Unload: %zu", queueStats.chunksToUnloadCount);
-        ImGui::Separator();
-
-        bool wireframeMode = _renderer->isWireframeMode();
-        if (ImGui::Checkbox("Wireframe Mode (F1)", &wireframeMode)) {
-            _renderer->setWireframeMode(wireframeMode);
-        }
-
-        if (ImGui::SliderInt("Chunk Load Radius", &_loadRadius, 1, 64)) {
-            _needsRequestRefresh = true;
-        }
-
-        ImGui::SliderFloat("Unload Distance Multiplier", &_unloadDistanceMultiplier, 1.5F, 4.0F);
-        const int currentUnloadRadius =
-            static_cast<int>(static_cast<float>(_loadRadius) * _unloadDistanceMultiplier);
-        ImGui::Text("  Unload Radius: %d chunks (buffer: %d)", currentUnloadRadius,
-                    currentUnloadRadius - _loadRadius);
-
-        ImGui::Separator();
-        const glm::vec3 camPos = camera.getPosition();
-        ImGui::Text("Camera Position: (%.1f, %.1f, %.1f)", camPos.x, camPos.y, camPos.z);
-        ImGui::Text("Camera Chunk: (%d, %d, %d)", currentCenter.x, currentCenter.y,
-                    currentCenter.z);
-
-        ImGui::Separator();
-        ImGui::Text("Sky System");
-        if (ImGui::SliderFloat("Time of Day", &_timeOfDay, 0.0F, 1.0F)) {
-            // Slider changed, time is now manually controlled
-        }
-        ImGui::SliderFloat("Time Speed", &_timeSpeed, 0.0F, 0.2F);
-
-        int hours = static_cast<int>(_timeOfDay * 24.0F);
-        int minutes = static_cast<int>((_timeOfDay * 24.0F - hours) * 60.0F);
-        ImGui::Text("Current Time: %02d:%02d", hours, minutes);
-
-        auto currentChunk = _worldManager->getCurrentChunk(cameraPos);
-        auto currentBiomeData =
-            (currentChunk != nullptr)
-                ? currentChunk->getBiomeDataAt(WORLD_TO_CHUNK(static_cast<int>(cameraPos[0])),
-                                               WORLD_TO_CHUNK(static_cast<int>(cameraPos[2])))
-                : BiomeType::kNONE;
-        std::string biomeName;
-        switch (currentBiomeData) {
-        case BiomeType::kPLAINS:
-            biomeName = "Plains";
-            break;
-        case BiomeType::kMOUNTAINS:
-            biomeName = "Mountains";
-            break;
-        case BiomeType::kOCEAN:
-            biomeName = "Ocean";
-            break;
-        case BiomeType::kNONE:
-            biomeName = "skill issue";
-            break;
-        default:
-            biomeName = "GOUGOUGAGAK";
-            break;
-        }
-        ImGui::Text("Biome: %s", biomeName.c_str());
-        if (currentChunk != nullptr) {
-            auto currentBlockNoise =
-                currentChunk->getNoiseParams(WORLD_TO_CHUNK(static_cast<int>(cameraPos[0])),
-                                             WORLD_TO_CHUNK(static_cast<int>(cameraPos[2])));
-            char noiseText[256];
-            std::snprintf(noiseText, sizeof(noiseText),
-                          "T = %.3f, H = %.3f, C = %.3f, E = %.3f, W = %.3f, D = %.3f",
-                          currentBlockNoise.kTEMPERATURE, currentBlockNoise.humidity,
-                          currentBlockNoise.continent, currentBlockNoise.erosion,
-                          currentBlockNoise.weirdness, currentBlockNoise.depth);
-            ImGui::TextUnformatted(noiseText);
-        } else {
-            ImGui::TextUnformatted("Out Of Boundaries");
-        }
-        ImGui::Separator();
-        if (ImGui::Button("Quit")) {
-            inputManager.setShouldQuit(true);
-        }
-
-        ImGui::End();
-
-        ImGui::Render();
-
-        const int acceptDistance =
-            static_cast<int>(static_cast<float>(_loadRadius) * _unloadDistanceMultiplier);
-        _renderer->updateMeshes(currentCenter, acceptDistance);
-
-        _renderer->updateFPS(deltaTime);
-
-        _renderer->draw(_timeOfDay);
+        updateRender(camera, inputManager);
 
         FrameMark;
     }

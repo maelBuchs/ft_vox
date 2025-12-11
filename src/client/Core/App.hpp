@@ -18,7 +18,8 @@ class Renderer;
 class BlockRegistry;
 class WorldManager;
 class MeshingThread;
-
+class Camera;
+class InputManager;
 class App {
   public:
     App();
@@ -53,6 +54,9 @@ class App {
      */
     void rebuildChunkOffsets(int radius);
 
+    void updateRender(Camera& camera, InputManager& inputManager);
+    void updateUI(Renderer& renderer, InputManager& inputManager, Camera& camera,
+                  const glm::ivec3& currentCenter, const Chunk* currentChunk);
     std::unique_ptr<BlockRegistry> _blockRegistry;
     std::unique_ptr<Window> _window;
     std::unique_ptr<VulkanDevice> _vulkanDevice;
