@@ -155,7 +155,9 @@ switch ($Action) {
     'doc' {
         Write-Host "Génération de la documentation..." -ForegroundColor Cyan
         if (-not (Get-Command doxygen -ErrorAction SilentlyContinue)) {
-            Write-Host "[ERREUR] Doxygen non trouvé. Veuillez l'installer
+            Write-Host "[ERREUR] Doxygen non trouvé. Veuillez l'installer"
+        }
+    }
     'help' {
         Show-Help
     }

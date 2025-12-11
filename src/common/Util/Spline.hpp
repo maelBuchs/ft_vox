@@ -26,6 +26,7 @@
 #ifndef TK_SPLINE_H
 #define TK_SPLINE_H
 
+#define _USE_MATH_DEFINES  // Enable M_PI on Windows
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -35,6 +36,11 @@
 #include <sstream>
 #include <string>
 #endif // HAVE_SSTREAM
+
+// Define M_PI if not available (Windows compatibility)
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 // not ideal but disable unused-function warnings
 // (we get them because we have implementations in the header file,

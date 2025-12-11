@@ -183,6 +183,9 @@ set(CLIENT_SOURCES
     ${CMAKE_SOURCE_DIR}/src/client/Graphics/Renderer.cpp
     ${CMAKE_SOURCE_DIR}/src/client/Graphics/Memory/DescriptorAllocator.cpp
     ${CMAKE_SOURCE_DIR}/src/client/Graphics/Voxel/VoxelRenderer.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/Graphics/Voxel/VoxelPipelineManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/Graphics/Voxel/ChunkBufferManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/Graphics/Voxel/VoxelDrawDispatcher.cpp
     ${CMAKE_SOURCE_DIR}/src/client/Graphics/Rendering/RenderContext.cpp
     ${CMAKE_SOURCE_DIR}/src/client/Graphics/Voxel/MeshManager.cpp
     ${CMAKE_SOURCE_DIR}/src/client/Graphics/Rendering/FrameManager.cpp

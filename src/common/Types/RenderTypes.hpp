@@ -62,3 +62,35 @@ struct CullingStats {
     uint32_t culledChunks;
     float cullingPercentage;
 };
+
+// --- PUSH CONSTANTS ---
+// These structs define the push constant layouts for various shader stages.
+// match the shader-side definitions!
+
+// Push constants for compute frustum culling shader
+struct ComputeCullingPushConstants {
+    uint32_t totalChunks;
+    float chunkSize;
+    uint32_t debugMode;
+    uint32_t _padding;
+};
+
+// Push constants for task shader (mesh shader pipeline)
+struct TaskShaderPushConstants {
+    uint32_t totalChunks;
+    float chunkSize;
+    uint32_t maxVerticesPerMeshWorkgroup;
+    uint32_t maxMeshWorkgroupsPerTask;
+};
+
+// Push constants for fragment shader
+struct FragmentShaderPushConstants {
+    glm::mat4 viewProj;
+    uint32_t needsGammaCorrection;
+};
+
+// Push constants for traditional voxel vertex/fragment pipeline
+struct VoxelVertexPushConstants {
+    glm::mat4 viewProj;
+    uint32_t needsGammaCorrection;
+};
