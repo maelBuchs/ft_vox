@@ -157,12 +157,48 @@ $(document).ready(function(){initNavTree('RenderTypes_8hpp_source.html',''); ini
 <div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>    uint32_t culledChunks;</div>
 <div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>    <span class="keywordtype">float</span> cullingPercentage;</div>
 <div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>};</div>
+<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span> </div>
+<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span><span class="comment">// --- PUSH CONSTANTS ---</span></div>
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span><span class="comment">// These structs define the push constant layouts for various shader stages.</span></div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span><span class="comment">// match the shader-side definitions!</span></div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span> </div>
+<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span><span class="comment">// Push constants for compute frustum culling shader</span></div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno"><a class="line" href="structComputeCullingPushConstants.html">   71</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structComputeCullingPushConstants.html">ComputeCullingPushConstants</a> {</div>
+<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>    uint32_t totalChunks;</div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>    <span class="keywordtype">float</span> chunkSize;</div>
+<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>    uint32_t debugMode;</div>
+<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>    uint32_t _padding;</div>
+<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>};</div>
+<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span> </div>
+<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span><span class="comment">// Push constants for task shader (mesh shader pipeline)</span></div>
+<div class="line"><a id="l00079" name="l00079"></a><span class="lineno"><a class="line" href="structTaskShaderPushConstants.html">   79</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structTaskShaderPushConstants.html">TaskShaderPushConstants</a> {</div>
+<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>    uint32_t totalChunks;</div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>    <span class="keywordtype">float</span> chunkSize;</div>
+<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>    uint32_t maxVerticesPerMeshWorkgroup;</div>
+<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>    uint32_t maxMeshWorkgroupsPerTask;</div>
+<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>};</div>
+<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span> </div>
+<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span><span class="comment">// Push constants for fragment shader</span></div>
+<div class="line"><a id="l00087" name="l00087"></a><span class="lineno"><a class="line" href="structFragmentShaderPushConstants.html">   87</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structFragmentShaderPushConstants.html">FragmentShaderPushConstants</a> {</div>
+<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>    glm::mat4 viewProj;</div>
+<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>    uint32_t needsGammaCorrection;</div>
+<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>};</div>
+<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span> </div>
+<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span><span class="comment">// Push constants for traditional voxel vertex/fragment pipeline</span></div>
+<div class="line"><a id="l00093" name="l00093"></a><span class="lineno"><a class="line" href="structVoxelVertexPushConstants.html">   93</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structVoxelVertexPushConstants.html">VoxelVertexPushConstants</a> {</div>
+<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span>    glm::mat4 viewProj;</div>
+<div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span>    uint32_t needsGammaCorrection;</div>
+<div class="line"><a id="l00096" name="l00096"></a><span class="lineno">   96</span>};</div>
 <div class="ttc" id="astructChunkPushConstants_html"><div class="ttname"><a href="structChunkPushConstants.html">ChunkPushConstants</a></div><div class="ttdef"><b>Definition:</b> RenderTypes.hpp:21</div></div>
+<div class="ttc" id="astructComputeCullingPushConstants_html"><div class="ttname"><a href="structComputeCullingPushConstants.html">ComputeCullingPushConstants</a></div><div class="ttdef"><b>Definition:</b> RenderTypes.hpp:71</div></div>
 <div class="ttc" id="astructCullingStats_html"><div class="ttname"><a href="structCullingStats.html">CullingStats</a></div><div class="ttdef"><b>Definition:</b> RenderTypes.hpp:59</div></div>
+<div class="ttc" id="astructFragmentShaderPushConstants_html"><div class="ttname"><a href="structFragmentShaderPushConstants.html">FragmentShaderPushConstants</a></div><div class="ttdef"><b>Definition:</b> RenderTypes.hpp:87</div></div>
 <div class="ttc" id="astructGPUCameraData_html"><div class="ttname"><a href="structGPUCameraData.html">GPUCameraData</a></div><div class="ttdef"><b>Definition:</b> RenderTypes.hpp:50</div></div>
 <div class="ttc" id="astructGPUChunkData_html"><div class="ttname"><a href="structGPUChunkData.html">GPUChunkData</a></div><div class="ttdef"><b>Definition:</b> RenderTypes.hpp:30</div></div>
 <div class="ttc" id="astructGPUFrustumData_html"><div class="ttname"><a href="structGPUFrustumData.html">GPUFrustumData</a></div><div class="ttdef"><b>Definition:</b> RenderTypes.hpp:41</div></div>
+<div class="ttc" id="astructTaskShaderPushConstants_html"><div class="ttname"><a href="structTaskShaderPushConstants.html">TaskShaderPushConstants</a></div><div class="ttdef"><b>Definition:</b> RenderTypes.hpp:79</div></div>
 <div class="ttc" id="astructVertex_html"><div class="ttname"><a href="structVertex.html">Vertex</a></div><div class="ttdef"><b>Definition:</b> RenderTypes.hpp:8</div></div>
+<div class="ttc" id="astructVoxelVertexPushConstants_html"><div class="ttname"><a href="structVoxelVertexPushConstants.html">VoxelVertexPushConstants</a></div><div class="ttdef"><b>Definition:</b> RenderTypes.hpp:93</div></div>
 </div><!-- fragment --></div><!-- contents -->
 </div><!-- doc-content -->
 <!-- start footer part -->

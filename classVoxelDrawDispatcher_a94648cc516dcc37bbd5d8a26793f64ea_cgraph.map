@@ -1,0 +1,6 @@
+<map id="VoxelDrawDispatcher::draw" name="VoxelDrawDispatcher::draw">
+<area shape="rect" id="node1" title="Record voxel draw commands." alt="" coords="5,69,152,109"/>
+<area shape="rect" id="node2" href="$classChunkBufferManager.html#aa4dce0676911096c1523fa4ef08a9cd6" title="Build indirect commands from chunk data." alt="" coords="200,5,364,45"/>
+<area shape="rect" id="node3" href="$classChunkBufferManager.html#a0acea0df75398914daa30a57f5aa1c4a" title="Ensure buffer capacity for the required number of chunks." alt="" coords="207,69,357,109"/>
+<area shape="rect" id="node4" href="$classChunkBufferManager.html#addf3386c19514ba17b0f3d81a2b3bbc1" title="Upload chunk data to GPU (for traditional path)." alt="" coords="211,133,353,173"/>
+</map>

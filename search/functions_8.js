@@ -1,5 +1,5 @@
 var searchData=
 [
-  ['try_5fpop_0',['try_pop',['../classThreadSafeQueue.html#ab6562a16916382ecd39ff2f7728b59ce',1,'ThreadSafeQueue']]],
-  ['try_5fpop_5fbatch_1',['try_pop_batch',['../classThreadSafeQueue.html#abd005a618e629fcd947758cd4f2c0107',1,'ThreadSafeQueue']]]
+  ['rebuildmeshpool_0',['rebuildMeshPool',['../classChunkBufferManager.html#a7030109ca19670950a84d494985c3206',1,'ChunkBufferManager::rebuildMeshPool()'],['../classVoxelRenderer.html#ada7ba4afd5af179d655384303f3f8f00',1,'VoxelRenderer::rebuildMeshPool()']]],
+  ['requestremeshforallchunks_1',['requestRemeshForAllChunks',['../classWorldManager.html#aef8bf22e2529238629c23e1a6a83cb92',1,'WorldManager']]]
 ];

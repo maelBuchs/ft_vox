@@ -1,0 +1,4 @@
+<map id="ChunkBufferManager::update" name="ChunkBufferManager::update">
+<area shape="rect" id="node1" title="Process mesh queues and update GPU buffers." alt="" coords="5,5,148,45"/>
+<area shape="rect" id="node2" href="$classChunkBufferManager.html#a0acea0df75398914daa30a57f5aa1c4a" title="Ensure buffer capacity for the required number of chunks." alt="" coords="196,5,347,45"/>
+</map>

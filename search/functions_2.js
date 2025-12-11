@@ -1,7 +1,5 @@
 var searchData=
 [
-  ['getfrustumplanes_0',['getFrustumPlanes',['../classCamera.html#a354681301999672a0dd024e4bce28f9f',1,'Camera']]],
-  ['getloadedchunkcount_1',['getLoadedChunkCount',['../classVoxelRenderer.html#ac7fd410fcdbd685b586c34da6e8e11f6',1,'VoxelRenderer']]],
-  ['getloadedchunkpositions_2',['getLoadedChunkPositions',['../classWorldManager.html#acad8add58059e66f431e11ac21edde41',1,'WorldManager']]],
-  ['getmeshpoolusage_3',['getMeshPoolUsage',['../classVoxelRenderer.html#ac4808ca4d9a1408a54dde57166e5d572',1,'VoxelRenderer']]]
+  ['draw_0',['draw',['../classVoxelDrawDispatcher.html#a94648cc516dcc37bbd5d8a26793f64ea',1,'VoxelDrawDispatcher']]],
+  ['drawvoxels_1',['drawVoxels',['../classVoxelRenderer.html#aa95786b615c0fcb1d2dee909c67cf2c1',1,'VoxelRenderer']]]
 ];

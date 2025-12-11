@@ -91,12 +91,16 @@ $(document).ready(function(){initNavTree('classVoxelRenderer.html',''); initResi
 
 <div class="header">
   <div class="summary">
-<a href="#nested-classes">Classes</a> &#124;
 <a href="#pub-methods">Public Member Functions</a> &#124;
 <a href="classVoxelRenderer-members.html">List of all members</a>  </div>
   <div class="headertitle"><div class="title">VoxelRenderer Class Reference</div></div>
 </div><!--header-->
 <div class="contents">
+
+<p>Facade for voxel rendering system.  
+ <a href="classVoxelRenderer.html#details">More...</a></p>
+
+<p><code>#include &lt;<a class="el" href="VoxelRenderer_8hpp_source.html">VoxelRenderer.hpp</a>&gt;</code></p>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
@@ -115,63 +119,120 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a9f37ea1dc21d683c2991491c4e3ff589"><td class="memItemLeft" align="right" valign="top"><a id="a9f37ea1dc21d683c2991491c4e3ff589" name="a9f37ea1dc21d683c2991491c4e3ff589"></a>
 <a class="el" href="classVoxelRenderer.html">VoxelRenderer</a> &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>operator=</b> (<a class="el" href="classVoxelRenderer.html">VoxelRenderer</a> &amp;&amp;)=delete</td></tr>
 <tr class="separator:a9f37ea1dc21d683c2991491c4e3ff589"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a2f1554c9e97fb20f696c82db2e081157"><td class="memItemLeft" align="right" valign="top"><a id="a2f1554c9e97fb20f696c82db2e081157" name="a2f1554c9e97fb20f696c82db2e081157"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>initPipelines</b> (VkImageView atlasView, VkSampler atlasSampler, int texturesPerRow)</td></tr>
+<tr class="memitem:a2f1554c9e97fb20f696c82db2e081157"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classVoxelRenderer.html#a2f1554c9e97fb20f696c82db2e081157">initPipelines</a> (VkImageView atlasView, VkSampler atlasSampler, int texturesPerRow)</td></tr>
+<tr class="memdesc:a2f1554c9e97fb20f696c82db2e081157"><td class="mdescLeft">&#160;</td><td class="mdescRight">Initialize all pipelines and resources.  <a href="classVoxelRenderer.html#a2f1554c9e97fb20f696c82db2e081157">More...</a><br /></td></tr>
 <tr class="separator:a2f1554c9e97fb20f696c82db2e081157"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a62c3a85cbbc279dcb52e7c21c3f25566"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classVoxelRenderer.html#a62c3a85cbbc279dcb52e7c21c3f25566">update</a> (const glm::ivec3 &amp;cameraChunkPos, int maxLoadDistance)</td></tr>
+<tr class="memdesc:a62c3a85cbbc279dcb52e7c21c3f25566"><td class="mdescLeft">&#160;</td><td class="mdescRight">Update chunk data from mesh queues. Call this every frame BEFORE drawVoxels.  <a href="classVoxelRenderer.html#a62c3a85cbbc279dcb52e7c21c3f25566">More...</a><br /></td></tr>
 <tr class="separator:a62c3a85cbbc279dcb52e7c21c3f25566"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aa95786b615c0fcb1d2dee909c67cf2c1"><td class="memItemLeft" align="right" valign="top"><a id="aa95786b615c0fcb1d2dee909c67cf2c1" name="aa95786b615c0fcb1d2dee909c67cf2c1"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>drawVoxels</b> (VkCommandBuffer cmd, <a class="el" href="classCamera.html">Camera</a> &amp;camera, bool wireframeMode)</td></tr>
+<tr class="memitem:aa95786b615c0fcb1d2dee909c67cf2c1"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classVoxelRenderer.html#aa95786b615c0fcb1d2dee909c67cf2c1">drawVoxels</a> (VkCommandBuffer cmd, <a class="el" href="classCamera.html">Camera</a> &amp;camera, bool wireframeMode)</td></tr>
+<tr class="memdesc:aa95786b615c0fcb1d2dee909c67cf2c1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Record voxel draw commands.  <a href="classVoxelRenderer.html#aa95786b615c0fcb1d2dee909c67cf2c1">More...</a><br /></td></tr>
 <tr class="separator:aa95786b615c0fcb1d2dee909c67cf2c1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ada7ba4afd5af179d655384303f3f8f00"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classVoxelRenderer.html#ada7ba4afd5af179d655384303f3f8f00">rebuildMeshPool</a> (const std::vector&lt; glm::ivec3 &gt; &amp;unloadedChunks)</td></tr>
+<tr class="memdesc:ada7ba4afd5af179d655384303f3f8f00"><td class="mdescLeft">&#160;</td><td class="mdescRight">Rebuild mesh pool for unloaded chunks.  <a href="classVoxelRenderer.html#ada7ba4afd5af179d655384303f3f8f00">More...</a><br /></td></tr>
 <tr class="separator:ada7ba4afd5af179d655384303f3f8f00"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ac7fd410fcdbd685b586c34da6e8e11f6"><td class="memItemLeft" align="right" valign="top">size_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classVoxelRenderer.html#ac7fd410fcdbd685b586c34da6e8e11f6">getLoadedChunkCount</a> () const</td></tr>
+<tr class="memitem:ac7fd410fcdbd685b586c34da6e8e11f6"><td class="memItemLeft" align="right" valign="top"><a id="ac7fd410fcdbd685b586c34da6e8e11f6" name="ac7fd410fcdbd685b586c34da6e8e11f6"></a>
+size_t&#160;</td><td class="memItemRight" valign="bottom"><b>getLoadedChunkCount</b> () const</td></tr>
+<tr class="memdesc:ac7fd410fcdbd685b586c34da6e8e11f6"><td class="mdescLeft">&#160;</td><td class="mdescRight">Get the current number of chunks loaded in the renderer. <br /></td></tr>
 <tr class="separator:ac7fd410fcdbd685b586c34da6e8e11f6"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ac4808ca4d9a1408a54dde57166e5d572"><td class="memItemLeft" align="right" valign="top">float&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classVoxelRenderer.html#ac4808ca4d9a1408a54dde57166e5d572">getMeshPoolUsage</a> () const</td></tr>
+<tr class="memitem:ac4808ca4d9a1408a54dde57166e5d572"><td class="memItemLeft" align="right" valign="top"><a id="ac4808ca4d9a1408a54dde57166e5d572" name="ac4808ca4d9a1408a54dde57166e5d572"></a>
+float&#160;</td><td class="memItemRight" valign="bottom"><b>getMeshPoolUsage</b> () const</td></tr>
+<tr class="memdesc:ac4808ca4d9a1408a54dde57166e5d572"><td class="mdescLeft">&#160;</td><td class="mdescRight">Get mesh buffer pool usage (0.0 to 1.0). <br /></td></tr>
 <tr class="separator:ac4808ca4d9a1408a54dde57166e5d572"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
-<h2 class="groupheader">Member Function Documentation</h2>
-<a id="ac7fd410fcdbd685b586c34da6e8e11f6" name="ac7fd410fcdbd685b586c34da6e8e11f6"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ac7fd410fcdbd685b586c34da6e8e11f6">&#9670;&#160;</a></span>getLoadedChunkCount()</h2>
-
-<div class="memitem">
-<div class="memproto">
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">size_t VoxelRenderer::getLoadedChunkCount </td>
-          <td>(</td>
-          <td class="paramname"></td><td>)</td>
-          <td> const</td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-<p >Get the current number of chunks loaded in the renderer. </p>
-
-</div>
-</div>
-<a id="ac4808ca4d9a1408a54dde57166e5d572" name="ac4808ca4d9a1408a54dde57166e5d572"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ac4808ca4d9a1408a54dde57166e5d572">&#9670;&#160;</a></span>getMeshPoolUsage()</h2>
+<a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
+<div class="textblock"><p >Facade for voxel rendering system. </p>
+<p >This class provides a simplified interface to the voxel rendering subsystem, delegating to specialized managers:</p><ul>
+<li><a class="el" href="classVoxelPipelineManager.html" title="Manages Vulkan pipelines and descriptor layouts for voxel rendering.">VoxelPipelineManager</a>: <a class="el" href="classPipeline.html">Pipeline</a> and descriptor layout management</li>
+<li><a class="el" href="classChunkBufferManager.html" title="Manages chunk GPU buffers, descriptor sets, and data upload.">ChunkBufferManager</a>: GPU buffers and chunk data management</li>
+<li><a class="el" href="classVoxelDrawDispatcher.html" title="Handles voxel draw command recording and GPU dispatch.">VoxelDrawDispatcher</a>: Draw command recording and dispatch </li>
+</ul>
+</div><h2 class="groupheader">Member Function Documentation</h2>
+<a id="aa95786b615c0fcb1d2dee909c67cf2c1" name="aa95786b615c0fcb1d2dee909c67cf2c1"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aa95786b615c0fcb1d2dee909c67cf2c1">&#9670;&#160;</a></span>drawVoxels()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname">float VoxelRenderer::getMeshPoolUsage </td>
+          <td class="memname">void VoxelRenderer::drawVoxels </td>
           <td>(</td>
-          <td class="paramname"></td><td>)</td>
-          <td> const</td>
+          <td class="paramtype">VkCommandBuffer&#160;</td>
+          <td class="paramname"><em>cmd</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="classCamera.html">Camera</a> &amp;&#160;</td>
+          <td class="paramname"><em>camera</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>wireframeMode</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
         </tr>
       </table>
 </div><div class="memdoc">
-<p >Get mesh buffer pool usage (0.0 to 1.0). Returns the maximum of vertex and index buffer usage. </p>
+
+<p>Record voxel draw commands. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">cmd</td><td>Command buffer to record to </td></tr>
+    <tr><td class="paramname">camera</td><td><a class="el" href="classCamera.html">Camera</a> for view/projection </td></tr>
+    <tr><td class="paramname">wireframeMode</td><td>Whether to use wireframe rendering </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="a2f1554c9e97fb20f696c82db2e081157" name="a2f1554c9e97fb20f696c82db2e081157"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a2f1554c9e97fb20f696c82db2e081157">&#9670;&#160;</a></span>initPipelines()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void VoxelRenderer::initPipelines </td>
+          <td>(</td>
+          <td class="paramtype">VkImageView&#160;</td>
+          <td class="paramname"><em>atlasView</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">VkSampler&#160;</td>
+          <td class="paramname"><em>atlasSampler</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>texturesPerRow</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Initialize all pipelines and resources. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">atlasView</td><td>Texture atlas image view </td></tr>
+    <tr><td class="paramname">atlasSampler</td><td>Texture atlas sampler </td></tr>
+    <tr><td class="paramname">texturesPerRow</td><td>Number of textures per row in atlas </td></tr>
+  </table>
+  </dd>
+</dl>
 
 </div>
 </div>
@@ -190,10 +251,11 @@ void&#160;</td><td class="memItemRight" valign="bottom"><b>drawVoxels</b> (VkCom
         </tr>
       </table>
 </div><div class="memdoc">
-<p >Rebuild the entire mesh pool and clear all chunk meshes. Call this when chunks are unloaded to free VRAM. WARNING: This waits for GPU idle - may cause a frame hitch.</p>
+
+<p>Rebuild mesh pool for unloaded chunks. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">unloadedChunks</td><td>List of chunk positions that were unloaded from RAM </td></tr>
+    <tr><td class="paramname">unloadedChunks</td><td>List of chunk positions that were unloaded </td></tr>
   </table>
   </dd>
 </dl>
@@ -225,7 +287,9 @@ void&#160;</td><td class="memItemRight" valign="bottom"><b>drawVoxels</b> (VkCom
         </tr>
       </table>
 </div><div class="memdoc">
-<p >Update: Check for finished meshes and upload to GPU. Call this every frame BEFORE drawVoxels. </p><dl class="params"><dt>Parameters</dt><dd>
+
+<p>Update chunk data from mesh queues. Call this every frame BEFORE drawVoxels. </p>
+<dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramname">cameraChunkPos</td><td>Current camera chunk position for distance checks </td></tr>
     <tr><td class="paramname">maxLoadDistance</td><td>Maximum distance (in chunks) to accept new meshes </td></tr>
