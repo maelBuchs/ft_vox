@@ -25,8 +25,8 @@ void InputManager::processEvent(const SDL_Event& event) {
     }
 
     if (event.type == SDL_EVENT_MOUSE_MOTION) {
-        _mouseDelta.x = static_cast<float>(event.motion.xrel);
-        _mouseDelta.y = static_cast<float>(event.motion.yrel);
+        _mouseDelta.x += static_cast<float>(event.motion.xrel);
+        _mouseDelta.y += static_cast<float>(event.motion.yrel);
     }
 }
 

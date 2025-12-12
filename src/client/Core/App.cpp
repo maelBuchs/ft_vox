@@ -148,6 +148,10 @@ void App::updateUI(Renderer& renderer, InputManager& inputManager, Camera& camer
     ImGui::Separator();
     const glm::vec3 cam_pos = camera.getPosition();
     ImGui::Text("Camera Position: (%.1f, %.1f, %.1f)", cam_pos.x, cam_pos.y, cam_pos.z);
+    const float cam_yaw = camera.getYaw();
+    const float cam_pitch = camera.getPitch();
+    ImGui::Text("Camera Rotation: (Pitch: %.1f, Yaw: %.1f)", cam_pitch, cam_yaw);
+
     ImGui::Text("Camera Chunk: (%d, %d, %d)", currentCenter.x, currentCenter.y, currentCenter.z);
 
     ImGui::Separator();
@@ -317,7 +321,7 @@ void App::run() {
     while (!inputManager.shouldQuit()) {
 
         inputManager.newFrame();
-
+        inputManager.setMouseDelta(glm::vec2(0.0F, 0.0F));
         Camera& camera = _renderer->getCamera();
         auto currentTime = std::chrono::steady_clock::now();
         std::chrono::duration<double> elapsed = currentTime - lastTime;
@@ -332,7 +336,6 @@ void App::run() {
             _uiMode = !_uiMode;
             SDL_SetWindowRelativeMouseMode(_window->getSDLWindow(), !_uiMode);
         }
-
         while (accumulator >= TIME_PER_TICK) {
             // LOGIC UPDATE GOES HERE
             if (inputManager.isWireframeToggled()) {
