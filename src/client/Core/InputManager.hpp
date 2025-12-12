@@ -33,7 +33,7 @@ class InputManager {
     [[nodiscard]] glm::vec2 getMouseDelta() const { return _mouseDelta; }
     [[nodiscard]] bool isMouseButtonPressed(int button) const;
     void setMouseDelta(const glm::vec2& delta) { _mouseDelta = delta; }
-
+    void updateCameraRotation(Camera& camera);
     // Camera update
     void updateCamera(Camera& camera, float deltaTime);
 

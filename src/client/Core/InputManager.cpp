@@ -62,11 +62,15 @@ bool InputManager::isMouseButtonPressed(int button) const {
     return (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON_MASK(button)) != 0;
 }
 
-void InputManager::updateCamera(Camera& camera, float deltaTime) {
-    // Process mouse movement
+void InputManager::updateCameraRotation(Camera& camera) {
     if (_mouseDelta.x != 0.0F || _mouseDelta.y != 0.0F) {
         camera.processMouseMovement(_mouseDelta.x, -_mouseDelta.y);
     }
+}
+
+void InputManager::updateCamera(Camera& camera, float deltaTime) {
+    // Process mouse movement
+
     // Process keyboard movement
     if (isKeyPressed(SDL_SCANCODE_LALT)) {
         camera.setSpeed(5.0F);

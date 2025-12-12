@@ -336,13 +336,14 @@ void App::run() {
             _uiMode = !_uiMode;
             SDL_SetWindowRelativeMouseMode(_window->getSDLWindow(), !_uiMode);
         }
+        manageWindowResize(inputManager, *_window, event, *_renderer);
+        inputManager.updateCameraRotation(camera);
         while (accumulator >= TIME_PER_TICK) {
             // LOGIC UPDATE GOES HERE
             if (inputManager.isWireframeToggled()) {
                 _renderer->setWireframeMode(!_renderer->isWireframeMode());
             }
 
-            manageWindowResize(inputManager, *_window, event, *_renderer);
             if (!_uiMode) {
                 inputManager.updateCamera(camera, TIME_PER_TICK);
             }
