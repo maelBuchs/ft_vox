@@ -122,6 +122,15 @@ uint8_t&#160;</td><td class="memItemRight" valign="bottom"><b>getBlock</b> (int 
 <tr class="memitem:a4a8571cb661672681d3e0ba987c4c308"><td class="memItemLeft" align="right" valign="top"><a id="a4a8571cb661672681d3e0ba987c4c308" name="a4a8571cb661672681d3e0ba987c4c308"></a>
 uint8_t&#160;</td><td class="memItemRight" valign="bottom"><b>getBlockUnsafe</b> (int x, int y, int z) const</td></tr>
 <tr class="separator:a4a8571cb661672681d3e0ba987c4c308"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a49d2d8ad84bb02ce61ccd8a16caac329"><td class="memItemLeft" align="right" valign="top"><a id="a49d2d8ad84bb02ce61ccd8a16caac329" name="a49d2d8ad84bb02ce61ccd8a16caac329"></a>
+uint8_t&#160;</td><td class="memItemRight" valign="bottom"><b>getPaddedBlock</b> (int x, int y, int z) const</td></tr>
+<tr class="separator:a49d2d8ad84bb02ce61ccd8a16caac329"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aeb26f9dce604158bd89b74556d327bb2"><td class="memItemLeft" align="right" valign="top"><a id="aeb26f9dce604158bd89b74556d327bb2" name="aeb26f9dce604158bd89b74556d327bb2"></a>
+bool&#160;</td><td class="memItemRight" valign="bottom"><b>isPaddedBlockSolid</b> (int x, int y, int z, const <a class="el" href="classBlockRegistry.html">BlockRegistry</a> &amp;registry) const</td></tr>
+<tr class="separator:aeb26f9dce604158bd89b74556d327bb2"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a4956b374faf64bc49f09659f88c3c84b"><td class="memItemLeft" align="right" valign="top"><a id="a4956b374faf64bc49f09659f88c3c84b" name="a4956b374faf64bc49f09659f88c3c84b"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>buildPadding</b> (const <a class="el" href="classChunk.html">Chunk</a> *neighborNorth, const <a class="el" href="classChunk.html">Chunk</a> *neighborSouth, const <a class="el" href="classChunk.html">Chunk</a> *neighborEast, const <a class="el" href="classChunk.html">Chunk</a> *neighborWest, const <a class="el" href="classChunk.html">Chunk</a> *neighborTop, const <a class="el" href="classChunk.html">Chunk</a> *neighborBottom)</td></tr>
+<tr class="separator:a4956b374faf64bc49f09659f88c3c84b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:afa5cd59a693d372e13080bc7c95b37e1"><td class="memItemLeft" align="right" valign="top"><a id="afa5cd59a693d372e13080bc7c95b37e1" name="afa5cd59a693d372e13080bc7c95b37e1"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>setBlock</b> (int x, int y, int z, uint8_t blockId)</td></tr>
 <tr class="separator:afa5cd59a693d372e13080bc7c95b37e1"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -167,6 +176,12 @@ static constexpr int&#160;</td><td class="memItemRight" valign="bottom"><b>CHUNK
 <tr class="memitem:a56ccce0850c4fae91ae1ec2ef6f956ba"><td class="memItemLeft" align="right" valign="top"><a id="a56ccce0850c4fae91ae1ec2ef6f956ba" name="a56ccce0850c4fae91ae1ec2ef6f956ba"></a>
 static constexpr int&#160;</td><td class="memItemRight" valign="bottom"><b>VOLUME</b> = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE</td></tr>
 <tr class="separator:a56ccce0850c4fae91ae1ec2ef6f956ba"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae8c7ac5d9b315ac96c78b497919d2950"><td class="memItemLeft" align="right" valign="top"><a id="ae8c7ac5d9b315ac96c78b497919d2950" name="ae8c7ac5d9b315ac96c78b497919d2950"></a>
+static constexpr int&#160;</td><td class="memItemRight" valign="bottom"><b>PADDED_SIZE</b> = CHUNK_SIZE + 2</td></tr>
+<tr class="separator:ae8c7ac5d9b315ac96c78b497919d2950"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ac280ab0c9bdfdb5debc2e179a87a2829"><td class="memItemLeft" align="right" valign="top"><a id="ac280ab0c9bdfdb5debc2e179a87a2829" name="ac280ab0c9bdfdb5debc2e179a87a2829"></a>
+static constexpr int&#160;</td><td class="memItemRight" valign="bottom"><b>PADDED_VOLUME</b> = PADDED_SIZE * PADDED_SIZE * PADDED_SIZE</td></tr>
+<tr class="separator:ac280ab0c9bdfdb5debc2e179a87a2829"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <hr/>The documentation for this class was generated from the following files:<ul>
 <li>src/common/World/<a class="el" href="Chunk_8hpp_source.html">Chunk.hpp</a></li>
