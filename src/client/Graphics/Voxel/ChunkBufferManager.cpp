@@ -60,8 +60,10 @@ ChunkBufferManager::~ChunkBufferManager() {
     if (_atlasConfigBuffer.buffer != VK_NULL_HANDLE) {
         _bufferManager.destroyBuffer(_atlasConfigBuffer);
     }
-    if (_cameraUniformBuffer.buffer != VK_NULL_HANDLE) {
-        _bufferManager.destroyBuffer(_cameraUniformBuffer);
+    for (auto& buffer : _cameraUniformBuffers) {
+        if (buffer.buffer != VK_NULL_HANDLE) {
+            _bufferManager.destroyBuffer(buffer);
+        }
     }
     if (_frustumUniformBuffer.buffer != VK_NULL_HANDLE) {
         _bufferManager.destroyBuffer(_frustumUniformBuffer);
@@ -102,10 +104,12 @@ void ChunkBufferManager::init(VkImageView atlasView, VkSampler atlasSampler, int
 
     // Initialize mesh shader camera buffer if supported
     if (_pipelineManager.supportsMeshShaders()) {
-        _cameraUniformBuffer = _bufferManager.createBuffer(
-            sizeof(GPUCameraData),
-            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            VMA_MEMORY_USAGE_CPU_TO_GPU);
+        for (uint32_t i = 0; i < CHUNK_BUFFER_COUNT; ++i) {
+            _cameraUniformBuffers[i] = _bufferManager.createBuffer(
+                sizeof(GPUCameraData),
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VMA_MEMORY_USAGE_CPU_TO_GPU);
+        }
 
         // Set up index buffer resize callback
         _meshPool->setIndexBufferResizeCallback([this]() {
@@ -216,7 +220,7 @@ void ChunkBufferManager::initMeshShaderDescriptors(VkImageView atlasView, VkSamp
             _device.getDevice(), _pipelineManager.getMeshShaderSetLayout(), nullptr);
 
         DescriptorWriter meshWriter;
-        meshWriter.writeBuffer(0, _cameraUniformBuffer.buffer, sizeof(GPUCameraData), 0,
+        meshWriter.writeBuffer(0, _cameraUniformBuffers[i].buffer, sizeof(GPUCameraData), 0,
                                VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
         meshWriter.writeBuffer(1, _chunkDataBuffers[i].buffer,
                                sizeof(GPUChunkData) * _currentMaxChunks, 0,

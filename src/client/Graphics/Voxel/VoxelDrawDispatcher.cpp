@@ -47,6 +47,21 @@ void VoxelDrawDispatcher::draw(VkCommandBuffer cmd, Camera& camera, bool wirefra
         _bufferMgr.uploadChunkData(frameIndex);
     }
 
+    // Memory barrier to ensure chunk data upload is visible to shaders before rendering
+    {
+        VkMemoryBarrier chunkDataBarrier{};
+        chunkDataBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        chunkDataBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+        chunkDataBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
+                             VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT |
+                                 VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT |
+                                 VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
+                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             0, 1, &chunkDataBarrier, 0, nullptr, 0, nullptr);
+    }
+
     // GPU frustum culling
     if (enableGPUCulling) {
         dispatchGPUCulling(cmd, camera, _bufferMgr.getMaxLoadDistance());
@@ -95,7 +110,7 @@ void VoxelDrawDispatcher::draw(VkCommandBuffer cmd, Camera& camera, bool wirefra
                                .pStencilAttachment = nullptr};
 
     if (_pipelineManager.supportsMeshShaders()) {
-        uploadCameraData(cmd, camera);
+        uploadCameraData(cmd, camera, frameIndex);
     }
 
     vkCmdBeginRendering(cmd, &renderInfo);
@@ -121,7 +136,7 @@ void VoxelDrawDispatcher::draw(VkCommandBuffer cmd, Camera& camera, bool wirefra
     vkCmdEndRendering(cmd);
 }
 
-void VoxelDrawDispatcher::uploadCameraData(VkCommandBuffer cmd, Camera& camera) {
+void VoxelDrawDispatcher::uploadCameraData(VkCommandBuffer cmd, Camera& camera, uint32_t frameIndex) {
     ZoneScopedN("Upload Mesh Shader Camera Data");
 
     VkExtent2D drawExtent = _context.getDrawExtent();
@@ -142,7 +157,7 @@ void VoxelDrawDispatcher::uploadCameraData(VkCommandBuffer cmd, Camera& camera) 
 
     {
         ZoneScopedN("Upload Camera UBO");
-        _bufferManager.uploadToBuffer(_bufferMgr.getCameraUniformBuffer(), &cameraData,
+        _bufferManager.uploadToBuffer(_bufferMgr.getCameraUniformBuffer(frameIndex), &cameraData,
                                       sizeof(GPUCameraData));
     }
 

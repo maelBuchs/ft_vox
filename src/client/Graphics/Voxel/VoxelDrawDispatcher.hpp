@@ -47,7 +47,7 @@ class VoxelDrawDispatcher {
     void draw(VkCommandBuffer cmd, Camera& camera, bool wireframeMode, bool enableGPUCulling);
 
   private:
-    void uploadCameraData(VkCommandBuffer cmd, Camera& camera);
+    void uploadCameraData(VkCommandBuffer cmd, Camera& camera, uint32_t frameIndex);
     void dispatchGPUCulling(VkCommandBuffer cmd, Camera& camera, int maxLoadDistance);
     void buildCPUIndirectCommands(VkCommandBuffer cmd);
     void drawMeshShaderPath(VkCommandBuffer cmd, bool wireframeMode);

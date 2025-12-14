@@ -103,7 +103,7 @@ class ChunkBufferManager {
     [[nodiscard]] AllocatedBuffer& getFrustumUniformBuffer() { return _frustumUniformBuffer; }
     [[nodiscard]] AllocatedBuffer& getCulledIndirectBuffer() { return _culledIndirectBuffer; }
     [[nodiscard]] AllocatedBuffer& getCulledChunkDataBuffer() { return _culledChunkDataBuffer; }
-    [[nodiscard]] AllocatedBuffer& getCameraUniformBuffer() { return _cameraUniformBuffer; }
+    [[nodiscard]] AllocatedBuffer& getCameraUniformBuffer(uint32_t frameIndex) { return _cameraUniformBuffers[frameIndex]; }
 
     // Descriptor sets
     [[nodiscard]] VkDescriptorSet getChunkDescriptorSet(uint32_t frameIndex) const { return _chunkDescriptorSets[frameIndex]; }
@@ -173,7 +173,7 @@ class ChunkBufferManager {
     AllocatedBuffer _indirectBuffer;
     std::array<AllocatedBuffer, CHUNK_BUFFER_COUNT> _chunkDataBuffers;
     AllocatedBuffer _atlasConfigBuffer;
-    AllocatedBuffer _cameraUniformBuffer;
+    std::array<AllocatedBuffer, CHUNK_BUFFER_COUNT> _cameraUniformBuffers;
     AllocatedBuffer _frustumUniformBuffer;
     AllocatedBuffer _culledIndirectBuffer;
     AllocatedBuffer _culledChunkDataBuffer;
