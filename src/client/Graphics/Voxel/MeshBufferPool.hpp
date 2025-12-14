@@ -33,10 +33,10 @@ class UploadRingBuffer {
     UploadRingBuffer& operator=(const UploadRingBuffer&) = delete;
 
     struct Allocation {
-        VkBuffer buffer;        // The ring buffer handle
-        VkDeviceSize offset;    // Offset into ring buffer
-        void* mappedPtr;        // Pointer to mapped memory at offset
-        VkDeviceSize size;      // Size of allocation
+        VkBuffer buffer;     // The ring buffer handle
+        VkDeviceSize offset; // Offset into ring buffer
+        void* mappedPtr;     // Pointer to mapped memory at offset
+        VkDeviceSize size;   // Size of allocation
     };
 
     // Allocate from ring buffer (NO VMA allocation!)
@@ -54,11 +54,11 @@ class UploadRingBuffer {
     VulkanDevice& _device;
     VulkanBuffer& _bufferManager;
 
-    AllocatedBuffer _ringBuffer;    // 256MB ring buffer
-    void* _mappedPtr = nullptr;     // Persistently mapped
+    AllocatedBuffer _ringBuffer; // 256MB ring buffer
+    void* _mappedPtr = nullptr;  // Persistently mapped
 
     static constexpr VkDeviceSize RING_SIZE = 256ull * 1024 * 1024; // 256MB
-    static constexpr uint32_t FRAME_COUNT = 2; // Double-buffered
+    static constexpr uint32_t FRAME_COUNT = 2;                      // Double-buffered
 
     // Per-frame tracking
     struct FrameState {
@@ -85,7 +85,7 @@ class MeshBufferPool {
 
     // Allocate per-chunk vertex buffer + index sub-allocation
     ChunkMeshBuffers allocateChunkBuffers(
-        std::span<uint32_t> indices, std::span<uint32_t> vertices,
+        std::span<uint32_t> indices, std::span<uint64_t> vertices,
         const std::function<void(std::function<void(VkCommandBuffer)>&&)>& immediateSubmit);
 
     // Free a chunk's vertex buffer (deferred until safe)
@@ -130,7 +130,7 @@ class MeshBufferPool {
 
     // Mega index buffer (shared by all chunks) - now dynamic!
     AllocatedBuffer _indexBuffer;
-    uint32_t _indexOffset = 0;          // Current write position in index buffer
+    uint32_t _indexOffset = 0;                // Current write position in index buffer
     VkDeviceSize _currentIndexBufferSize = 0; // Current capacity in bytes (grows dynamically)
 
     // Statistics tracking
@@ -195,8 +195,8 @@ class MeshBufferPool {
     std::vector<StagingBuffer> _stagingIndexPool;
     std::vector<StagingBuffer> _stagingGenericPool;
 
-    static constexpr VkDeviceSize STAGING_BUFFER_SIZE_VERTEX = 128 * 1024;  // 128KB per buffer
-    static constexpr VkDeviceSize STAGING_BUFFER_SIZE_INDEX = 64 * 1024;    // 64KB per buffer
+    static constexpr VkDeviceSize STAGING_BUFFER_SIZE_VERTEX = 128 * 1024; // 128KB per buffer
+    static constexpr VkDeviceSize STAGING_BUFFER_SIZE_INDEX = 64 * 1024;   // 64KB per buffer
     static constexpr VkDeviceSize STAGING_BUFFER_SIZE_GENERIC = 16 * 1024;
 
     void updateStagingPools();

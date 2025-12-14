@@ -3,10 +3,11 @@
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_buffer_reference2 : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
-// #extension GL_EXT_debug_printf : enable  // DISABLED: Causes massive performance overhead (GPU→CPU sync)
+// #extension GL_EXT_debug_printf : enable  // DISABLED: Causes massive performance overhead
+// (GPU→CPU sync)
 
 // Mesh shader for GPU-driven voxel rendering
-// Fetches vertex data from per-chunk buffers and emits primitives
+// Fetches 64-bit vertex data from per-chunk buffers and emits primitives
 // Replaces traditional vertex shader in task/mesh pipeline
 
 // Mesh shader output limits (adjust based on hardware)
@@ -14,8 +15,8 @@ layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
 layout(triangles, max_vertices = 256, max_primitives = 85) out; // 85 triangles * 3 = 255 vertices
 
 // ===== BUFFER DEVICE ADDRESS =====
-layout(buffer_reference, std430, buffer_reference_align = 4) readonly buffer VertexBuffer {
-    uint vertices[];
+layout(buffer_reference, std430, buffer_reference_align = 8) readonly buffer VertexBuffer {
+    uint64_t vertices[];
 };
 
 // ===== INPUT: CAMERA DATA (UBO) =====
@@ -89,6 +90,7 @@ const vec3 NORMALS[6] = vec3[](vec3(1.0, 0.0, 0.0),  // 0: East
                                vec3(0.0, 0.0, -1.0)  // 5: South
 );
 
+// Base UVs for quad corners (will be scaled by greedy dimensions)
 const vec2 UVS[4] = vec2[](vec2(0.0, 0.0), // 0: Bottom-left
                            vec2(1.0, 0.0), // 1: Bottom-right
                            vec2(1.0, 1.0), // 2: Top-right
@@ -103,11 +105,6 @@ void main() {
     // Each task workgroup has its own taskPayloadSharedEXT that only its mesh shaders see
     uint payloadIdx = gl_WorkGroupID.x;
 
-    // DEBUG: Log mesh shader invocation details (only first thread)
-    // if (localID == 0 && payloadIdx < 5) { // Only first 5 mesh workgroups to avoid spam
-    //     debugPrintfEXT("[MESH] WorkGroupID=%u meshCount=%u\n", payloadIdx, payload.meshCount);
-    // }
-
     if (payloadIdx >= payload.meshCount) {
         SetMeshOutputsEXT(0, 0);
         return;
@@ -115,9 +112,6 @@ void main() {
 
     TaskPayloadEntry task = payload.entries[payloadIdx];
 
-    // if (localID == 0 && payloadIdx < 5) {
-    //     debugPrintfEXT("[MESH] Rendering chunk=%u tile=%u\n", task.chunkIndex, task.tileIndex);
-    // }
     GPUChunkData chunk = chunks[task.chunkIndex];
 
     // SAFETY CHECK: Prevent GPU crash on iGPUs when chunk is unloaded
@@ -148,12 +142,6 @@ void main() {
     uint actualPrimitives = min(tilePrimitiveCount, 85);
     uint actualVertices = actualPrimitives * 3; // 3 vertices per triangle
 
-    // DEBUG: Log tile processing details
-    // if (localID == 0 && payloadIdx < 5) {
-    //     debugPrintfEXT("[MESH] Tile range: start=%u end=%u primitives=%u\n", tileStart, tileEnd,
-    //                    actualPrimitives);
-    // }
-
     // Set mesh output counts (must be done by all threads, or just first thread)
     SetMeshOutputsEXT(actualVertices, actualPrimitives);
 
@@ -166,21 +154,31 @@ void main() {
         uint globalIndex = chunk.firstIndex + tileStart + i;
         uint vertexIndex = indices[globalIndex];
 
-        // Fetch packed vertex data from the chunk's vertex buffer
-        uint inVertexData = vertexBuffer.vertices[vertexIndex];
+        uint64_t inVertexData = vertexBuffer.vertices[vertexIndex];
 
-        // Unpack vertex data (bit layout: [X:6][Y:6][Z:6][Normal:3][UV:2][Texture:7][AO:2])
-        uint x = (inVertexData) & 0x3Fu;
-        uint y = (inVertexData >> 6) & 0x3Fu;
-        uint z = (inVertexData >> 12) & 0x3Fu;
-        uint normalId = (inVertexData >> 18) & 0x7u;
-        uint uvId = (inVertexData >> 21) & 0x3u;
-        uint textureId = (inVertexData >> 23) & 0x7Fu;
-        uint ao = (inVertexData >> 30) & 0x3u;
+        // Split into two 32-bit words
+        uint word0 = uint(inVertexData & 0xFFFFFFFFul);
+        uint word1 = uint(inVertexData >> 32);
+
+        // Unpack word0: [X:6][Y:6][Z:6][Normal:3][UV:2][Texture:7][AO:2]
+        uint x = (word0) & 0x3Fu;
+        uint y = (word0 >> 6) & 0x3Fu;
+        uint z = (word0 >> 12) & 0x3Fu;
+        uint normalId = (word0 >> 18) & 0x7u;
+        uint uvId = (word0 >> 21) & 0x3u;
+        uint textureId = (word0 >> 23) & 0x7Fu;
+        uint ao = (word0 >> 30) & 0x3u;
+
+        // Unpack word1: [Width:5][Height:5][Reserved:22]
+        uint greedyWidth = (word1 & 0x1Fu) + 1; // 0-31 maps to 1-32
+        uint greedyHeight = ((word1 >> 5) & 0x1Fu) + 1;
 
         vec3 inPosition = vec3(float(x), float(y), float(z));
         vec3 normal = NORMALS[normalId];
-        vec2 uv = UVS[uvId];
+
+        // Scale UVs by greedy quad dimensions for texture tiling
+        vec2 baseUV = UVS[uvId];
+        vec2 uv = baseUV * vec2(float(greedyWidth), float(greedyHeight));
 
         // Convert AO to brightness multiplier
         float aoValue = 1.0 - (float(ao) * 0.25);

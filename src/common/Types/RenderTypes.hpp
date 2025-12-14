@@ -14,8 +14,17 @@ struct Vertex {
 };
 
 // --- PACKED VERTEX DATA ---
-// Bit layout: [X:6][Y:6][Z:6][Normal:3][UV:2][Texture:7][Spare:2]
-using VoxelVertex = uint32_t;
+// vertex format (64-bit, 2x uint32_t per vertex)
+//
+// Word 0 (position + face data):
+//   [X:6][Y:6][Z:6][Normal:3][UV:2][Texture:7][AO:2] = 32 bits
+//
+// Word 1 (greedy quad dimensions for UV tiling):
+//   [Width:5][Height:5][Reserved:22] = 32 bits
+//   - Width/Height: 1-32 blocks (0 = 1 block, 31 = 32 blocks)
+//   - Used by fragment shader to tile textures: UV * vec2(width, height)
+//
+using VoxelVertex = uint64_t;
 
 // Push constants for chunk/voxel rendering
 struct ChunkPushConstants {

@@ -61,12 +61,10 @@ UploadRingBuffer::Allocation UploadRingBuffer::allocate(VkDeviceSize size, uint3
     const uint32_t frameIdx = frameIndex % FRAME_COUNT;
     _frameStates[frameIdx].endOffset = offset + alignedSize;
 
-    return Allocation{
-        .buffer = _ringBuffer.buffer,
-        .offset = offset,
-        .mappedPtr = static_cast<char*>(_mappedPtr) + offset,
-        .size = alignedSize
-    };
+    return Allocation{.buffer = _ringBuffer.buffer,
+                      .offset = offset,
+                      .mappedPtr = static_cast<char*>(_mappedPtr) + offset,
+                      .size = alignedSize};
 }
 
 void UploadRingBuffer::frameComplete(uint32_t frameIndex) {
@@ -144,7 +142,7 @@ MeshBufferPool::~MeshBufferPool() {
 }
 
 ChunkMeshBuffers MeshBufferPool::allocateChunkBuffers(
-    std::span<uint32_t> indices, std::span<uint32_t> vertices,
+    std::span<uint32_t> indices, std::span<uint64_t> vertices,
     const std::function<void(std::function<void(VkCommandBuffer)>&&)>& immediateSubmit) {
     ZoneScopedN("MeshBufferPool::allocateChunkBuffers");
 
@@ -244,8 +242,7 @@ ChunkMeshBuffers MeshBufferPool::allocateChunkBuffers(
             .indexSize = indexSize,
             .indexOffset = indexOffset,
             .vertexSrcOffset = vertexAlloc.offset,
-            .indexSrcOffset = indexAlloc.offset
-        };
+            .indexSrcOffset = indexAlloc.offset};
         _pendingUploads.push_back(upload);
 
     } catch (...) {
@@ -522,18 +519,18 @@ AllocatedBuffer MeshBufferPool::acquireStagingBuffer(VkDeviceSize requiredSize, 
     VkDeviceSize poolBufferSize;
 
     switch (type) {
-        case StagingType::Vertex:
-            pool = &_stagingVertexPool;
-            poolBufferSize = STAGING_BUFFER_SIZE_VERTEX;
-            break;
-        case StagingType::Index:
-            pool = &_stagingIndexPool;
-            poolBufferSize = STAGING_BUFFER_SIZE_INDEX;
-            break;
-        case StagingType::Generic:
-            pool = &_stagingGenericPool;
-            poolBufferSize = STAGING_BUFFER_SIZE_GENERIC;
-            break;
+    case StagingType::Vertex:
+        pool = &_stagingVertexPool;
+        poolBufferSize = STAGING_BUFFER_SIZE_VERTEX;
+        break;
+    case StagingType::Index:
+        pool = &_stagingIndexPool;
+        poolBufferSize = STAGING_BUFFER_SIZE_INDEX;
+        break;
+    case StagingType::Generic:
+        pool = &_stagingGenericPool;
+        poolBufferSize = STAGING_BUFFER_SIZE_GENERIC;
+        break;
     }
 
     // Try to find an available buffer that's large enough
@@ -550,16 +547,11 @@ AllocatedBuffer MeshBufferPool::acquireStagingBuffer(VkDeviceSize requiredSize, 
     const VkDeviceSize allocSize = std::max(requiredSize, poolBufferSize);
 
     AllocatedBuffer newBuffer = _bufferManager.createBuffer(
-        allocSize,
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VMA_MEMORY_USAGE_CPU_TO_GPU);
+        allocSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
     // Add to pool for future reuse
     pool->push_back(StagingBuffer{
-        .buffer = newBuffer,
-        .size = allocSize,
-        .frameDelay = FrameManager::FRAME_OVERLAP
-    });
+        .buffer = newBuffer, .size = allocSize, .frameDelay = FrameManager::FRAME_OVERLAP});
 
     return newBuffer;
 }
@@ -626,7 +618,8 @@ void MeshBufferPool::submitPendingUploads(
             vertexCopy.srcOffset = upload.vertexSrcOffset;
             vertexCopy.dstOffset = 0;
             vertexCopy.size = upload.vertexSize;
-            vkCmdCopyBuffer(cmd, upload.stagingVertex.buffer, upload.dstVertexBuffer, 1, &vertexCopy);
+            vkCmdCopyBuffer(cmd, upload.stagingVertex.buffer, upload.dstVertexBuffer, 1,
+                            &vertexCopy);
 
             if (upload.dstIndexBuffer != _indexBuffer.buffer) {
                 throw std::runtime_error(

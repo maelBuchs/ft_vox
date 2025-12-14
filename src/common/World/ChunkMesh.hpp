@@ -27,20 +27,11 @@ class ChunkMesh {
     // Uses pre-built texture cache for performance (flat array: [blockId * 3 + faceType])
     static void generateMesh(const Chunk& mainChunk, const BlockRegistry& registry,
                              std::vector<VoxelVertex>& vertices, std::vector<uint32_t>& indices,
-                             const Chunk* neighborNorth,  // +Z
-                             const Chunk* neighborSouth,  // -Z
-                             const Chunk* neighborEast,   // +X
-                             const Chunk* neighborWest,   // -X
-                             const Chunk* neighborTop,    // +Y
-                             const Chunk* neighborBottom, // -Y
+                             const Chunk* neighborNorth,                 // +Z
+                             const Chunk* neighborSouth,                 // -Z
+                             const Chunk* neighborEast,                  // +X
+                             const Chunk* neighborWest,                  // -X
+                             const Chunk* neighborTop,                   // +Y
+                             const Chunk* neighborBottom,                // -Y
                              const std::vector<uint32_t>& textureCache); // Pre-built texture cache
-
-  private:
-    enum class FaceDirection { North, South, East, West, Top, Bottom };
-
-    // Add a face to the mesh
-    static void addFace(FaceDirection direction, int x, int y, int z, int blockId,
-                        std::vector<VoxelVertex>& vertices, std::vector<uint32_t>& indices,
-                        const std::vector<uint32_t>& textureCache, const Chunk& chunk,
-                      const BlockRegistry& registry);
 };

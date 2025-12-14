@@ -1,33 +1,325 @@
 #include "ChunkMesh.hpp"
 
+#include <array>
+#include <cstring>
+
 #include <tracy/Tracy.hpp>
 
 namespace {
-// Bit layout: [X:6][Y:6][Z:6][Normal:3][UV:2][Texture:7][AO:2]
-uint32_t packVertex(uint32_t x, uint32_t y, uint32_t z, uint32_t normalId, uint32_t uvId,
-                    uint32_t textureId, uint32_t ao) {
-    uint32_t packedData = 0;
 
-    packedData |= (x & 0x3F);
-    packedData |= ((y & 0x3F) << 6);
-    packedData |= ((z & 0x3F) << 12);
-    packedData |= ((normalId & 0x7) << 18);
-    packedData |= ((uvId & 0x3) << 21);
-    packedData |= ((textureId & 0x7F) << 23);
-    packedData |= ((ao & 0x3) << 30);
+// Word 0: [X:6][Y:6][Z:6][Normal:3][UV:2][Texture:7][AO:2] = 32 bits
+// Word 1: [Width:5][Height:5][Reserved:22] = 32 bits
+uint64_t packGreedyVertex(uint32_t x, uint32_t y, uint32_t z, uint32_t normalId, uint32_t uvId,
+                          uint32_t textureId, uint32_t ao, uint32_t width, uint32_t height) {
+    uint32_t word0 = 0;
+    word0 |= (x & 0x3F);
+    word0 |= ((y & 0x3F) << 6);
+    word0 |= ((z & 0x3F) << 12);
+    word0 |= ((normalId & 0x7) << 18);
+    word0 |= ((uvId & 0x3) << 21);
+    word0 |= ((textureId & 0x7F) << 23);
+    word0 |= ((ao & 0x3) << 30);
 
-    return packedData;
+    uint32_t word1 = 0;
+    word1 |= ((width - 1) & 0x1F);
+    word1 |= (((height - 1) & 0x1F) << 5);
+
+    return (static_cast<uint64_t>(word1) << 32) | static_cast<uint64_t>(word0);
 }
 
-// AO Calculation function
 uint32_t calculateAO(bool side1, bool side2, bool corner) {
-    if (side1 && side2) {
-        return 3; // Fully occluded
-    }
+    if (side1 && side2)
+        return 3;
     return static_cast<uint32_t>(side1) + static_cast<uint32_t>(side2) +
            static_cast<uint32_t>(corner);
 }
-} // anonymous namespace
+
+struct FaceData {
+    int16_t blockId;
+    uint8_t textureId;
+    uint8_t ao[4];
+
+    bool operator==(const FaceData& other) const {
+        return blockId == other.blockId && textureId == other.textureId && ao[0] == other.ao[0] &&
+               ao[1] == other.ao[1] && ao[2] == other.ao[2] && ao[3] == other.ao[3];
+    }
+
+    bool isValid() const { return blockId >= 0; }
+};
+
+using SliceMask = std::array<std::array<FaceData, 32>, 32>;
+
+uint32_t getTextureForFace(int blockId, int faceType, const std::vector<uint32_t>& textureCache) {
+    return textureCache[(blockId * 3) + faceType];
+}
+
+void calculateAOForFace(const Chunk& chunk, const BlockRegistry& registry, int x, int y, int z,
+                        int normalId, uint8_t ao[4]) {
+    bool s1, s2, c;
+
+    switch (normalId) {
+    case 0: // +X
+        s1 = chunk.isBlockSolid(x + 1, y + 1, z, registry);
+        c = chunk.isBlockSolid(x + 1, y + 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x + 1, y, z - 1, registry);
+        ao[3] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x + 1, y + 1, z, registry);
+        c = chunk.isBlockSolid(x + 1, y + 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x + 1, y, z + 1, registry);
+        ao[2] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x + 1, y - 1, z, registry);
+        c = chunk.isBlockSolid(x + 1, y - 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x + 1, y, z + 1, registry);
+        ao[1] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x + 1, y - 1, z, registry);
+        c = chunk.isBlockSolid(x + 1, y - 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x + 1, y, z - 1, registry);
+        ao[0] = calculateAO(s1, s2, c);
+        break;
+    case 1: // -X
+        s1 = chunk.isBlockSolid(x - 1, y + 1, z, registry);
+        c = chunk.isBlockSolid(x - 1, y + 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x - 1, y, z + 1, registry);
+        ao[3] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x - 1, y + 1, z, registry);
+        c = chunk.isBlockSolid(x - 1, y + 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x - 1, y, z - 1, registry);
+        ao[2] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x - 1, y - 1, z, registry);
+        c = chunk.isBlockSolid(x - 1, y - 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x - 1, y, z - 1, registry);
+        ao[1] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x - 1, y - 1, z, registry);
+        c = chunk.isBlockSolid(x - 1, y - 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x - 1, y, z + 1, registry);
+        ao[0] = calculateAO(s1, s2, c);
+        break;
+    case 2: // +Y
+        s1 = chunk.isBlockSolid(x, y + 1, z - 1, registry);
+        c = chunk.isBlockSolid(x - 1, y + 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x - 1, y + 1, z, registry);
+        ao[0] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x, y + 1, z - 1, registry);
+        c = chunk.isBlockSolid(x + 1, y + 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x + 1, y + 1, z, registry);
+        ao[1] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x, y + 1, z + 1, registry);
+        c = chunk.isBlockSolid(x + 1, y + 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x + 1, y + 1, z, registry);
+        ao[2] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x, y + 1, z + 1, registry);
+        c = chunk.isBlockSolid(x - 1, y + 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x - 1, y + 1, z, registry);
+        ao[3] = calculateAO(s1, s2, c);
+        break;
+    case 3: // -Y
+        s1 = chunk.isBlockSolid(x, y - 1, z + 1, registry);
+        c = chunk.isBlockSolid(x - 1, y - 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x - 1, y - 1, z, registry);
+        ao[0] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x, y - 1, z + 1, registry);
+        c = chunk.isBlockSolid(x + 1, y - 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x + 1, y - 1, z, registry);
+        ao[1] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x, y - 1, z - 1, registry);
+        c = chunk.isBlockSolid(x + 1, y - 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x + 1, y - 1, z, registry);
+        ao[2] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x, y - 1, z - 1, registry);
+        c = chunk.isBlockSolid(x - 1, y - 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x - 1, y - 1, z, registry);
+        ao[3] = calculateAO(s1, s2, c);
+        break;
+    case 4: // +Z
+        s1 = chunk.isBlockSolid(x + 1, y, z + 1, registry);
+        c = chunk.isBlockSolid(x + 1, y + 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x, y + 1, z + 1, registry);
+        ao[3] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x - 1, y, z + 1, registry);
+        c = chunk.isBlockSolid(x - 1, y + 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x, y + 1, z + 1, registry);
+        ao[2] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x - 1, y, z + 1, registry);
+        c = chunk.isBlockSolid(x - 1, y - 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x, y - 1, z + 1, registry);
+        ao[1] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x + 1, y, z + 1, registry);
+        c = chunk.isBlockSolid(x + 1, y - 1, z + 1, registry);
+        s2 = chunk.isBlockSolid(x, y - 1, z + 1, registry);
+        ao[0] = calculateAO(s1, s2, c);
+        break;
+    case 5: // -Z
+        s1 = chunk.isBlockSolid(x - 1, y, z - 1, registry);
+        c = chunk.isBlockSolid(x - 1, y + 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x, y + 1, z - 1, registry);
+        ao[3] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x + 1, y, z - 1, registry);
+        c = chunk.isBlockSolid(x + 1, y + 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x, y + 1, z - 1, registry);
+        ao[2] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x + 1, y, z - 1, registry);
+        c = chunk.isBlockSolid(x + 1, y - 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x, y - 1, z - 1, registry);
+        ao[1] = calculateAO(s1, s2, c);
+        s1 = chunk.isBlockSolid(x - 1, y, z - 1, registry);
+        c = chunk.isBlockSolid(x - 1, y - 1, z - 1, registry);
+        s2 = chunk.isBlockSolid(x, y - 1, z - 1, registry);
+        ao[0] = calculateAO(s1, s2, c);
+        break;
+    }
+}
+
+void emitGreedyQuad(std::vector<VoxelVertex>& vertices, std::vector<uint32_t>& indices,
+                    int normalId, int x, int y, int z, int width, int height, uint32_t textureId,
+                    const uint8_t ao[4]) {
+
+    auto baseIndex = static_cast<uint32_t>(vertices.size());
+    uint64_t v0, v1, v2, v3;
+
+    switch (normalId) {
+    case 0: // +X: width=Z, height=Y
+        v0 = packGreedyVertex(x + 1, y, z, normalId, 0, textureId, ao[0], width, height);
+        v1 = packGreedyVertex(x + 1, y, z + width, normalId, 1, textureId, ao[1], width, height);
+        v2 = packGreedyVertex(x + 1, y + height, z + width, normalId, 2, textureId, ao[2], width,
+                              height);
+        v3 = packGreedyVertex(x + 1, y + height, z, normalId, 3, textureId, ao[3], width, height);
+        break;
+    case 1: // -X: width=Z, height=Y
+        v0 = packGreedyVertex(x, y, z + width, normalId, 1, textureId, ao[0], width, height);
+        v1 = packGreedyVertex(x, y, z, normalId, 0, textureId, ao[1], width, height);
+        v2 = packGreedyVertex(x, y + height, z, normalId, 3, textureId, ao[2], width, height);
+        v3 = packGreedyVertex(x, y + height, z + width, normalId, 2, textureId, ao[3], width,
+                              height);
+        break;
+    case 2: // +Y: width=X, height=Z
+        v0 = packGreedyVertex(x, y + 1, z, normalId, 0, textureId, ao[0], width, height);
+        v1 = packGreedyVertex(x + width, y + 1, z, normalId, 1, textureId, ao[1], width, height);
+        v2 = packGreedyVertex(x + width, y + 1, z + height, normalId, 2, textureId, ao[2], width,
+                              height);
+        v3 = packGreedyVertex(x, y + 1, z + height, normalId, 3, textureId, ao[3], width, height);
+        break;
+    case 3: // -Y: width=X, height=Z
+        v0 = packGreedyVertex(x, y, z + height, normalId, 3, textureId, ao[0], width, height);
+        v1 = packGreedyVertex(x + width, y, z + height, normalId, 2, textureId, ao[1], width,
+                              height);
+        v2 = packGreedyVertex(x + width, y, z, normalId, 1, textureId, ao[2], width, height);
+        v3 = packGreedyVertex(x, y, z, normalId, 0, textureId, ao[3], width, height);
+        break;
+    case 4: // +Z: width=X, height=Y
+        v0 = packGreedyVertex(x + width, y, z + 1, normalId, 1, textureId, ao[0], width, height);
+        v1 = packGreedyVertex(x, y, z + 1, normalId, 0, textureId, ao[1], width, height);
+        v2 = packGreedyVertex(x, y + height, z + 1, normalId, 3, textureId, ao[2], width, height);
+        v3 = packGreedyVertex(x + width, y + height, z + 1, normalId, 2, textureId, ao[3], width,
+                              height);
+        break;
+    case 5: // -Z: width=X, height=Y
+        v0 = packGreedyVertex(x, y, z, normalId, 0, textureId, ao[0], width, height);
+        v1 = packGreedyVertex(x + width, y, z, normalId, 1, textureId, ao[1], width, height);
+        v2 = packGreedyVertex(x + width, y + height, z, normalId, 2, textureId, ao[2], width,
+                              height);
+        v3 = packGreedyVertex(x, y + height, z, normalId, 3, textureId, ao[3], width, height);
+        break;
+    }
+
+    vertices.push_back(v0);
+    vertices.push_back(v1);
+    vertices.push_back(v2);
+    vertices.push_back(v3);
+
+    // Diagonal flip based on AO to avoid artifacts
+    if (ao[0] + ao[2] > ao[1] + ao[3]) {
+        indices.push_back(baseIndex + 1);
+        indices.push_back(baseIndex + 0);
+        indices.push_back(baseIndex + 3);
+        indices.push_back(baseIndex + 1);
+        indices.push_back(baseIndex + 3);
+        indices.push_back(baseIndex + 2);
+    } else {
+        indices.push_back(baseIndex + 0);
+        indices.push_back(baseIndex + 2);
+        indices.push_back(baseIndex + 1);
+        indices.push_back(baseIndex + 0);
+        indices.push_back(baseIndex + 3);
+        indices.push_back(baseIndex + 2);
+    }
+}
+
+void processSliceGreedy(SliceMask& mask, std::vector<VoxelVertex>& vertices,
+                        std::vector<uint32_t>& indices, int normalId, int slicePos, int sliceSize) {
+
+    for (int v = 0; v < sliceSize; v++) {
+        for (int u = 0; u < sliceSize;) {
+            FaceData& face = mask[v][u];
+
+            if (!face.isValid()) {
+                u++;
+                continue;
+            }
+
+            int width = 1;
+            int height = 1;
+
+            while (u + width < sliceSize && mask[v][u + width] == face) {
+                width++;
+            }
+
+            bool canExtendV = true;
+            while (canExtendV && v + height < sliceSize) {
+                for (int du = 0; du < width; du++) {
+                    if (!(mask[v + height][u + du] == face)) {
+                        canExtendV = false;
+                        break;
+                    }
+                }
+                if (canExtendV)
+                    height++;
+            }
+
+            int wx, wy, wz, quadWidth, quadHeight;
+
+            switch (normalId) {
+            case 0:
+            case 1: // +X: u=Z, v=Y
+                wx = slicePos;
+                wz = u;
+                wy = v;
+                quadWidth = width;
+                quadHeight = height;
+                break;
+            case 2:
+            case 3: // +Y: u=X, v=Z
+                wx = u;
+                wy = slicePos;
+                wz = v;
+                quadWidth = width;
+                quadHeight = height;
+                break;
+            case 4:
+            case 5: // +Z: u=X, v=Y
+            default:
+                wx = u;
+                wy = v;
+                wz = slicePos;
+                quadWidth = width;
+                quadHeight = height;
+                break;
+            }
+
+            emitGreedyQuad(vertices, indices, normalId, wx, wy, wz, quadWidth, quadHeight,
+                           face.textureId, face.ao);
+
+            for (int dv = 0; dv < height; dv++) {
+                for (int du = 0; du < width; du++) {
+                    mask[v + dv][u + du].blockId = -1;
+                }
+            }
+
+            u += width;
+        }
+    }
+}
+
+} // namespace
 
 void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& registry,
                              std::vector<VoxelVertex>& vertices, std::vector<uint32_t>& indices,
@@ -39,310 +331,198 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
     vertices.clear();
     indices.clear();
 
-    if (mainChunk.isEmpty()) {
+    if (mainChunk.isEmpty())
         return;
-    }
 
-    // Pre-allocate capacity to avoid reallocations during mesh generation
-    // Average chunk has ~2000 faces, each face = 4 vertices + 6 indices
-    // This eliminates expensive vector reallocations in the hot path
-    vertices.reserve(8000); // 2000 faces * 4 vertices
-    indices.reserve(12000); // 2000 faces * 6 indices
+    vertices.reserve(3000);
+    indices.reserve(4500);
 
-    // Texture cache is now passed in - built once at MeshingThread initialization!
-
+    const int SIZE = Chunk::CHUNK_SIZE;
     int faceCount = 0;
 
-    // Zone the entire block iteration to see if face culling is the bottleneck
+    SliceMask mask;
+
     {
-        ZoneScopedN("Iterate Blocks & Cull");
+        ZoneScopedN("Greedy Mesh All Faces");
 
-        // Loop order z→y→x matches chunk data layout for better cache utilization (~8% improvement)
-        for (int z = 0; z < Chunk::CHUNK_SIZE; z++) {
-            for (int y = 0; y < Chunk::CHUNK_SIZE; y++) {
-                for (int x = 0; x < Chunk::CHUNK_SIZE; x++) {
-                    // Use unsafe accessor since loop bounds guarantee valid indices [0,32)
-                    int blockId = static_cast<int>(mainChunk.getBlockUnsafe(x, y, z));
+        // +X faces
+        for (int sliceX = 0; sliceX < SIZE; sliceX++) {
+            for (auto& row : mask)
+                for (auto& cell : row)
+                    cell.blockId = -1;
 
-                    // Skip air blocks or non-displayable blocks
-                    if (blockId == 0 || !registry.isDisplayable(blockId)) {
+            for (int y = 0; y < SIZE; y++) {
+                for (int z = 0; z < SIZE; z++) {
+                    int blockId = static_cast<int>(mainChunk.getBlockUnsafe(sliceX, y, z));
+                    if (blockId == 0 || !registry.isDisplayable(blockId))
                         continue;
-                    }
 
-                    // North (+Z)
-                    bool isNorthSolid =
-                        (z == Chunk::CHUNK_SIZE - 1)
-                            ? (neighborNorth != nullptr && neighborNorth->isBlockSolid(x, y, 0, registry))
-                            : mainChunk.isBlockSolid(x, y, z + 1, registry);
-                    if (!isNorthSolid) {
-                        addFace(FaceDirection::North, x, y, z, blockId, vertices, indices,
-                                textureCache, mainChunk, registry);
+                    bool isNeighborSolid =
+                        (sliceX == SIZE - 1)
+                            ? (neighborEast && neighborEast->isBlockSolid(0, y, z, registry))
+                            : mainChunk.isBlockSolid(sliceX + 1, y, z, registry);
+
+                    if (!isNeighborSolid) {
+                        FaceData& face = mask[y][z];
+                        face.blockId = blockId;
+                        face.textureId = getTextureForFace(blockId, 2, textureCache);
+                        calculateAOForFace(mainChunk, registry, sliceX, y, z, 0, face.ao);
                         faceCount++;
-                    }
-
-                    // South (-Z)
-                    bool isSouthSolid =
-                        (z == 0) ? (neighborSouth != nullptr &&
-                                    neighborSouth->isBlockSolid(x, y, Chunk::CHUNK_SIZE - 1, registry))
-                                 : mainChunk.isBlockSolid(x, y, z - 1, registry);
-                    if (!isSouthSolid) {
-                        addFace(FaceDirection::South, x, y, z, blockId, vertices, indices,
-                                textureCache, mainChunk, registry);
-                    }
-
-                    // East (+X)
-                    bool isEastSolid =
-                        (x == Chunk::CHUNK_SIZE - 1)
-                            ? (neighborEast != nullptr && neighborEast->isBlockSolid(0, y, z, registry))
-                            : mainChunk.isBlockSolid(x + 1, y, z, registry);
-                    if (!isEastSolid) {
-                        addFace(FaceDirection::East, x, y, z, blockId, vertices, indices,
-                                textureCache, mainChunk, registry);
-                    }
-
-                    // West (-X)
-                    bool isWestSolid =
-                        (x == 0) ? (neighborWest != nullptr &&
-                                    neighborWest->isBlockSolid(Chunk::CHUNK_SIZE - 1, y, z, registry))
-                                 : mainChunk.isBlockSolid(x - 1, y, z, registry);
-                    if (!isWestSolid) {
-                        addFace(FaceDirection::West, x, y, z, blockId, vertices, indices,
-                                textureCache, mainChunk, registry);
-                    }
-
-                    // Top (+Y)
-                    bool isTopSolid =
-                        (y == Chunk::CHUNK_SIZE - 1)
-                            ? (neighborTop != nullptr && neighborTop->isBlockSolid(x, 0, z, registry))
-                            : mainChunk.isBlockSolid(x, y + 1, z, registry);
-                    if (!isTopSolid) {
-                        addFace(FaceDirection::Top, x, y, z, blockId, vertices, indices,
-                                textureCache, mainChunk, registry);
-                    }
-
-                    // Bottom (-Y)
-                    bool isBottomSolid =
-                        (y == 0) ? (neighborBottom != nullptr &&
-                                    neighborBottom->isBlockSolid(x, Chunk::CHUNK_SIZE - 1, z, registry))
-                                 : mainChunk.isBlockSolid(x, y - 1, z, registry);
-                    if (!isBottomSolid) {
-                        addFace(FaceDirection::Bottom, x, y, z, blockId, vertices, indices,
-                                textureCache, mainChunk, registry);
                     }
                 }
             }
-        } // End Iterate Blocks & Cull zone
+            processSliceGreedy(mask, vertices, indices, 0, sliceX, SIZE);
+        }
+
+        // -X faces
+        for (int sliceX = 0; sliceX < SIZE; sliceX++) {
+            for (auto& row : mask)
+                for (auto& cell : row)
+                    cell.blockId = -1;
+
+            for (int y = 0; y < SIZE; y++) {
+                for (int z = 0; z < SIZE; z++) {
+                    int blockId = static_cast<int>(mainChunk.getBlockUnsafe(sliceX, y, z));
+                    if (blockId == 0 || !registry.isDisplayable(blockId))
+                        continue;
+
+                    bool isNeighborSolid =
+                        (sliceX == 0)
+                            ? (neighborWest && neighborWest->isBlockSolid(SIZE - 1, y, z, registry))
+                            : mainChunk.isBlockSolid(sliceX - 1, y, z, registry);
+
+                    if (!isNeighborSolid) {
+                        FaceData& face = mask[y][z];
+                        face.blockId = blockId;
+                        face.textureId = getTextureForFace(blockId, 2, textureCache);
+                        calculateAOForFace(mainChunk, registry, sliceX, y, z, 1, face.ao);
+                        faceCount++;
+                    }
+                }
+            }
+            processSliceGreedy(mask, vertices, indices, 1, sliceX, SIZE);
+        }
+
+        // +Y faces
+        for (int sliceY = 0; sliceY < SIZE; sliceY++) {
+            for (auto& row : mask)
+                for (auto& cell : row)
+                    cell.blockId = -1;
+
+            for (int z = 0; z < SIZE; z++) {
+                for (int x = 0; x < SIZE; x++) {
+                    int blockId = static_cast<int>(mainChunk.getBlockUnsafe(x, sliceY, z));
+                    if (blockId == 0 || !registry.isDisplayable(blockId))
+                        continue;
+
+                    bool isNeighborSolid =
+                        (sliceY == SIZE - 1)
+                            ? (neighborTop && neighborTop->isBlockSolid(x, 0, z, registry))
+                            : mainChunk.isBlockSolid(x, sliceY + 1, z, registry);
+
+                    if (!isNeighborSolid) {
+                        FaceData& face = mask[z][x];
+                        face.blockId = blockId;
+                        face.textureId = getTextureForFace(blockId, 0, textureCache);
+                        calculateAOForFace(mainChunk, registry, x, sliceY, z, 2, face.ao);
+                        faceCount++;
+                    }
+                }
+            }
+            processSliceGreedy(mask, vertices, indices, 2, sliceY, SIZE);
+        }
+
+        // -Y faces
+        for (int sliceY = 0; sliceY < SIZE; sliceY++) {
+            for (auto& row : mask)
+                for (auto& cell : row)
+                    cell.blockId = -1;
+
+            for (int z = 0; z < SIZE; z++) {
+                for (int x = 0; x < SIZE; x++) {
+                    int blockId = static_cast<int>(mainChunk.getBlockUnsafe(x, sliceY, z));
+                    if (blockId == 0 || !registry.isDisplayable(blockId))
+                        continue;
+
+                    bool isNeighborSolid =
+                        (sliceY == 0) ? (neighborBottom &&
+                                         neighborBottom->isBlockSolid(x, SIZE - 1, z, registry))
+                                      : mainChunk.isBlockSolid(x, sliceY - 1, z, registry);
+
+                    if (!isNeighborSolid) {
+                        FaceData& face = mask[z][x];
+                        face.blockId = blockId;
+                        face.textureId = getTextureForFace(blockId, 1, textureCache);
+                        calculateAOForFace(mainChunk, registry, x, sliceY, z, 3, face.ao);
+                        faceCount++;
+                    }
+                }
+            }
+            processSliceGreedy(mask, vertices, indices, 3, sliceY, SIZE);
+        }
+
+        // +Z faces
+        for (int sliceZ = 0; sliceZ < SIZE; sliceZ++) {
+            for (auto& row : mask)
+                for (auto& cell : row)
+                    cell.blockId = -1;
+
+            for (int y = 0; y < SIZE; y++) {
+                for (int x = 0; x < SIZE; x++) {
+                    int blockId = static_cast<int>(mainChunk.getBlockUnsafe(x, y, sliceZ));
+                    if (blockId == 0 || !registry.isDisplayable(blockId))
+                        continue;
+
+                    bool isNeighborSolid =
+                        (sliceZ == SIZE - 1)
+                            ? (neighborNorth && neighborNorth->isBlockSolid(x, y, 0, registry))
+                            : mainChunk.isBlockSolid(x, y, sliceZ + 1, registry);
+
+                    if (!isNeighborSolid) {
+                        FaceData& face = mask[y][x];
+                        face.blockId = blockId;
+                        face.textureId = getTextureForFace(blockId, 2, textureCache);
+                        calculateAOForFace(mainChunk, registry, x, y, sliceZ, 4, face.ao);
+                        faceCount++;
+                    }
+                }
+            }
+            processSliceGreedy(mask, vertices, indices, 4, sliceZ, SIZE);
+        }
+
+        // -Z faces
+        for (int sliceZ = 0; sliceZ < SIZE; sliceZ++) {
+            for (auto& row : mask)
+                for (auto& cell : row)
+                    cell.blockId = -1;
+
+            for (int y = 0; y < SIZE; y++) {
+                for (int x = 0; x < SIZE; x++) {
+                    int blockId = static_cast<int>(mainChunk.getBlockUnsafe(x, y, sliceZ));
+                    if (blockId == 0 || !registry.isDisplayable(blockId))
+                        continue;
+
+                    bool isNeighborSolid =
+                        (sliceZ == 0) ? (neighborSouth &&
+                                         neighborSouth->isBlockSolid(x, y, SIZE - 1, registry))
+                                      : mainChunk.isBlockSolid(x, y, sliceZ - 1, registry);
+
+                    if (!isNeighborSolid) {
+                        FaceData& face = mask[y][x];
+                        face.blockId = blockId;
+                        face.textureId = getTextureForFace(blockId, 2, textureCache);
+                        calculateAOForFace(mainChunk, registry, x, y, sliceZ, 5, face.ao);
+                        faceCount++;
+                    }
+                }
+            }
+            processSliceGreedy(mask, vertices, indices, 5, sliceZ, SIZE);
+        }
     }
 
-    // Track metrics
-    TracyPlot("Faces Per Chunk", static_cast<int64_t>(faceCount));
-    TracyPlot("Vertices Per Chunk", static_cast<int64_t>(vertices.size()));
-    TracyPlot("Indices Per Chunk", static_cast<int64_t>(indices.size()));
-
-    // Mesh generation complete
-}
-
-void ChunkMesh::addFace(FaceDirection direction, int x, int y, int z, int blockId,
-                        std::vector<VoxelVertex>& vertices, std::vector<uint32_t>& indices,
-                        const std::vector<uint32_t>& textureCache, const Chunk& chunk, const BlockRegistry& registry) {
-    // Fast texture lookup from cache - no expensive string operations!
-    // faceType: 0=top, 1=bottom, 2=side
-    // Flat indexing: textureCache[blockId * 3 + faceType]
-    int faceType = 0;
-    switch (direction) {
-    case FaceDirection::Top:
-        faceType = 0;
-        break;
-    case FaceDirection::Bottom:
-        faceType = 1;
-        break;
-    default:
-        faceType = 2; // side
-        break;
-    }
-    uint32_t textureId = textureCache[(blockId * 3) + faceType];
-
-    auto baseIndex = static_cast<uint32_t>(vertices.size());
-    uint32_t px = static_cast<uint32_t>(x);
-    uint32_t py = static_cast<uint32_t>(y);
-    uint32_t pz = static_cast<uint32_t>(z);
-    uint32_t normalId = 0;
-
-    bool s1 = false;
-    bool s2 = false;
-    bool c = false; // side1, side2, corner for AO
-    uint32_t ao[4]; // 0: BL, 1: BR, 2: TR, 3: TL
-
-    uint32_t v0 = 0;
-    uint32_t v1 = 0;
-    uint32_t v2 = 0;
-    uint32_t v3 = 0;
-
-    // AO calculation and vertex packing section
-    switch (direction) {
-    case FaceDirection::East: // +X
-        normalId = 0;
-        s1 = chunk.isBlockSolid(x + 1, y + 1, z, registry);
-        c = chunk.isBlockSolid(x + 1, y + 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x + 1, y, z - 1, registry);
-        ao[3] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x + 1, y + 1, z, registry);
-        c = chunk.isBlockSolid(x + 1, y + 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x + 1, y, z + 1, registry);
-        ao[2] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x + 1, y - 1, z, registry);
-        c = chunk.isBlockSolid(x + 1, y - 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x + 1, y, z + 1, registry);
-        ao[1] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x + 1, y - 1, z, registry);
-        c = chunk.isBlockSolid(x + 1, y - 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x + 1, y, z - 1, registry);
-        ao[0] = calculateAO(s1, s2, c);
-        v0 = packVertex(px + 1, py, pz, normalId, 0, textureId, ao[0]);
-        v1 = packVertex(px + 1, py, pz + 1, normalId, 1, textureId, ao[1]);
-        v2 = packVertex(px + 1, py + 1, pz + 1, normalId, 2, textureId, ao[2]);
-        v3 = packVertex(px + 1, py + 1, pz, normalId, 3, textureId, ao[3]);
-        break;
-    case FaceDirection::West: // -X
-        normalId = 1;
-        s1 = chunk.isBlockSolid(x - 1, y + 1, z, registry);
-        c = chunk.isBlockSolid(x - 1, y + 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x - 1, y, z + 1, registry);
-        ao[3] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x - 1, y + 1, z, registry);
-        c = chunk.isBlockSolid(x - 1, y + 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x - 1, y, z - 1, registry);
-        ao[2] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x - 1, y - 1, z, registry);
-        c = chunk.isBlockSolid(x - 1, y - 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x - 1, y, z - 1, registry);
-        ao[1] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x - 1, y - 1, z, registry);
-        c = chunk.isBlockSolid(x - 1, y - 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x - 1, y, z + 1, registry);
-        ao[0] = calculateAO(s1, s2, c);
-        v0 = packVertex(px, py, pz + 1, normalId, 1, textureId, ao[0]);
-        v1 = packVertex(px, py, pz, normalId, 0, textureId, ao[1]);
-        v2 = packVertex(px, py + 1, pz, normalId, 3, textureId, ao[2]);
-        v3 = packVertex(px, py + 1, pz + 1, normalId, 2, textureId, ao[3]);
-        break;
-    case FaceDirection::Top: // +Y
-        normalId = 2;
-        s1 = chunk.isBlockSolid(x, y + 1, z - 1, registry);
-        c = chunk.isBlockSolid(x - 1, y + 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x - 1, y + 1, z, registry);
-        ao[0] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x, y + 1, z - 1, registry);
-        c = chunk.isBlockSolid(x + 1, y + 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x + 1, y + 1, z, registry);
-        ao[1] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x, y + 1, z + 1, registry);
-        c = chunk.isBlockSolid(x + 1, y + 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x + 1, y + 1, z, registry);
-        ao[2] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x, y + 1, z + 1, registry);
-        c = chunk.isBlockSolid(x - 1, y + 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x - 1, y + 1, z, registry);
-        ao[3] = calculateAO(s1, s2, c);
-        v0 = packVertex(px, py + 1, pz, normalId, 0, textureId, ao[0]);
-        v1 = packVertex(px + 1, py + 1, pz, normalId, 1, textureId, ao[1]);
-        v2 = packVertex(px + 1, py + 1, pz + 1, normalId, 2, textureId, ao[2]);
-        v3 = packVertex(px, py + 1, pz + 1, normalId, 3, textureId, ao[3]);
-        break;
-    case FaceDirection::Bottom: // -Y
-        normalId = 3;
-        s1 = chunk.isBlockSolid(x, y - 1, z + 1, registry);
-        c = chunk.isBlockSolid(x - 1, y - 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x - 1, y - 1, z, registry);
-        ao[0] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x, y - 1, z + 1, registry);
-        c = chunk.isBlockSolid(x + 1, y - 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x + 1, y - 1, z, registry);
-        ao[1] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x, y - 1, z - 1, registry);
-        c = chunk.isBlockSolid(x + 1, y - 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x + 1, y - 1, z, registry);
-        ao[2] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x, y - 1, z - 1, registry);
-        c = chunk.isBlockSolid(x - 1, y - 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x - 1, y - 1, z, registry);
-        ao[3] = calculateAO(s1, s2, c);
-        v0 = packVertex(px, py, pz + 1, normalId, 3, textureId, ao[0]);
-        v1 = packVertex(px + 1, py, pz + 1, normalId, 2, textureId, ao[1]);
-        v2 = packVertex(px + 1, py, pz, normalId, 1, textureId, ao[2]);
-        v3 = packVertex(px, py, pz, normalId, 0, textureId, ao[3]);
-        break;
-    case FaceDirection::North: // +Z
-        normalId = 4;
-        s1 = chunk.isBlockSolid(x + 1, y, z + 1, registry);
-        c = chunk.isBlockSolid(x + 1, y + 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x, y + 1, z + 1, registry);
-        ao[3] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x - 1, y, z + 1, registry);
-        c = chunk.isBlockSolid(x - 1, y + 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x, y + 1, z + 1, registry);
-        ao[2] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x - 1, y, z + 1, registry);
-        c = chunk.isBlockSolid(x - 1, y - 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x, y - 1, z + 1, registry);
-        ao[1] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x + 1, y, z + 1, registry);
-        c = chunk.isBlockSolid(x + 1, y - 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x, y - 1, z + 1, registry);
-        ao[0] = calculateAO(s1, s2, c);
-        v0 = packVertex(px + 1, py, pz + 1, normalId, 1, textureId, ao[0]);
-        v1 = packVertex(px, py, pz + 1, normalId, 0, textureId, ao[1]);
-        v2 = packVertex(px, py + 1, pz + 1, normalId, 3, textureId, ao[2]);
-        v3 = packVertex(px + 1, py + 1, pz + 1, normalId, 2, textureId, ao[3]);
-        break;
-    case FaceDirection::South: // -Z
-        normalId = 5;
-        s1 = chunk.isBlockSolid(x - 1, y, z - 1, registry);
-        c = chunk.isBlockSolid(x - 1, y + 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x, y + 1, z - 1, registry);
-        ao[3] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x + 1, y, z - 1, registry);
-        c = chunk.isBlockSolid(x + 1, y + 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x, y + 1, z - 1, registry);
-        ao[2] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x + 1, y, z - 1, registry);
-        c = chunk.isBlockSolid(x + 1, y - 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x, y - 1, z - 1, registry);
-        ao[1] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x - 1, y, z - 1, registry);
-        c = chunk.isBlockSolid(x - 1, y - 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x, y - 1, z - 1, registry);
-        ao[0] = calculateAO(s1, s2, c);
-        v0 = packVertex(px, py, pz, normalId, 0, textureId, ao[0]);
-        v1 = packVertex(px + 1, py, pz, normalId, 1, textureId, ao[1]);
-        v2 = packVertex(px + 1, py + 1, pz, normalId, 2, textureId, ao[2]);
-        v3 = packVertex(px, py + 1, pz, normalId, 3, textureId, ao[3]);
-        break;
-    }
-
-    // Buffer operations - pushing to vectors
-    // Flip quad diagonal to fix AO artifacts
-    if (ao[0] + ao[2] > ao[1] + ao[3]) {
-        vertices.push_back(v0);
-        vertices.push_back(v1);
-        vertices.push_back(v2);
-        vertices.push_back(v3);
-        indices.push_back(baseIndex + 1);
-        indices.push_back(baseIndex + 0);
-        indices.push_back(baseIndex + 3);
-        indices.push_back(baseIndex + 1);
-        indices.push_back(baseIndex + 3);
-        indices.push_back(baseIndex + 2);
-    } else {
-        vertices.push_back(v0);
-        vertices.push_back(v1);
-        vertices.push_back(v2);
-        vertices.push_back(v3);
-        indices.push_back(baseIndex + 0);
-        indices.push_back(baseIndex + 2);
-        indices.push_back(baseIndex + 1);
-        indices.push_back(baseIndex + 0);
-        indices.push_back(baseIndex + 3);
-        indices.push_back(baseIndex + 2);
-    }
+    int mergedQuadCount = static_cast<int>(vertices.size() / 4);
+    TracyPlot("Original Faces", static_cast<int64_t>(faceCount));
+    TracyPlot("Merged Quads", static_cast<int64_t>(mergedQuadCount));
+    TracyPlot("Greedy Reduction %",
+              faceCount > 0 ? static_cast<int64_t>(100 - (mergedQuadCount * 100 / faceCount)) : 0);
 }

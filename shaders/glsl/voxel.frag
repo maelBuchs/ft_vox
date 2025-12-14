@@ -46,8 +46,10 @@ void main() {
 
     vec2 tileOffset = vec2(tileX, tileY) * tileSizeInAtlas;
 
+    vec2 tiledUV = fract(inUV);
+
     // Scale the face's local UVs and apply the offset
-    vec2 finalUV = tileOffset + (inUV * tileSizeInAtlas);
+    vec2 finalUV = tileOffset + (tiledUV * tileSizeInAtlas);
 
     // Sample the color from the texture atlas
     vec4 textureColor = texture(textureAtlas, finalUV);
@@ -82,8 +84,8 @@ void main() {
     // Apply lighting, directional brightness, and ambient occlusion
     vec3 finalOutputColor = finalColor * lighting * faceBrightness * inAO;
     vec3 encoded = (PushConstants.needsGammaCorrection == 1u)
-        ? pow(finalOutputColor, vec3(1.0 / 2.2))
-        : finalOutputColor;
+                       ? pow(finalOutputColor, vec3(1.0 / 2.2))
+                       : finalOutputColor;
     outFragColor = vec4(encoded, textureColor.a);
 
     // Note: Transparent fragment discarding disabled to avoid requiring

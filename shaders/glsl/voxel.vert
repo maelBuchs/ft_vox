@@ -13,8 +13,8 @@
 // ============================================================================
 
 // Buffer references for per-chunk vertex data access
-layout(buffer_reference, std430, buffer_reference_align = 4) readonly buffer VertexBuffer {
-    uint vertices[];
+layout(buffer_reference, std430, buffer_reference_align = 8) readonly buffer VertexBuffer {
+    uint64_t vertices[];
 };
 
 // GLOBAL data - same for all draws in this batch
@@ -28,9 +28,9 @@ PushConstants;
 struct GPUChunkData {
     vec3 chunkWorldPos;
     uint indexCount;
-    uint64_t vertexBufferAddress;   // Device address of this chunk's vertex buffer
-    uint firstIndex;                 // First index in the mega index buffer
-    uint _padding;                   // Padding to match C++ struct alignment
+    uint64_t vertexBufferAddress; // Device address of this chunk's vertex buffer
+    uint firstIndex;              // First index in the mega index buffer
+    uint _padding;                // Padding to match C++ struct alignment
     // Note: Index buffer is shared (mega buffer), accessed via traditional binding
 };
 
@@ -56,7 +56,7 @@ const vec3 NORMALS[6] = vec3[](vec3(1.0, 0.0, 0.0),  // 0: East
                                vec3(0.0, 0.0, -1.0)  // 5: South
 );
 
-// Lookup table for UVs, indexed by UV Corner ID
+// Base UVs for quad corners (will be scaled by greedy dimensions)
 const vec2 UVS[4] = vec2[](vec2(0.0, 0.0), // 0: Bottom-left
                            vec2(1.0, 0.0), // 1: Bottom-right
                            vec2(1.0, 1.0), // 2: Top-right
@@ -73,23 +73,33 @@ void main() {
     VertexBuffer vertexBuffer = VertexBuffer(chunkData.vertexBufferAddress);
 
     // ========================================================================
-    // FETCH VERTEX DATA from this chunk's dedicated buffer
+    // FETCH 64-BIT VERTEX DATA from this chunk's dedicated buffer
     // ========================================================================
-    uint inVertexData = vertexBuffer.vertices[gl_VertexIndex];
+    uint64_t inVertexData = vertexBuffer.vertices[gl_VertexIndex];
 
-    // Bit layout: [X:6][Y:6][Z:6][Normal:3][UV:2][Texture:7][AO:2]
-    uint x = (inVertexData) & 0x3Fu;
-    uint y = (inVertexData >> 6) & 0x3Fu;
-    uint z = (inVertexData >> 12) & 0x3Fu;
+    // Split into two 32-bit words
+    uint word0 = uint(inVertexData & 0xFFFFFFFFul);
+    uint word1 = uint(inVertexData >> 32);
 
-    uint normalId = (inVertexData >> 18) & 0x7u;
-    uint uvId = (inVertexData >> 21) & 0x3u;
-    uint textureId = (inVertexData >> 23) & 0x7Fu;
-    uint ao = (inVertexData >> 30) & 0x3u;
+    // Unpack word0: [X:6][Y:6][Z:6][Normal:3][UV:2][Texture:7][AO:2]
+    uint x = (word0) & 0x3Fu;
+    uint y = (word0 >> 6) & 0x3Fu;
+    uint z = (word0 >> 12) & 0x3Fu;
+    uint normalId = (word0 >> 18) & 0x7u;
+    uint uvId = (word0 >> 21) & 0x3u;
+    uint textureId = (word0 >> 23) & 0x7Fu;
+    uint ao = (word0 >> 30) & 0x3u;
+
+    // Unpack word1: [Width:5][Height:5][Reserved:22]
+    uint greedyWidth = (word1 & 0x1Fu) + 1; // 0-31 maps to 1-32
+    uint greedyHeight = ((word1 >> 5) & 0x1Fu) + 1;
 
     vec3 inPosition = vec3(float(x), float(y), float(z));
     vec3 normal = NORMALS[normalId];
-    vec2 uv = UVS[uvId];
+
+    // Scale UVs by greedy quad dimensions for texture tiling
+    vec2 baseUV = UVS[uvId];
+    vec2 uv = baseUV * vec2(float(greedyWidth), float(greedyHeight));
 
     // Convert AO to brightness multiplier (0=darkest, 3=brightest)
     // Invert: 0 -> 1.0, 1 -> 0.8, 2 -> 0.6, 3 -> 0.4
