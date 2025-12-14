@@ -128,10 +128,10 @@ $(document).ready(function(){initNavTree('MeshBufferPool_8hpp_source.html',''); 
 <div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span>    <a class="code hl_class" href="classUploadRingBuffer.html">UploadRingBuffer</a>&amp; operator=(<span class="keyword">const</span> <a class="code hl_class" href="classUploadRingBuffer.html">UploadRingBuffer</a>&amp;) = <span class="keyword">delete</span>;</div>
 <div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span> </div>
 <div class="line"><a id="l00035" name="l00035"></a><span class="lineno"><a class="line" href="structUploadRingBuffer_1_1Allocation.html">   35</a></span>    <span class="keyword">struct </span><a class="code hl_struct" href="structUploadRingBuffer_1_1Allocation.html">Allocation</a> {</div>
-<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>        VkBuffer buffer;        <span class="comment">// The ring buffer handle</span></div>
-<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>        VkDeviceSize offset;    <span class="comment">// Offset into ring buffer</span></div>
-<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>        <span class="keywordtype">void</span>* mappedPtr;        <span class="comment">// Pointer to mapped memory at offset</span></div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>        VkDeviceSize size;      <span class="comment">// Size of allocation</span></div>
+<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>        VkBuffer buffer;     <span class="comment">// The ring buffer handle</span></div>
+<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>        VkDeviceSize offset; <span class="comment">// Offset into ring buffer</span></div>
+<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>        <span class="keywordtype">void</span>* mappedPtr;     <span class="comment">// Pointer to mapped memory at offset</span></div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>        VkDeviceSize size;   <span class="comment">// Size of allocation</span></div>
 <div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>    };</div>
 <div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span> </div>
 <div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>    <span class="comment">// Allocate from ring buffer (NO VMA allocation!)</span></div>
@@ -149,11 +149,11 @@ $(document).ready(function(){initNavTree('MeshBufferPool_8hpp_source.html',''); 
 <div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>    <a class="code hl_class" href="classVulkanDevice.html">VulkanDevice</a>&amp; _device;</div>
 <div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>    <a class="code hl_class" href="classVulkanBuffer.html">VulkanBuffer</a>&amp; _bufferManager;</div>
 <div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span> </div>
-<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>    <a class="code hl_struct" href="structAllocatedBuffer.html">AllocatedBuffer</a> _ringBuffer;    <span class="comment">// 256MB ring buffer</span></div>
-<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>    <span class="keywordtype">void</span>* _mappedPtr = <span class="keyword">nullptr</span>;     <span class="comment">// Persistently mapped</span></div>
+<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>    <a class="code hl_struct" href="structAllocatedBuffer.html">AllocatedBuffer</a> _ringBuffer; <span class="comment">// 256MB ring buffer</span></div>
+<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>    <span class="keywordtype">void</span>* _mappedPtr = <span class="keyword">nullptr</span>;  <span class="comment">// Persistently mapped</span></div>
 <div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span> </div>
 <div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>    <span class="keyword">static</span> <span class="keyword">constexpr</span> VkDeviceSize RING_SIZE = 256ull * 1024 * 1024; <span class="comment">// 256MB</span></div>
-<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>    <span class="keyword">static</span> <span class="keyword">constexpr</span> uint32_t FRAME_COUNT = 2; <span class="comment">// Double-buffered</span></div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>    <span class="keyword">static</span> <span class="keyword">constexpr</span> uint32_t FRAME_COUNT = 2;                      <span class="comment">// Double-buffered</span></div>
 <div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span> </div>
 <div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>    <span class="comment">// Per-frame tracking</span></div>
 <div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>    <span class="keyword">struct </span>FrameState {</div>
@@ -180,7 +180,7 @@ $(document).ready(function(){initNavTree('MeshBufferPool_8hpp_source.html',''); 
 <div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span> </div>
 <div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>    <span class="comment">// Allocate per-chunk vertex buffer + index sub-allocation</span></div>
 <div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>    <a class="code hl_struct" href="structChunkMeshBuffers.html">ChunkMeshBuffers</a> allocateChunkBuffers(</div>
-<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>        std::span&lt;uint32_t&gt; indices, std::span&lt;uint32_t&gt; vertices,</div>
+<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>        std::span&lt;uint32_t&gt; indices, std::span&lt;uint64_t&gt; vertices,</div>
 <div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>        <span class="keyword">const</span> std::function&lt;<span class="keywordtype">void</span>(std::function&lt;<span class="keywordtype">void</span>(VkCommandBuffer)&gt;&amp;&amp;)&gt;&amp; immediateSubmit);</div>
 <div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span> </div>
 <div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>    <span class="comment">// Free a chunk&#39;s vertex buffer (deferred until safe)</span></div>
@@ -225,7 +225,7 @@ $(document).ready(function(){initNavTree('MeshBufferPool_8hpp_source.html',''); 
 <div class="line"><a id="l00130" name="l00130"></a><span class="lineno">  130</span> </div>
 <div class="line"><a id="l00131" name="l00131"></a><span class="lineno">  131</span>    <span class="comment">// Mega index buffer (shared by all chunks) - now dynamic!</span></div>
 <div class="line"><a id="l00132" name="l00132"></a><span class="lineno">  132</span>    <a class="code hl_struct" href="structAllocatedBuffer.html">AllocatedBuffer</a> _indexBuffer;</div>
-<div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span>    uint32_t _indexOffset = 0;          <span class="comment">// Current write position in index buffer</span></div>
+<div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span>    uint32_t _indexOffset = 0;                <span class="comment">// Current write position in index buffer</span></div>
 <div class="line"><a id="l00134" name="l00134"></a><span class="lineno">  134</span>    VkDeviceSize _currentIndexBufferSize = 0; <span class="comment">// Current capacity in bytes (grows dynamically)</span></div>
 <div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span> </div>
 <div class="line"><a id="l00136" name="l00136"></a><span class="lineno">  136</span>    <span class="comment">// Statistics tracking</span></div>
@@ -290,8 +290,8 @@ $(document).ready(function(){initNavTree('MeshBufferPool_8hpp_source.html',''); 
 <div class="line"><a id="l00195" name="l00195"></a><span class="lineno">  195</span>    std::vector&lt;StagingBuffer&gt; _stagingIndexPool;</div>
 <div class="line"><a id="l00196" name="l00196"></a><span class="lineno">  196</span>    std::vector&lt;StagingBuffer&gt; _stagingGenericPool;</div>
 <div class="line"><a id="l00197" name="l00197"></a><span class="lineno">  197</span> </div>
-<div class="line"><a id="l00198" name="l00198"></a><span class="lineno">  198</span>    <span class="keyword">static</span> <span class="keyword">constexpr</span> VkDeviceSize STAGING_BUFFER_SIZE_VERTEX = 128 * 1024;  <span class="comment">// 128KB per buffer</span></div>
-<div class="line"><a id="l00199" name="l00199"></a><span class="lineno">  199</span>    <span class="keyword">static</span> <span class="keyword">constexpr</span> VkDeviceSize STAGING_BUFFER_SIZE_INDEX = 64 * 1024;    <span class="comment">// 64KB per buffer</span></div>
+<div class="line"><a id="l00198" name="l00198"></a><span class="lineno">  198</span>    <span class="keyword">static</span> <span class="keyword">constexpr</span> VkDeviceSize STAGING_BUFFER_SIZE_VERTEX = 128 * 1024; <span class="comment">// 128KB per buffer</span></div>
+<div class="line"><a id="l00199" name="l00199"></a><span class="lineno">  199</span>    <span class="keyword">static</span> <span class="keyword">constexpr</span> VkDeviceSize STAGING_BUFFER_SIZE_INDEX = 64 * 1024;   <span class="comment">// 64KB per buffer</span></div>
 <div class="line"><a id="l00200" name="l00200"></a><span class="lineno">  200</span>    <span class="keyword">static</span> <span class="keyword">constexpr</span> VkDeviceSize STAGING_BUFFER_SIZE_GENERIC = 16 * 1024;</div>
 <div class="line"><a id="l00201" name="l00201"></a><span class="lineno">  201</span> </div>
 <div class="line"><a id="l00202" name="l00202"></a><span class="lineno">  202</span>    <span class="keywordtype">void</span> updateStagingPools();</div>
