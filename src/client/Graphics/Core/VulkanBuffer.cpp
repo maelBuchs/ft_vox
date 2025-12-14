@@ -8,7 +8,14 @@
 
 VulkanBuffer::VulkanBuffer(VulkanDevice& device) : _device(device) {}
 
-VulkanBuffer::~VulkanBuffer() = default;
+VulkanBuffer::~VulkanBuffer() {
+    for (const auto& [buffer, tracked] : _activeAllocations) {
+        std::cerr << "[VulkanBuffer] WARNING: Leaked buffer id=" << tracked.id
+                  << " size=" << tracked.size << " purpose=" << tracked.purpose << std::endl;
+        vmaDestroyBuffer(_device.getAllocator(), buffer, tracked.allocation);
+    }
+    _activeAllocations.clear();
+}
 
 AllocatedBuffer VulkanBuffer::createBuffer(size_t size, VkBufferUsageFlags usage,
                                            VmaMemoryUsage memoryUsage) {
@@ -59,11 +66,15 @@ void VulkanBuffer::destroyBuffer(const AllocatedBuffer& buffer) {
 
     auto it = _activeAllocations.find(buffer.buffer);
     if (it == _activeAllocations.end()) {
+        std::cerr << "[VulkanBuffer] destroyBuffer: buffer not found in tracking!" << std::endl;
+        vmaDestroyBuffer(_device.getAllocator(), buffer.buffer, buffer.allocation);
         return;
     }
 
     const BufferAllocation& tracked = it->second;
     if (tracked.allocation != buffer.allocation) {
+        std::cerr << "[VulkanBuffer] destroyBuffer: allocation mismatch! tracked="
+                  << tracked.allocation << " vs passed=" << buffer.allocation << std::endl;
         return;
     }
 

@@ -45,6 +45,8 @@ class UploadRingBuffer {
     // Mark frame complete - allows ring to wrap around
     void frameComplete(uint32_t frameIndex);
 
+    void reset();
+
     // Get current utilization (for debugging)
     [[nodiscard]] float getUtilization() const;
 
@@ -52,10 +54,10 @@ class UploadRingBuffer {
     VulkanDevice& _device;
     VulkanBuffer& _bufferManager;
 
-    AllocatedBuffer _ringBuffer;    // 64MB ring buffer
+    AllocatedBuffer _ringBuffer;    // 256MB ring buffer
     void* _mappedPtr = nullptr;     // Persistently mapped
 
-    static constexpr VkDeviceSize RING_SIZE = 64ull * 1024 * 1024; // 64MB
+    static constexpr VkDeviceSize RING_SIZE = 256ull * 1024 * 1024; // 256MB
     static constexpr uint32_t FRAME_COUNT = 2; // Double-buffered
 
     // Per-frame tracking

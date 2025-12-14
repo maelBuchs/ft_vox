@@ -197,6 +197,7 @@ class ChunkBufferManager {
 
     // --- Reusable Buffers (avoid per-frame allocations) ---
     std::vector<MeshData> _meshBatch;                    // Reused each frame
+    std::vector<MeshData> _retryMeshBatch;               // Meshes that failed to upload
     std::vector<GPUChunkData> _dirtyDataBuffer;          // Reused for dirty uploads
     std::vector<VkBufferCopy> _copyRegions;              // Reused for batched copies
 

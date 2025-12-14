@@ -25,7 +25,8 @@ ChunkBufferManager::ChunkBufferManager(
 }
 
 ChunkBufferManager::~ChunkBufferManager() {
-    // Flush deletion queue first
+    vkDeviceWaitIdle(_device.getDevice());
+
     if (_meshPool) {
         _meshPool->flushDeletionQueue();
     }
@@ -46,8 +47,6 @@ ChunkBufferManager::~ChunkBufferManager() {
 
     _chunkDrawInfos.clear();
     _chunkDrawLookup.clear();
-
-    vkDeviceWaitIdle(_device.getDevice());
 
     // Clean up buffers
     if (_indirectBuffer.buffer != VK_NULL_HANDLE) {
@@ -394,6 +393,17 @@ void ChunkBufferManager::update(const glm::ivec3& cameraChunkPos, int maxLoadDis
     _meshBatch.clear();
     _meshBatch.reserve(_adaptiveMaxMeshes);
 
+    // First, add any meshes that failed to upload last frame (ring buffer was full)
+    if (!_retryMeshBatch.empty()) {
+        ZoneScopedN("Process Retry Mesh Batch");
+        const size_t retryCount = std::min(_retryMeshBatch.size(), static_cast<size_t>(_adaptiveMaxMeshes));
+        _meshBatch.insert(_meshBatch.end(),
+            std::make_move_iterator(_retryMeshBatch.begin()),
+            std::make_move_iterator(_retryMeshBatch.begin() + static_cast<ptrdiff_t>(retryCount)));
+        _retryMeshBatch.erase(_retryMeshBatch.begin(),
+            _retryMeshBatch.begin() + static_cast<ptrdiff_t>(retryCount));
+    }
+
     {
         ZoneScopedN("Collect Mesh Batch from All Queues");
         for (auto& queue : _perThreadMeshQueues) {
@@ -447,6 +457,11 @@ void ChunkBufferManager::update(const glm::ivec3& cameraChunkPos, int maxLoadDis
                     [this](std::function<void(VkCommandBuffer)>&& func) {
                         _executor.immediateSubmit(std::move(func));
                     });
+            }
+
+            if (chunkBuffers.vertexBuffer.buffer == VK_NULL_HANDLE) {
+                _retryMeshBatch.push_back(std::move(meshData));
+                continue;
             }
 
             const glm::vec3 chunkWorldPos{

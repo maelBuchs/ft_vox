@@ -19,7 +19,7 @@ constexpr VkDeviceSize INITIAL_INDEX_BUFFER_SIZE = 16ull * 1024 * 1024 * sizeof(
 UploadRingBuffer::UploadRingBuffer(VulkanDevice& device, VulkanBuffer& bufferManager)
     : _device(device), _bufferManager(bufferManager) {
 
-    // Create 64MB ring buffer with HOST_VISIBLE | HOST_COHERENT memory
+    // Create 256MB ring buffer with HOST_VISIBLE | HOST_COHERENT memory
     _ringBuffer = _bufferManager.createBuffer(
         RING_SIZE,
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT, // Used as source for GPU transfers
@@ -52,10 +52,9 @@ UploadRingBuffer::Allocation UploadRingBuffer::allocate(VkDeviceSize size, uint3
 
     // Check if we've wrapped around the ring
     if (offset + alignedSize > RING_SIZE) {
-        // Ring buffer full - need to wait for GPU or increase size
-        // For now, throw error (should be rare with 64MB)
-        throw std::runtime_error(
-            "[UploadRingBuffer] Ring buffer overflow! Increase RING_SIZE or reduce batch size.");
+        // Ring buffer full - rollback the atomic add and signal caller to flush
+        _writeOffset.fetch_sub(alignedSize, std::memory_order_relaxed);
+        return Allocation{.buffer = VK_NULL_HANDLE, .offset = 0, .mappedPtr = nullptr, .size = 0};
     }
 
     // Update frame end offset
@@ -72,32 +71,36 @@ UploadRingBuffer::Allocation UploadRingBuffer::allocate(VkDeviceSize size, uint3
 
 void UploadRingBuffer::frameComplete(uint32_t frameIndex) {
     const uint32_t frameIdx = frameIndex % FRAME_COUNT;
+    // Update this frame's region as complete
+    _frameStates[frameIdx].startOffset = _frameStates[frameIdx].endOffset;
 
-    // Reset write offset to start of completed frame
-    // This allows ring to wrap around and reuse memory
-    VkDeviceSize oldStart = _frameStates[frameIdx].startOffset;
-    VkDeviceSize oldEnd = _frameStates[frameIdx].endOffset;
-
-    // Mark this frame's region as free
-    _frameStates[frameIdx].startOffset = oldEnd;
-
-    // If this was the oldest frame, we can reset the ring
-    bool canReset = true;
+    // Check if all frames are complete (no in-flight data)
+    bool allComplete = true;
     for (const auto& frame : _frameStates) {
         if (frame.startOffset != frame.endOffset) {
-            canReset = false;
+            allComplete = false;
             break;
         }
     }
 
-    if (canReset) {
+    if (allComplete) {
         // All frames complete - reset ring to beginning
         _writeOffset.store(0, std::memory_order_relaxed);
         for (auto& frame : _frameStates) {
             frame.startOffset = 0;
             frame.endOffset = 0;
         }
+        _frameStartOffset = 0;
     }
+}
+
+void UploadRingBuffer::reset() {
+    _writeOffset.store(0, std::memory_order_relaxed);
+    for (auto& frame : _frameStates) {
+        frame.startOffset = 0;
+        frame.endOffset = 0;
+    }
+    _frameStartOffset = 0;
 }
 
 float UploadRingBuffer::getUtilization() const {
@@ -214,6 +217,19 @@ ChunkMeshBuffers MeshBufferPool::allocateChunkBuffers(
 
     auto vertexAlloc = _uploadRing->allocate(vertexSize, _currentFrameIndex);
     auto indexAlloc = _uploadRing->allocate(indexSize, _currentFrameIndex);
+
+    // Check if ring buffer allocation failed
+    if (vertexAlloc.buffer == VK_NULL_HANDLE || indexAlloc.buffer == VK_NULL_HANDLE) {
+        _bufferManager.destroyBuffer(chunkBuffers.vertexBuffer);
+
+        if (foundFreeRange) {
+            returnIndexRangeToFreeList(indexOffset, indexCount);
+        } else {
+            _indexOffset -= indexCount;
+        }
+
+        return ChunkMeshBuffers{};
+    }
 
     try {
         std::memcpy(vertexAlloc.mappedPtr, vertices.data(), vertexSize);
@@ -627,4 +643,6 @@ void MeshBufferPool::submitPendingUploads(
     });
 
     _pendingUploads.clear();
+
+    _uploadRing->reset();
 }
