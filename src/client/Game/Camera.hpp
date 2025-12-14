@@ -63,6 +63,6 @@ class Camera {
 
     // Constants
     static constexpr float DEFAULT_SPEED = 1.0F;
-    static constexpr float DEFAULT_SENSITIVITY = 0.15F;
+    static constexpr float DEFAULT_SENSITIVITY = 0.05F;
     static constexpr float MAX_PITCH = 89.0F;
 };
