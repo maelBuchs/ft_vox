@@ -53,117 +53,124 @@ uint32_t getTextureForFace(int blockId, int faceType, const std::vector<uint32_t
     return textureCache[(blockId * 3) + faceType];
 }
 
-void calculateAOForFace(const Chunk& chunk, const BlockRegistry& registry, int x, int y, int z,
-                        int normalId, uint8_t ao[4]) {
+// Simple AO calculation using padded chunk data
+// The chunk must have buildPadding() called before meshing
+inline void calculateAOForFace(const Chunk& chunk, const BlockRegistry& registry,
+                               int x, int y, int z, int normalId, uint8_t ao[4]) {
     bool s1, s2, c;
+
+    // Use padded block access - coordinates can be -1 to CHUNK_SIZE
+    auto isSolid = [&](int bx, int by, int bz) {
+        return chunk.isPaddedBlockSolid(bx, by, bz, registry);
+    };
 
     switch (normalId) {
     case 0: // +X
-        s1 = chunk.isBlockSolid(x + 1, y + 1, z, registry);
-        c = chunk.isBlockSolid(x + 1, y + 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x + 1, y, z - 1, registry);
+        s1 = isSolid(x + 1, y + 1, z);
+        c = isSolid(x + 1, y + 1, z - 1);
+        s2 = isSolid(x + 1, y, z - 1);
         ao[3] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x + 1, y + 1, z, registry);
-        c = chunk.isBlockSolid(x + 1, y + 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x + 1, y, z + 1, registry);
+        s1 = isSolid(x + 1, y + 1, z);
+        c = isSolid(x + 1, y + 1, z + 1);
+        s2 = isSolid(x + 1, y, z + 1);
         ao[2] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x + 1, y - 1, z, registry);
-        c = chunk.isBlockSolid(x + 1, y - 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x + 1, y, z + 1, registry);
+        s1 = isSolid(x + 1, y - 1, z);
+        c = isSolid(x + 1, y - 1, z + 1);
+        s2 = isSolid(x + 1, y, z + 1);
         ao[1] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x + 1, y - 1, z, registry);
-        c = chunk.isBlockSolid(x + 1, y - 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x + 1, y, z - 1, registry);
+        s1 = isSolid(x + 1, y - 1, z);
+        c = isSolid(x + 1, y - 1, z - 1);
+        s2 = isSolid(x + 1, y, z - 1);
         ao[0] = calculateAO(s1, s2, c);
         break;
     case 1: // -X
-        s1 = chunk.isBlockSolid(x - 1, y + 1, z, registry);
-        c = chunk.isBlockSolid(x - 1, y + 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x - 1, y, z + 1, registry);
+        s1 = isSolid(x - 1, y + 1, z);
+        c = isSolid(x - 1, y + 1, z + 1);
+        s2 = isSolid(x - 1, y, z + 1);
         ao[3] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x - 1, y + 1, z, registry);
-        c = chunk.isBlockSolid(x - 1, y + 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x - 1, y, z - 1, registry);
+        s1 = isSolid(x - 1, y + 1, z);
+        c = isSolid(x - 1, y + 1, z - 1);
+        s2 = isSolid(x - 1, y, z - 1);
         ao[2] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x - 1, y - 1, z, registry);
-        c = chunk.isBlockSolid(x - 1, y - 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x - 1, y, z - 1, registry);
+        s1 = isSolid(x - 1, y - 1, z);
+        c = isSolid(x - 1, y - 1, z - 1);
+        s2 = isSolid(x - 1, y, z - 1);
         ao[1] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x - 1, y - 1, z, registry);
-        c = chunk.isBlockSolid(x - 1, y - 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x - 1, y, z + 1, registry);
+        s1 = isSolid(x - 1, y - 1, z);
+        c = isSolid(x - 1, y - 1, z + 1);
+        s2 = isSolid(x - 1, y, z + 1);
         ao[0] = calculateAO(s1, s2, c);
         break;
     case 2: // +Y
-        s1 = chunk.isBlockSolid(x, y + 1, z - 1, registry);
-        c = chunk.isBlockSolid(x - 1, y + 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x - 1, y + 1, z, registry);
+        s1 = isSolid(x, y + 1, z - 1);
+        c = isSolid(x - 1, y + 1, z - 1);
+        s2 = isSolid(x - 1, y + 1, z);
         ao[0] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x, y + 1, z - 1, registry);
-        c = chunk.isBlockSolid(x + 1, y + 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x + 1, y + 1, z, registry);
+        s1 = isSolid(x, y + 1, z - 1);
+        c = isSolid(x + 1, y + 1, z - 1);
+        s2 = isSolid(x + 1, y + 1, z);
         ao[1] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x, y + 1, z + 1, registry);
-        c = chunk.isBlockSolid(x + 1, y + 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x + 1, y + 1, z, registry);
+        s1 = isSolid(x, y + 1, z + 1);
+        c = isSolid(x + 1, y + 1, z + 1);
+        s2 = isSolid(x + 1, y + 1, z);
         ao[2] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x, y + 1, z + 1, registry);
-        c = chunk.isBlockSolid(x - 1, y + 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x - 1, y + 1, z, registry);
+        s1 = isSolid(x, y + 1, z + 1);
+        c = isSolid(x - 1, y + 1, z + 1);
+        s2 = isSolid(x - 1, y + 1, z);
         ao[3] = calculateAO(s1, s2, c);
         break;
     case 3: // -Y
-        s1 = chunk.isBlockSolid(x, y - 1, z + 1, registry);
-        c = chunk.isBlockSolid(x - 1, y - 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x - 1, y - 1, z, registry);
+        s1 = isSolid(x, y - 1, z + 1);
+        c = isSolid(x - 1, y - 1, z + 1);
+        s2 = isSolid(x - 1, y - 1, z);
         ao[0] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x, y - 1, z + 1, registry);
-        c = chunk.isBlockSolid(x + 1, y - 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x + 1, y - 1, z, registry);
+        s1 = isSolid(x, y - 1, z + 1);
+        c = isSolid(x + 1, y - 1, z + 1);
+        s2 = isSolid(x + 1, y - 1, z);
         ao[1] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x, y - 1, z - 1, registry);
-        c = chunk.isBlockSolid(x + 1, y - 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x + 1, y - 1, z, registry);
+        s1 = isSolid(x, y - 1, z - 1);
+        c = isSolid(x + 1, y - 1, z - 1);
+        s2 = isSolid(x + 1, y - 1, z);
         ao[2] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x, y - 1, z - 1, registry);
-        c = chunk.isBlockSolid(x - 1, y - 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x - 1, y - 1, z, registry);
+        s1 = isSolid(x, y - 1, z - 1);
+        c = isSolid(x - 1, y - 1, z - 1);
+        s2 = isSolid(x - 1, y - 1, z);
         ao[3] = calculateAO(s1, s2, c);
         break;
     case 4: // +Z
-        s1 = chunk.isBlockSolid(x + 1, y, z + 1, registry);
-        c = chunk.isBlockSolid(x + 1, y + 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x, y + 1, z + 1, registry);
+        s1 = isSolid(x + 1, y, z + 1);
+        c = isSolid(x + 1, y + 1, z + 1);
+        s2 = isSolid(x, y + 1, z + 1);
         ao[3] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x - 1, y, z + 1, registry);
-        c = chunk.isBlockSolid(x - 1, y + 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x, y + 1, z + 1, registry);
+        s1 = isSolid(x - 1, y, z + 1);
+        c = isSolid(x - 1, y + 1, z + 1);
+        s2 = isSolid(x, y + 1, z + 1);
         ao[2] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x - 1, y, z + 1, registry);
-        c = chunk.isBlockSolid(x - 1, y - 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x, y - 1, z + 1, registry);
+        s1 = isSolid(x - 1, y, z + 1);
+        c = isSolid(x - 1, y - 1, z + 1);
+        s2 = isSolid(x, y - 1, z + 1);
         ao[1] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x + 1, y, z + 1, registry);
-        c = chunk.isBlockSolid(x + 1, y - 1, z + 1, registry);
-        s2 = chunk.isBlockSolid(x, y - 1, z + 1, registry);
+        s1 = isSolid(x + 1, y, z + 1);
+        c = isSolid(x + 1, y - 1, z + 1);
+        s2 = isSolid(x, y - 1, z + 1);
         ao[0] = calculateAO(s1, s2, c);
         break;
     case 5: // -Z
-        s1 = chunk.isBlockSolid(x - 1, y, z - 1, registry);
-        c = chunk.isBlockSolid(x - 1, y + 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x, y + 1, z - 1, registry);
+        s1 = isSolid(x - 1, y, z - 1);
+        c = isSolid(x - 1, y + 1, z - 1);
+        s2 = isSolid(x, y + 1, z - 1);
         ao[3] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x + 1, y, z - 1, registry);
-        c = chunk.isBlockSolid(x + 1, y + 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x, y + 1, z - 1, registry);
+        s1 = isSolid(x + 1, y, z - 1);
+        c = isSolid(x + 1, y + 1, z - 1);
+        s2 = isSolid(x, y + 1, z - 1);
         ao[2] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x + 1, y, z - 1, registry);
-        c = chunk.isBlockSolid(x + 1, y - 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x, y - 1, z - 1, registry);
+        s1 = isSolid(x + 1, y, z - 1);
+        c = isSolid(x + 1, y - 1, z - 1);
+        s2 = isSolid(x, y - 1, z - 1);
         ao[1] = calculateAO(s1, s2, c);
-        s1 = chunk.isBlockSolid(x - 1, y, z - 1, registry);
-        c = chunk.isBlockSolid(x - 1, y - 1, z - 1, registry);
-        s2 = chunk.isBlockSolid(x, y - 1, z - 1, registry);
+        s1 = isSolid(x - 1, y, z - 1);
+        c = isSolid(x - 1, y - 1, z - 1);
+        s2 = isSolid(x, y - 1, z - 1);
         ao[0] = calculateAO(s1, s2, c);
         break;
     }
@@ -357,10 +364,7 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                     if (blockId == 0 || !registry.isDisplayable(blockId))
                         continue;
 
-                    bool isNeighborSolid =
-                        (sliceX == SIZE - 1)
-                            ? (neighborEast && neighborEast->isBlockSolid(0, y, z, registry))
-                            : mainChunk.isBlockSolid(sliceX + 1, y, z, registry);
+                    bool isNeighborSolid = mainChunk.isPaddedBlockSolid(sliceX + 1, y, z, registry);
 
                     if (!isNeighborSolid) {
                         FaceData& face = mask[y][z];
@@ -386,10 +390,7 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                     if (blockId == 0 || !registry.isDisplayable(blockId))
                         continue;
 
-                    bool isNeighborSolid =
-                        (sliceX == 0)
-                            ? (neighborWest && neighborWest->isBlockSolid(SIZE - 1, y, z, registry))
-                            : mainChunk.isBlockSolid(sliceX - 1, y, z, registry);
+                    bool isNeighborSolid = mainChunk.isPaddedBlockSolid(sliceX - 1, y, z, registry);
 
                     if (!isNeighborSolid) {
                         FaceData& face = mask[y][z];
@@ -415,10 +416,7 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                     if (blockId == 0 || !registry.isDisplayable(blockId))
                         continue;
 
-                    bool isNeighborSolid =
-                        (sliceY == SIZE - 1)
-                            ? (neighborTop && neighborTop->isBlockSolid(x, 0, z, registry))
-                            : mainChunk.isBlockSolid(x, sliceY + 1, z, registry);
+                    bool isNeighborSolid = mainChunk.isPaddedBlockSolid(x, sliceY + 1, z, registry);
 
                     if (!isNeighborSolid) {
                         FaceData& face = mask[z][x];
@@ -444,10 +442,7 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                     if (blockId == 0 || !registry.isDisplayable(blockId))
                         continue;
 
-                    bool isNeighborSolid =
-                        (sliceY == 0) ? (neighborBottom &&
-                                         neighborBottom->isBlockSolid(x, SIZE - 1, z, registry))
-                                      : mainChunk.isBlockSolid(x, sliceY - 1, z, registry);
+                    bool isNeighborSolid = mainChunk.isPaddedBlockSolid(x, sliceY - 1, z, registry);
 
                     if (!isNeighborSolid) {
                         FaceData& face = mask[z][x];
@@ -473,10 +468,7 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                     if (blockId == 0 || !registry.isDisplayable(blockId))
                         continue;
 
-                    bool isNeighborSolid =
-                        (sliceZ == SIZE - 1)
-                            ? (neighborNorth && neighborNorth->isBlockSolid(x, y, 0, registry))
-                            : mainChunk.isBlockSolid(x, y, sliceZ + 1, registry);
+                    bool isNeighborSolid = mainChunk.isPaddedBlockSolid(x, y, sliceZ + 1, registry);
 
                     if (!isNeighborSolid) {
                         FaceData& face = mask[y][x];
@@ -502,10 +494,7 @@ void ChunkMesh::generateMesh(const Chunk& mainChunk, const BlockRegistry& regist
                     if (blockId == 0 || !registry.isDisplayable(blockId))
                         continue;
 
-                    bool isNeighborSolid =
-                        (sliceZ == 0) ? (neighborSouth &&
-                                         neighborSouth->isBlockSolid(x, y, SIZE - 1, registry))
-                                      : mainChunk.isBlockSolid(x, y, sliceZ - 1, registry);
+                    bool isNeighborSolid = mainChunk.isPaddedBlockSolid(x, y, sliceZ - 1, registry);
 
                     if (!isNeighborSolid) {
                         FaceData& face = mask[y][x];

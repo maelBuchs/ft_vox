@@ -85,6 +85,13 @@ void MeshingThread::meshingThreadLoop() {
 
         {
             ZoneScopedN("ChunkMesh::generateMesh");
+
+            // This copies border blocks from neighbors for efficient AO calculation
+            task.chunkData->buildPadding(
+                task.neighborNorth.get(), task.neighborSouth.get(),
+                task.neighborEast.get(), task.neighborWest.get(),
+                task.neighborTop.get(), task.neighborBottom.get());
+
             ChunkMesh::generateMesh(*task.chunkData, _blockRegistry, vertices, indices,
                                     task.neighborNorth.get(), task.neighborSouth.get(),
                                     task.neighborEast.get(), task.neighborWest.get(),

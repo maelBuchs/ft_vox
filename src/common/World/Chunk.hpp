@@ -48,6 +48,10 @@ class Chunk {
     static constexpr int CHUNK_SIZE = 32;
     static constexpr int VOLUME = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
 
+    // Padded size: CHUNK_SIZE + 2 (1 block border on each side)
+    static constexpr int PADDED_SIZE = CHUNK_SIZE + 2;
+    static constexpr int PADDED_VOLUME = PADDED_SIZE * PADDED_SIZE * PADDED_SIZE;
+
     Chunk(int x, int y, int z, WorldManager& worldManager);
     Chunk() = default;
     ~Chunk() = default;
@@ -64,6 +68,22 @@ class Chunk {
     [[nodiscard]] inline uint8_t getBlockUnsafe(int x, int y, int z) const {
         return _blocks[x + (y * CHUNK_SIZE) + (z * CHUNK_SIZE * CHUNK_SIZE)];
     }
+
+    [[nodiscard]] inline uint8_t getPaddedBlock(int x, int y, int z) const {
+        int px = x + 1;
+        int py = y + 1;
+        int pz = z + 1;
+        return _paddedBlocks[px + (py * PADDED_SIZE) + (pz * PADDED_SIZE * PADDED_SIZE)];
+    }
+
+    [[nodiscard]] inline bool isPaddedBlockSolid(int x, int y, int z, const BlockRegistry& registry) const {
+        uint8_t blockId = getPaddedBlock(x, y, z);
+        return blockId != 0 && registry.isSolid(static_cast<int>(blockId));
+    }
+
+    void buildPadding(const Chunk* neighborNorth, const Chunk* neighborSouth,
+                      const Chunk* neighborEast, const Chunk* neighborWest,
+                      const Chunk* neighborTop, const Chunk* neighborBottom);
 
     void setBlock(int x, int y, int z, uint8_t blockId);
 
@@ -142,6 +162,7 @@ class Chunk {
   private:
     glm::ivec3 position{};
     std::array<uint8_t, VOLUME> _blocks{};
+    std::array<uint8_t, PADDED_VOLUME> _paddedBlocks{};
     bool _isEmpty = true;
     int8_t _biome = static_cast<int8_t>(BiomeType::kPLAINS);
     std::vector<BiomeType> _biomeData;

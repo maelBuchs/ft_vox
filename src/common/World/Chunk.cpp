@@ -103,3 +103,78 @@ bool Chunk::isInBounds(int x, int y, int z) {
 int Chunk::getIndex(int x, int y, int z) {
     return x + (y * CHUNK_SIZE) + (z * CHUNK_SIZE * CHUNK_SIZE);
 }
+
+void Chunk::buildPadding(const Chunk* neighborNorth, const Chunk* neighborSouth,
+                         const Chunk* neighborEast, const Chunk* neighborWest,
+                         const Chunk* neighborTop, const Chunk* neighborBottom) {
+    _paddedBlocks.fill(0);
+
+    auto setPadded = [this](int x, int y, int z, uint8_t blockId) {
+        int px = x + 1;
+        int py = y + 1;
+        int pz = z + 1;
+        _paddedBlocks[px + (py * PADDED_SIZE) + (pz * PADDED_SIZE * PADDED_SIZE)] = blockId;
+    };
+
+    for (int z = 0; z < CHUNK_SIZE; z++) {
+        for (int y = 0; y < CHUNK_SIZE; y++) {
+            for (int x = 0; x < CHUNK_SIZE; x++) {
+                setPadded(x, y, z, getBlockUnsafe(x, y, z));
+            }
+        }
+    }
+
+    // +X border (x = CHUNK_SIZE, from neighborEast x = 0)
+    if (neighborEast) {
+        for (int z = 0; z < CHUNK_SIZE; z++) {
+            for (int y = 0; y < CHUNK_SIZE; y++) {
+                setPadded(CHUNK_SIZE, y, z, neighborEast->getBlockUnsafe(0, y, z));
+            }
+        }
+    }
+
+    // -X border (x = -1, from neighborWest x = CHUNK_SIZE-1)
+    if (neighborWest) {
+        for (int z = 0; z < CHUNK_SIZE; z++) {
+            for (int y = 0; y < CHUNK_SIZE; y++) {
+                setPadded(-1, y, z, neighborWest->getBlockUnsafe(CHUNK_SIZE - 1, y, z));
+            }
+        }
+    }
+
+    // +Y border (y = CHUNK_SIZE, from neighborTop y = 0)
+    if (neighborTop) {
+        for (int z = 0; z < CHUNK_SIZE; z++) {
+            for (int x = 0; x < CHUNK_SIZE; x++) {
+                setPadded(x, CHUNK_SIZE, z, neighborTop->getBlockUnsafe(x, 0, z));
+            }
+        }
+    }
+
+    // -Y border (y = -1, from neighborBottom y = CHUNK_SIZE-1)
+    if (neighborBottom) {
+        for (int z = 0; z < CHUNK_SIZE; z++) {
+            for (int x = 0; x < CHUNK_SIZE; x++) {
+                setPadded(x, -1, z, neighborBottom->getBlockUnsafe(x, CHUNK_SIZE - 1, z));
+            }
+        }
+    }
+
+    // +Z border (z = CHUNK_SIZE, from neighborNorth z = 0)
+    if (neighborNorth) {
+        for (int y = 0; y < CHUNK_SIZE; y++) {
+            for (int x = 0; x < CHUNK_SIZE; x++) {
+                setPadded(x, y, CHUNK_SIZE, neighborNorth->getBlockUnsafe(x, y, 0));
+            }
+        }
+    }
+
+    // -Z border (z = -1, from neighborSouth z = CHUNK_SIZE-1)
+    if (neighborSouth) {
+        for (int y = 0; y < CHUNK_SIZE; y++) {
+            for (int x = 0; x < CHUNK_SIZE; x++) {
+                setPadded(x, y, -1, neighborSouth->getBlockUnsafe(x, y, CHUNK_SIZE - 1));
+            }
+        }
+    }
+}
