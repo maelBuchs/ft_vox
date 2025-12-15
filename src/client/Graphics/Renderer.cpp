@@ -11,6 +11,8 @@
 #include <SDL3/SDL.h>
 #include <vulkan/vulkan.h>
 
+#include <glm/ext/vector_float3.hpp>
+
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
@@ -23,13 +25,13 @@
 #include "Core/VulkanBuffer.hpp"
 #include "Core/VulkanDevice.hpp"
 #include "Core/VulkanSwapchain.hpp"
+#include "GraphicsUtils.hpp"
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_vulkan.h"
 #include "Rendering/CommandExecutor.hpp"
 #include "Rendering/FrameManager.hpp"
 #include "Rendering/RenderContext.hpp"
-#include "GraphicsUtils.hpp"
 #include "Voxel/MeshManager.hpp"
 #include "Voxel/VoxelRenderer.hpp"
 
@@ -99,7 +101,7 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
                                   _atlasTexturesPerRow);
 
     initSkyPipeline();
-
+    initOutlinePipeline();
     initImGui();
 }
 
@@ -249,7 +251,13 @@ void Renderer::draw(float timeOfDay) {
         TracyVkZone(_device.getTracyCtx(), commandBuffer, "Voxel Rendering");
         _voxelRenderer->drawVoxels(commandBuffer, *_camera, _wireframeMode);
     }
-
+    {
+        glm::vec3 targetBlockPos = _camera->getPosition() + _camera->getFront() * 5.0F;
+        targetBlockPos[0] = std::floor(targetBlockPos[0]);
+        targetBlockPos[1] = std::floor(targetBlockPos[1]);
+        targetBlockPos[2] = std::floor(targetBlockPos[2]);
+        drawOutline(commandBuffer, targetBlockPos);
+    }
     // Copy draw image to swapchain
     VkImage swapchainImage;
     {
@@ -1131,13 +1139,11 @@ void Renderer::drawSky(VkCommandBuffer cmd, float timeOfDay) {
     glm::mat4 viewNoTranslation = glm::mat4(glm::mat3(view)); // Remove translation component
 
     // Calculate projection matrix (sky uses shorter far plane)
-    float aspect = GraphicsUtils::calculateAspectRatio(drawImage.extent.width, drawImage.extent.height);
+    float aspect =
+        GraphicsUtils::calculateAspectRatio(drawImage.extent.width, drawImage.extent.height);
     glm::mat4 projection = GraphicsUtils::createVulkanProjection(
-        aspect,
-        GraphicsUtils::Projection::FOV,
-        GraphicsUtils::Projection::NEAR_PLANE,
-        GraphicsUtils::Projection::SKY_FAR_PLANE
-    );
+        aspect, GraphicsUtils::Projection::FOV, GraphicsUtils::Projection::NEAR_PLANE,
+        GraphicsUtils::Projection::SKY_FAR_PLANE);
 
     // Calculate inverse of viewProjection
     glm::mat4 viewProjection = projection * viewNoTranslation;
@@ -1165,6 +1171,358 @@ void Renderer::drawSky(VkCommandBuffer cmd, float timeOfDay) {
 
     // Draw full-screen triangle (3 vertices, no vertex buffer needed)
     vkCmdDraw(cmd, 3, 1, 0, 0);
+
+    vkCmdEndRendering(cmd);
+}
+void Renderer::initOutlinePipeline() {
+    // 1. Charger les shaders de l'outline
+    // Assurez-vous que shaders/outline.vert.spv et shaders/outline.frag.spv existent
+    std::ifstream vertFile("shaders/outline.vert.spv", std::ios::ate | std::ios::binary);
+    std::ifstream fragFile("shaders/outline.frag.spv", std::ios::ate | std::ios::binary);
+
+    if (!vertFile.is_open() || !fragFile.is_open()) {
+        throw std::runtime_error("Failed to open outline shader files");
+    }
+
+    size_t vertSize = static_cast<size_t>(vertFile.tellg());
+    size_t fragSize = static_cast<size_t>(fragFile.tellg());
+
+    std::vector<char> vertCode(vertSize);
+    std::vector<char> fragCode(fragSize);
+
+    vertFile.seekg(0);
+    fragFile.seekg(0);
+    vertFile.read(vertCode.data(), static_cast<std::streamsize>(vertSize));
+    fragFile.read(fragCode.data(), static_cast<std::streamsize>(fragSize));
+
+    vertFile.close();
+    fragFile.close();
+
+    // Création des modules shaders
+    VkShaderModuleCreateInfo vertModuleInfo{.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+                                            .pNext = nullptr,
+                                            .flags = 0,
+                                            .codeSize = vertCode.size(),
+                                            .pCode =
+                                                reinterpret_cast<const uint32_t*>(vertCode.data())};
+
+    VkShaderModuleCreateInfo fragModuleInfo{.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+                                            .pNext = nullptr,
+                                            .flags = 0,
+                                            .codeSize = fragCode.size(),
+                                            .pCode =
+                                                reinterpret_cast<const uint32_t*>(fragCode.data())};
+
+    VkShaderModule vertModule = VK_NULL_HANDLE;
+    VkShaderModule fragModule = VK_NULL_HANDLE;
+
+    VkResult ret = vkCreateShaderModule(_device.getDevice(), &vertModuleInfo, nullptr, &vertModule);
+    checkVkResult(ret, "Failed to create outline vertex shader module");
+
+    ret = vkCreateShaderModule(_device.getDevice(), &fragModuleInfo, nullptr, &fragModule);
+    checkVkResult(ret, "Failed to create outline fragment shader module");
+
+    // 2. Push Constant Range
+    // On envoie la matrice MVP (64 bytes) et la position du bloc (12 bytes + padding)
+    // Total approx: sizeof(mat4) + sizeof(vec4) pour l'alignement
+    VkPushConstantRange pushConstantRange{
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT, // Uniquement nécessaire dans le Vertex Shader
+        .offset = 0,
+        .size = sizeof(glm::mat4) + sizeof(glm::vec4)};
+
+    // 3. Pipeline Layout
+    // Note: Pas de DescriptorSetLayout ici car on n'a pas de texture, juste une couleur unie
+    VkPipelineLayoutCreateInfo layoutInfo{.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                                          .pNext = nullptr,
+                                          .flags = 0,
+                                          .setLayoutCount = 0, // Aucun descriptor set
+                                          .pSetLayouts = nullptr,
+                                          .pushConstantRangeCount = 1,
+                                          .pPushConstantRanges = &pushConstantRange};
+
+    ret =
+        vkCreatePipelineLayout(_device.getDevice(), &layoutInfo, nullptr, &_outlinePipelineLayout);
+    checkVkResult(ret, "Failed to create outline pipeline layout");
+
+    // Shader stages
+    VkPipelineShaderStageCreateInfo vertStageInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .stage = VK_SHADER_STAGE_VERTEX_BIT,
+        .module = vertModule,
+        .pName = "main",
+        .pSpecializationInfo = nullptr};
+
+    VkPipelineShaderStageCreateInfo fragStageInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+        .module = fragModule,
+        .pName = "main",
+        .pSpecializationInfo = nullptr};
+
+    VkPipelineShaderStageCreateInfo shaderStages[] = {vertStageInfo, fragStageInfo};
+
+    // Vertex input state - vide (on utilise gl_VertexIndex)
+    VkPipelineVertexInputStateCreateInfo vertexInputInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .vertexBindingDescriptionCount = 0,
+        .pVertexBindingDescriptions = nullptr,
+        .vertexAttributeDescriptionCount = 0,
+        .pVertexAttributeDescriptions = nullptr};
+
+    // 4. Input Assembly - IMPORTANT : LINE_LIST
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST, // On dessine des lignes
+        .primitiveRestartEnable = VK_FALSE};
+
+    // Viewport et scissor (dynamique)
+    VkPipelineViewportStateCreateInfo viewportState{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .viewportCount = 1,
+        .pViewports = nullptr,
+        .scissorCount = 1,
+        .pScissors = nullptr};
+
+    // 5. Rasterization - IMPORTANT : Depth Bias et Mode Line
+    VkPipelineRasterizationStateCreateInfo rasterizer{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .depthClampEnable = VK_FALSE,
+        .rasterizerDiscardEnable = VK_FALSE,
+        .polygonMode = VK_POLYGON_MODE_LINE, // Mode fil de fer (requis si on dessinait des tris,
+                                             // mais propre ici)
+        .cullMode = VK_CULL_MODE_NONE,
+        .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+
+        // Configuration du Depth Bias pour éviter le Z-Fighting avec le bloc
+        .depthBiasEnable = VK_TRUE,
+        .depthBiasConstantFactor = -1.25f,
+        .depthBiasClamp = 0.0f,
+        .depthBiasSlopeFactor = -1.25f,
+
+        .lineWidth = 1.0f // Note: > 1.0f nécessite la feature 'wideLines' activée
+    };
+
+    // Multisampling
+    VkPipelineMultisampleStateCreateInfo multisampling{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+        .sampleShadingEnable = VK_FALSE,
+        .minSampleShading = 1.0f,
+        .pSampleMask = nullptr,
+        .alphaToCoverageEnable = VK_FALSE,
+        .alphaToOneEnable = VK_FALSE};
+
+    // 6. Depth Stencil - IMPORTANT : Pas de Depth Write
+    VkPipelineDepthStencilStateCreateInfo depthStencil{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .depthTestEnable = VK_TRUE, // On teste la profondeur (pour être caché par les murs devant)
+        .depthWriteEnable = VK_FALSE, // On n'écrit PAS (c'est un overlay transparent/fin)
+        .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL,
+        .depthBoundsTestEnable = VK_FALSE,
+        .stencilTestEnable = VK_FALSE,
+        .minDepthBounds = 0.0f,
+        .maxDepthBounds = 1.0f};
+
+    // Color blend - Simple alpha blending
+    VkPipelineColorBlendAttachmentState colorBlendAttachment{
+        .blendEnable = VK_TRUE, // Activé au cas où on voudrait de la transparence
+        .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+        .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+        .colorBlendOp = VK_BLEND_OP_ADD,
+        .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+        .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+        .alphaBlendOp = VK_BLEND_OP_ADD,
+        .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                          VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT};
+
+    VkPipelineColorBlendStateCreateInfo colorBlending{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .logicOpEnable = VK_FALSE,
+        .logicOp = VK_LOGIC_OP_COPY,
+        .attachmentCount = 1,
+        .pAttachments = &colorBlendAttachment,
+        .blendConstants = {0.0f, 0.0f, 0.0f, 0.0f}};
+
+    // Dynamic state
+    std::vector<VkDynamicState> dynamicStates = {VK_DYNAMIC_STATE_VIEWPORT,
+                                                 VK_DYNAMIC_STATE_SCISSOR};
+
+    VkPipelineDynamicStateCreateInfo dynamicState{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()),
+        .pDynamicStates = dynamicStates.data()};
+
+    // Rendering info
+    VkFormat colorFormat = _renderContext->getDrawImage().format;
+    VkFormat depthFormat = _renderContext->getDepthImage().format;
+
+    VkPipelineRenderingCreateInfo renderingInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+        .pNext = nullptr,
+        .viewMask = 0,
+        .colorAttachmentCount = 1,
+        .pColorAttachmentFormats = &colorFormat,
+        .depthAttachmentFormat = depthFormat,
+        .stencilAttachmentFormat = VK_FORMAT_UNDEFINED};
+
+    // Create graphics pipeline
+    VkGraphicsPipelineCreateInfo pipelineInfo{.sType =
+                                                  VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+                                              .pNext = &renderingInfo,
+                                              .flags = 0,
+                                              .stageCount = 2,
+                                              .pStages = shaderStages,
+                                              .pVertexInputState = &vertexInputInfo,
+                                              .pInputAssemblyState = &inputAssembly,
+                                              .pTessellationState = nullptr,
+                                              .pViewportState = &viewportState,
+                                              .pRasterizationState = &rasterizer,
+                                              .pMultisampleState = &multisampling,
+                                              .pDepthStencilState = &depthStencil,
+                                              .pColorBlendState = &colorBlending,
+                                              .pDynamicState = &dynamicState,
+                                              .layout = _outlinePipelineLayout,
+                                              .renderPass = VK_NULL_HANDLE,
+                                              .subpass = 0,
+                                              .basePipelineHandle = VK_NULL_HANDLE,
+                                              .basePipelineIndex = -1};
+
+    ret = vkCreateGraphicsPipelines(_device.getDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr,
+                                    &_outlinePipeline);
+    checkVkResult(ret, "Failed to create outline graphics pipeline");
+
+    // Clean up shader modules
+    vkDestroyShaderModule(_device.getDevice(), vertModule, nullptr);
+    vkDestroyShaderModule(_device.getDevice(), fragModule, nullptr);
+
+    // Register cleanup
+    _mainDeletionQueue.push([this]() {
+        vkDestroyPipeline(_device.getDevice(), _outlinePipeline, nullptr);
+        vkDestroyPipelineLayout(_device.getDevice(), _outlinePipelineLayout, nullptr);
+        // Note: Pas de DescriptorSetLayout à détruire ici
+    });
+}
+
+// Ajout de l'argument targetBlockPos pour savoir où dessiner
+void Renderer::drawOutline(VkCommandBuffer cmd, const glm::vec3& targetBlockPos) {
+    // Get draw and depth images
+    const RenderContext::AllocatedImage& drawImage = _renderContext->getDrawImage();
+    const RenderContext::AllocatedImage& depthImage = _renderContext->getDepthImage();
+
+    // 1. Configuration du Rendering
+    // IMPORTANT : On utilise LOAD_OP_LOAD car on dessine PAR DESSUS le monde existant
+    VkRenderingAttachmentInfo colorAttachment{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = nullptr,
+        .imageView = drawImage.imageView,
+        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .resolveMode = VK_RESOLVE_MODE_NONE,
+        .resolveImageView = VK_NULL_HANDLE,
+        .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD, // <--- NE PAS EFFACER L'IMAGE
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        // Pas de clearValue nécessaire ici puisqu'on load
+    };
+
+    VkRenderingAttachmentInfo depthAttachment{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = nullptr,
+        .imageView = depthImage.imageView,
+        .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        .resolveMode = VK_RESOLVE_MODE_NONE,
+        .resolveImageView = VK_NULL_HANDLE,
+        .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD, // <--- GARDER LE DEPTH BUFFER (pour les tests de
+                                              // profondeur)
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        // Pas de clearValue nécessaire
+    };
+
+    VkRenderingInfo renderInfo{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .renderArea = {.offset = {0, 0},
+                       .extent = {drawImage.extent.width, drawImage.extent.height}},
+        .layerCount = 1,
+        .viewMask = 0,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &colorAttachment,
+        .pDepthAttachment = &depthAttachment,
+        .pStencilAttachment = nullptr};
+
+    vkCmdBeginRendering(cmd, &renderInfo);
+
+    // Bind outline pipeline
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _outlinePipeline);
+
+    // Note : Pas de Descriptor Sets à binder (initialisé avec layoutCount = 0)
+
+    // Set viewport and scissor
+    VkViewport viewport{.x = 0.0F,
+                        .y = 0.0F,
+                        .width = static_cast<float>(drawImage.extent.width),
+                        .height = static_cast<float>(drawImage.extent.height),
+                        .minDepth = 0.0F,
+                        .maxDepth = 1.0F};
+
+    VkRect2D scissor{.offset = {0, 0}, .extent = {drawImage.extent.width, drawImage.extent.height}};
+
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+    // Prepare push constants
+    // 2. Calcul des matrices
+    // On garde la translation standard car le cube est positionné dans le monde
+    glm::mat4 view = _camera->getViewMatrix();
+
+    float aspect =
+        GraphicsUtils::calculateAspectRatio(drawImage.extent.width, drawImage.extent.height);
+
+    // Projection standard (pas celle du ciel)
+    glm::mat4 projection = GraphicsUtils::createVulkanProjection(
+        aspect, GraphicsUtils::Projection::FOV, GraphicsUtils::Projection::NEAR_PLANE,
+        GraphicsUtils::Projection::FAR_PLANE); // Far plane standard
+
+    glm::mat4 viewProjection = projection * view;
+
+    // Structure alignée avec le shader (voir initOutlinePipeline)
+    struct OutlinePushConstants {
+        glm::mat4 renderMatrix; // MVP
+        glm::vec4 blockPos;     // vec4 pour l'alignement (x, y, z, padding)
+    } pushConstants;
+
+    pushConstants.renderMatrix = viewProjection;
+    pushConstants.blockPos = glm::vec4(targetBlockPos, 0.0f);
+
+    vkCmdPushConstants(cmd, _outlinePipelineLayout, VK_SHADER_STAGE_VERTEX_BIT,
+                       0, // Uniquement Vertex Bit nécessaire ici
+                       sizeof(OutlinePushConstants), &pushConstants);
+
+    // 3. Draw call
+    // Dessiner 24 sommets (12 lignes * 2 points)
+    // Pas de vertex buffer, on utilise gl_VertexIndex dans le shader
+    vkCmdDraw(cmd, 24, 1, 0, 0);
 
     vkCmdEndRendering(cmd);
 }

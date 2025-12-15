@@ -75,10 +75,14 @@ class Renderer {
     void initSkyPipeline();
     void drawSky(VkCommandBuffer cmd, float timeOfDay);
 
+    void initOutlinePipeline();
+    void drawOutline(VkCommandBuffer cmd, const glm::vec3& targetBlockPos);
+
     Window& _window;
     VulkanDevice& _device;
     BlockRegistry& _blockRegistry;
-    std::vector<std::unique_ptr<ThreadSafeQueue<MeshData>>>& _perThreadMeshQueues; // Reference to mesh queue from App
+    std::vector<std::unique_ptr<ThreadSafeQueue<MeshData>>>&
+        _perThreadMeshQueues; // Reference to mesh queue from App
     std::unique_ptr<VulkanSwapchain> _swapchain;
     DescriptorAllocatorGrowable _globalDescriptorAllocator;
     std::vector<VkSemaphore> _swapchainSemaphores;
@@ -98,6 +102,12 @@ class Renderer {
     VkPipelineLayout _skyPipelineLayout = VK_NULL_HANDLE;
     VkDescriptorSetLayout _skyDescriptorSetLayout = VK_NULL_HANDLE;
     VkDescriptorSet _skyDescriptorSet = VK_NULL_HANDLE;
+
+    // Outline rendering
+    VkPipeline _outlinePipeline = VK_NULL_HANDLE;
+    VkPipelineLayout _outlinePipelineLayout = VK_NULL_HANDLE;
+    VkDescriptorSetLayout _outlineDescriptorSetLayout = VK_NULL_HANDLE;
+    VkDescriptorSet _outlineDescriptorSet = VK_NULL_HANDLE;
 
     // Wireframe mode
     bool _wireframeMode = false;
