@@ -13,6 +13,8 @@
 
 #include <glm/ext/vector_float3.hpp>
 
+#include "server/World/WorldManager.hpp"
+
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
@@ -36,9 +38,10 @@
 #include "Voxel/VoxelRenderer.hpp"
 
 Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry,
-                   std::vector<std::unique_ptr<ThreadSafeQueue<MeshData>>>& perThreadMeshQueues)
+                   std::vector<std::unique_ptr<ThreadSafeQueue<MeshData>>>& perThreadMeshQueues,
+                   WorldManager* worldManager)
     : _window(window), _device(device), _blockRegistry(registry),
-      _perThreadMeshQueues(perThreadMeshQueues) {
+      _perThreadMeshQueues(perThreadMeshQueues), _worldManager(worldManager) {
     try {
         _swapchain = std::make_unique<VulkanSwapchain>(window, device);
         _bufferManager = std::make_unique<VulkanBuffer>(device);
@@ -256,7 +259,10 @@ void Renderer::draw(float timeOfDay) {
         targetBlockPos[0] = std::floor(targetBlockPos[0]);
         targetBlockPos[1] = std::floor(targetBlockPos[1]);
         targetBlockPos[2] = std::floor(targetBlockPos[2]);
-        drawOutline(commandBuffer, targetBlockPos);
+        auto targetBlockOpt = _worldManager->getTargetBlock(*_camera);
+        if (targetBlockOpt.has_value()) {
+            drawOutline(commandBuffer, targetBlockOpt.value());
+        }
     }
     // Copy draw image to swapchain
     VkImage swapchainImage;

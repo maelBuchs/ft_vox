@@ -3,8 +3,8 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
-#include <mutex>
 #include <random>
+#include <shared_mutex>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
@@ -16,11 +16,11 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/hash.hpp>
 
+#include "client/Game/Camera.hpp"
 #include "common/Protocol/Protocol.hpp"
 #include "common/Util/ThreadSafeQueue.hpp"
 #include "common/Util/Util.hpp"
 #include "common/World/Chunk.hpp"
-
 #define CHUNK_TO_WORLD(b, c) (((c) * Chunk::CHUNK_SIZE) + (b))
 
 /**
@@ -105,20 +105,37 @@ class WorldManager {
      */
     void requestRemeshForAllChunks(const std::vector<glm::ivec3>& excludeChunks);
 
-    Chunk* getCurrentChunk(const glm::vec3& position) {
+    std::shared_ptr<Chunk> getCurrentChunk(const glm::vec3& position) {
         glm::ivec3 chunkPos = {static_cast<int>(std::floor(position[0] / 32)),
                                static_cast<int>(std::floor(position[1] / 32)),
                                static_cast<int>(std::floor(position[2] / 32))};
 
-        std::lock_guard<std::mutex> lock(_chunkMutex);
+        std::shared_lock<std::shared_mutex> lock(_chunkMutex);
+
         auto it = _loadedChunks.find(chunkPos);
         if (it != _loadedChunks.end() && it->second) {
-            return it->second.get();
+            // 2. Retourne directement le shared_ptr (cela crée une copie sécurisée)
+            return it->second;
         }
-        return nullptr; // Return nullptr if not found
+
+        // 3. Retourne nullptr (un shared_ptr vide) si non trouvé
+        return nullptr;
     }
+
     int64_t getSeed() const { return kSEED; }
     tk::spline& getHeightSpline() { return _heightSpline; }
+
+    /**
+     * @brief Get the Target Block object
+     *
+     * @param camera
+     * @return glm::vec3
+     */
+    std::optional<glm::vec3> getTargetBlock(const Camera& camera);
+
+    uint8_t getBlockValue(glm::vec3);
+
+    std::shared_ptr<Chunk> getChunkAtPosition(glm::ivec3 target);
 
   private:
     /**
@@ -173,7 +190,7 @@ class WorldManager {
     static constexpr int kNUM_GENERATION_WORKERS = 4; // Parallel generation threads
 
     // Chunk storage and tracking (protected by mutex)
-    mutable std::mutex _chunkMutex;
+    mutable std::shared_mutex _chunkMutex;
     std::unordered_map<glm::ivec3, std::shared_ptr<Chunk>> _loadedChunks;
     std::unordered_set<glm::ivec3> _generatingChunks; // Chunks currently being generated
     std::unordered_set<glm::ivec3> _meshingChunks;    // Chunks currently being meshed

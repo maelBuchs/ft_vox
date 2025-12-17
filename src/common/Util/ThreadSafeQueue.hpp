@@ -2,8 +2,8 @@
 
 #include <condition_variable>
 #include <deque>
-#include <mutex>
 #include <optional>
+#include <shared_mutex>
 #include <vector>
 
 /**
@@ -25,7 +25,7 @@ template <typename T> class ThreadSafeQueue {
      */
     void push(T item) {
         {
-            std::lock_guard<std::mutex> lock(_mutex);
+            std::unique_lock<std::shared_mutex> lock(_mutex);
             _queue.push_back(std::move(item));
         }
         _condVar.notify_one(); // Wake up one waiting thread
@@ -36,7 +36,7 @@ template <typename T> class ThreadSafeQueue {
      * Returns std::nullopt if queue is empty.
      */
     std::optional<T> try_pop() {
-        std::lock_guard<std::mutex> lock(_mutex);
+        std::unique_lock<std::shared_mutex> lock(_mutex);
         if (_queue.empty()) {
             return std::nullopt;
         }
@@ -51,7 +51,7 @@ template <typename T> class ThreadSafeQueue {
      * This dramatically reduces lock contention when processing many items.
      */
     size_t try_pop_batch(std::vector<T>& outItems, size_t maxItems) {
-        std::lock_guard<std::mutex> lock(_mutex);
+        std::unique_lock<std::shared_mutex> lock(_mutex);
 
         const size_t available = _queue.size();
         const size_t toExtract = std::min(available, maxItems);
@@ -77,7 +77,7 @@ template <typename T> class ThreadSafeQueue {
      * Returns false if queue is closed/shutting down.
      */
     bool wait_and_pop(T& outItem) {
-        std::unique_lock<std::mutex> lock(_mutex);
+        std::unique_lock<std::shared_mutex> lock(_mutex);
         _condVar.wait(lock, [this] { return !_queue.empty() || _shutdown; });
 
         if (_shutdown && _queue.empty()) {
@@ -93,7 +93,7 @@ template <typename T> class ThreadSafeQueue {
      * Check if queue is empty (snapshot at time of call).
      */
     bool empty() const {
-        std::lock_guard<std::mutex> lock(_mutex);
+        std::unique_lock<std::shared_mutex> lock(_mutex);
         return _queue.empty();
     }
 
@@ -101,7 +101,7 @@ template <typename T> class ThreadSafeQueue {
      * Get current size (snapshot at time of call).
      */
     size_t size() const {
-        std::lock_guard<std::mutex> lock(_mutex);
+        std::unique_lock<std::shared_mutex> lock(_mutex);
         return _queue.size();
     }
 
@@ -110,15 +110,15 @@ template <typename T> class ThreadSafeQueue {
      */
     void shutdown() {
         {
-            std::lock_guard<std::mutex> lock(_mutex);
+            std::unique_lock<std::shared_mutex> lock(_mutex);
             _shutdown = true;
         }
         _condVar.notify_all();
     }
 
   private:
-    mutable std::mutex _mutex;
-    std::condition_variable _condVar;
+    mutable std::shared_mutex _mutex;
+    std::condition_variable_any _condVar;
     std::deque<T> _queue;
     bool _shutdown = false;
 };

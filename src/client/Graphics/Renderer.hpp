@@ -17,6 +17,7 @@
 #include "Memory/DescriptorAllocator.hpp"
 #include "Pipeline/Pipeline.hpp"
 #include "Rendering/RenderContext.hpp"
+#include "server/World/WorldManager.hpp"
 
 class VulkanDevice;
 class VulkanSwapchain;
@@ -34,7 +35,8 @@ class VoxelRenderer;
 class Renderer {
   public:
     Renderer(Window& window, VulkanDevice& device, BlockRegistry& blockRegistry,
-             std::vector<std::unique_ptr<ThreadSafeQueue<MeshData>>>& perThreadMeshQueues);
+             std::vector<std::unique_ptr<ThreadSafeQueue<MeshData>>>& perThreadMeshQueues,
+             WorldManager* worldManager);
     ~Renderer();
 
     Renderer(const Renderer&) = delete;
@@ -129,4 +131,6 @@ class Renderer {
 
     // ImGui
     VkDescriptorPool _imguiPool = VK_NULL_HANDLE;
+
+    std::unique_ptr<WorldManager> _worldManager = nullptr;
 };

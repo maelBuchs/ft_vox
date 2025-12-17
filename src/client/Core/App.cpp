@@ -45,11 +45,10 @@ App::App() {
             _perThreadMeshQueues.push_back(std::make_unique<ThreadSafeQueue<MeshData>>());
         }
 
-        _renderer = std::make_unique<Renderer>(*_window, *_vulkanDevice, *_blockRegistry,
-                                               _perThreadMeshQueues);
-
         _worldManager = std::make_unique<WorldManager>(_chunkRequestQueue, _meshingTaskQueue,
                                                        _meshingCompleteQueue);
+        _renderer = std::make_unique<Renderer>(*_window, *_vulkanDevice, *_blockRegistry,
+                                               _perThreadMeshQueues, _worldManager.get());
 
         // Create texture resolver lambda for meshing threads
         auto textureResolver = [this](const std::string& path) -> uint32_t {
@@ -95,7 +94,7 @@ App::~App() {
 }
 
 void App::updateUI(Renderer& renderer, InputManager& inputManager, Camera& camera,
-                   const glm::ivec3& currentCenter, const Chunk* currentChunk) {
+                   const glm::ivec3& currentCenter, std::shared_ptr<Chunk> currentChunk) {
 
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL3_NewFrame();
