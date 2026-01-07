@@ -38,8 +38,8 @@ std::vector<BiomeType> determineBiome(Chunk& chunk, int64_t seed) {
 
     for (int localX = 0; localX < Chunk::CHUNK_SIZE; ++localX) {
         for (int localZ = 0; localZ < Chunk::CHUNK_SIZE; ++localZ) {
-            int worldX = CHUNK_TO_WORLD(localX, chunk.getPosition()[0]);
-            int worldZ = CHUNK_TO_WORLD(localZ, chunk.getPosition()[2]);
+            int worldX = chunkToWorld(localX, chunk.getPosition()[0]);
+            int worldZ = chunkToWorld(localZ, chunk.getPosition()[2]);
 
             float continent = perlinNoise(worldX, worldZ, noise_config::kCONTINENT, seed);
             float humidity = perlinNoise(worldX, worldZ, noise_config::kHUMIDITY, seed);

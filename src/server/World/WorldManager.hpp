@@ -21,7 +21,6 @@
 #include "common/Util/ThreadSafeQueue.hpp"
 #include "common/Util/Util.hpp"
 #include "common/World/Chunk.hpp"
-#define CHUNK_TO_WORLD(b, c) (((c) * Chunk::CHUNK_SIZE) + (b))
 
 /**
  * WorldManager runs on dedicated generation worker threads.
@@ -105,22 +104,6 @@ class WorldManager {
      */
     void requestRemeshForAllChunks(const std::vector<glm::ivec3>& excludeChunks);
 
-    std::shared_ptr<Chunk> getCurrentChunk(const glm::vec3& position) {
-        glm::ivec3 chunkPos = {static_cast<int>(std::floor(position[0] / 32)),
-                               static_cast<int>(std::floor(position[1] / 32)),
-                               static_cast<int>(std::floor(position[2] / 32))};
-
-        std::shared_lock<std::shared_mutex> lock(_chunkMutex);
-
-        auto it = _loadedChunks.find(chunkPos);
-        if (it != _loadedChunks.end() && it->second) {
-            // 2. Retourne directement le shared_ptr (cela crée une copie sécurisée)
-            return it->second;
-        }
-
-        // 3. Retourne nullptr (un shared_ptr vide) si non trouvé
-        return nullptr;
-    }
 
     int64_t getSeed() const { return kSEED; }
     tk::spline& getHeightSpline() { return _heightSpline; }

@@ -25,7 +25,7 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #define RENDER_DISTANCE 6
 #define MAX_THREADS 2
-#define CHUNK_TO_WORLD(b, c) (((c) * Chunk::CHUNK_SIZE) + (b))
+
 
 class WorldManager;
 
@@ -76,7 +76,8 @@ class Chunk {
         return _paddedBlocks[px + (py * PADDED_SIZE) + (pz * PADDED_SIZE * PADDED_SIZE)];
     }
 
-    [[nodiscard]] inline bool isPaddedBlockSolid(int x, int y, int z, const BlockRegistry& registry) const {
+    [[nodiscard]] inline bool isPaddedBlockSolid(int x, int y, int z,
+                                                 const BlockRegistry& registry) const {
         uint8_t blockId = getPaddedBlock(x, y, z);
         return blockId != 0 && registry.isSolid(static_cast<int>(blockId));
     }
@@ -120,8 +121,8 @@ class Chunk {
         }
     }
     [[nodiscard]] float getNoise(int x, int z, NoiseType type) const {
-        int bx = CHUNK_TO_WORLD(x, position[0]);
-        int bz = CHUNK_TO_WORLD(z, position[2]);
+        int bx = chunkToWorld(x, position[0]);
+        int bz = chunkToWorld(z, position[2]);
         switch (type) {
         case NoiseType::kTEMPERATURE:
             return perlinNoise(bx, bz, noise_config::kTEMPERATURE, kSEED);
@@ -140,8 +141,8 @@ class Chunk {
         }
     }
     [[nodiscard]] BiomeParams getNoiseParams(int x, int z) const {
-        int bx = CHUNK_TO_WORLD(x, position[0]);
-        int bz = CHUNK_TO_WORLD(z, position[2]);
+        int bx = chunkToWorld(x, position[0]);
+        int bz = chunkToWorld(z, position[2]);
         BiomeParams biomeParams{};
         biomeParams.kTEMPERATURE = perlinNoise(bx, bz, noise_config::kTEMPERATURE, kSEED);
         biomeParams.humidity = perlinNoise(bx, bz, noise_config::kHUMIDITY, kSEED);

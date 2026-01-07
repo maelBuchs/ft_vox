@@ -94,6 +94,12 @@ class BlockRegistry {
         printBlockDataVector(_blocks_data);
         std::fflush(stdout);
     };
+    std::string getBlockName(int id) const {
+        if (id < 0 || id >= static_cast<int>(_blocks_data.size())) {
+            return "unknown";
+        }
+        return _blocks_data[id].name;
+    }
     ~BlockRegistry() = default;
     BlockRegistry(const BlockRegistry&) = delete;
     BlockRegistry& operator=(const BlockRegistry&) = delete;

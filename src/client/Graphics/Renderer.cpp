@@ -92,7 +92,7 @@ Renderer::Renderer(Window& window, VulkanDevice& device, BlockRegistry& registry
     _mainDeletionQueue.push(
         [this]() { _globalDescriptorAllocator.destroyPools(_device.getDevice()); });
 
-    _camera = std::make_unique<Camera>(glm::vec3(30.0F, 70.0F, 30.0F), -135.0F, -20.0F);
+    _camera = std::make_unique<Camera>(glm::vec3(0.0F, 70.0F, 0.0F), -135.0F, -20.0F);
 
     loadTextureAtlas();
     loadBlueNoiseTexture();

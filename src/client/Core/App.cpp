@@ -25,12 +25,6 @@
 #include "server/World/WorldManager.hpp"
 #include "Window.hpp"
 
-#ifndef CHUNK_TO_WORLD
-
-#define CHUNK_TO_WORLD(b, c) (((c) * 32) + (b))
-#endif
-#define WORLD_TO_CHUNK(b) ((((b) % 32) + 32) % 32)
-
 const double TPS = 60.0;
 const double TIME_PER_TICK = 1.0 / TPS;
 
@@ -145,13 +139,20 @@ void App::updateUI(Renderer& renderer, InputManager& inputManager, Camera& camer
                 current_unload_radius - _loadRadius);
 
     ImGui::Separator();
-    const glm::vec3 cam_pos = camera.getPosition();
-    ImGui::Text("Camera Position: (%.1f, %.1f, %.1f)", cam_pos.x, cam_pos.y, cam_pos.z);
+    const glm::vec3 camPos = camera.getPosition();
+    ImGui::Text("Camera Position: (%.1f, %.1f, %.1f)", static_cast<double>(camPos[0]),
+                static_cast<double>(camPos[1]), static_cast<double>(camPos[2]));
+    ImGui::Text("Chunk: (%d, %d, %d)", worldToChunk(static_cast<int>(camPos[0])),
+                worldToChunk(static_cast<int>(camPos[1])),
+                worldToChunk(static_cast<int>(camPos[2])));
+    auto chunkPos = currentChunk ? currentChunk->getPosition() : glm::ivec3(0, 0, 0);
+    ImGui::Text("Chunk: (%d, %d, %d)", chunkPos[0], chunkPos[1], chunkPos[2]);
+    ImGui::Text("Local Pos: (%d, %d, %d)", worldToBlock(static_cast<int>(camPos[0])),
+                worldToBlock(static_cast<int>(camPos[1])),
+                worldToBlock(static_cast<int>(camPos[2])));
     const float cam_yaw = camera.getYaw();
     const float cam_pitch = camera.getPitch();
     ImGui::Text("Camera Rotation: (Pitch: %.1f, Yaw: %.1f)", cam_pitch, cam_yaw);
-
-    ImGui::Text("Camera Chunk: (%d, %d, %d)", currentCenter.x, currentCenter.y, currentCenter.z);
 
     ImGui::Separator();
     ImGui::Text("Sky System");
@@ -162,7 +163,7 @@ void App::updateUI(Renderer& renderer, InputManager& inputManager, Camera& camer
 
     auto current_biome_data = (currentChunk != nullptr) ? BiomeType::kPLAINS : BiomeType::kNONE;
     auto currentBiomeData = (currentChunk != nullptr);
-    // ? currentChunk.getBiomeDataAt(WORLD_TO_CHUNK(static_cast<int>(cameraPos[0])),
+    // ? currentChunk.getBiomeDataAt(worldToChunk(static_cast<int>(cameraPos[0])),
     // std::string biome_name;
     // switch (current_biome_data) {
     // case BiomeType::kPLAINS:
@@ -179,14 +180,11 @@ void App::updateUI(Renderer& renderer, InputManager& inputManager, Camera& camer
     //     break;
     // default:
     //     biome_name = "Unknown";
-    //     break;
-    // }
-    // ImGui::Text("Biome: %s", biome_name.c_str());
     if (currentChunk != nullptr) {
-        auto current_block_noise =
-            currentChunk->getNoiseParams(WORLD_TO_CHUNK(static_cast<int>(cam_pos.x)),
-                                         WORLD_TO_CHUNK(static_cast<int>(cam_pos.z)));
+        auto current_block_noise = currentChunk->getNoiseParams(
+            worldToChunk(static_cast<int>(camPos[0])), worldToChunk(static_cast<int>(camPos[2])));
         std::array<char, 256> noise_text{};
+
         std::snprintf(noise_text.data(), noise_text.size(),
                       "T = %.3f, H = %.3f, C = %.3f, E = %.3f, W = %.3f, D = %.3f",
                       current_block_noise.kTEMPERATURE, current_block_noise.humidity,
@@ -196,6 +194,22 @@ void App::updateUI(Renderer& renderer, InputManager& inputManager, Camera& camer
     } else {
         ImGui::TextUnformatted("Out Of Boundaries");
     }
+    ImGui::Separator();
+
+    // Chunk data
+    if (currentChunk != nullptr) {
+        glm::ivec3 blockPos = camera.getPosition() + camera.getFront() * 5.0F;
+        blockPos.x = worldToBlock(floor(blockPos.x));
+        blockPos.y = worldToBlock(floor(blockPos.y));
+        blockPos.z = worldToBlock(floor(blockPos.z));
+        uint8_t blockId = currentChunk->getBlock(blockPos.x, blockPos.y, blockPos.z);
+        std::string blockName = _blockRegistry->getBlockName(static_cast<int>(blockId));
+        ImGui::Text("Current Block: ID %d (%s) at Local Pos (%d, %d, %d)", blockId,
+                    blockName.c_str(), blockPos.x, blockPos.y, blockPos.z);
+    } else {
+        ImGui::TextUnformatted("No Chunk Loaded at Camera Position");
+    }
+
     ImGui::Separator();
     if (ImGui::Button("Quit")) {
         inputManager.setShouldQuit(true);
@@ -209,9 +223,9 @@ void App::updateRender(Camera& camera, InputManager& inputManager) {
 
     const glm::vec3 cameraPos = camera.getPosition();
     const float chunkSizeFloat = static_cast<float>(Chunk::CHUNK_SIZE);
-    const int chunkX = static_cast<int>(std::floor(cameraPos.x / chunkSizeFloat));
-    const int chunkY = static_cast<int>(std::floor(cameraPos.y / chunkSizeFloat));
-    const int chunkZ = static_cast<int>(std::floor(cameraPos.z / chunkSizeFloat));
+    const int chunkX = worldToChunk(static_cast<int>(cameraPos.x));
+    const int chunkY = worldToChunk(static_cast<int>(cameraPos.y));
+    const int chunkZ = worldToChunk(static_cast<int>(cameraPos.z));
 
     const glm::ivec3 currentCenter(chunkX, chunkY, chunkZ);
     if (_needsRequestRefresh || currentCenter != _lastRequestedCenter ||
@@ -269,7 +283,7 @@ void App::updateRender(Camera& camera, InputManager& inputManager) {
     }
 
     updateUI(*_renderer, inputManager, camera, currentCenter,
-             _worldManager->getCurrentChunk(currentCenter));
+             _worldManager->getChunkAtPosition(currentCenter));
 
     const int acceptDistance =
         static_cast<int>(static_cast<float>(_loadRadius) * _unloadDistanceMultiplier);

@@ -46,20 +46,20 @@ void addSurface(Chunk* chunk, const int heightMap[Chunk::CHUNK_SIZE][Chunk::CHUN
 
             int maxHeight = heightMap[bx][bz];
 
-            if (maxHeight >= CHUNK_TO_WORLD(0, chunk->getPosition()[1]) &&
-                maxHeight < CHUNK_TO_WORLD(Chunk::CHUNK_SIZE, chunk->getPosition()[1])) {
+            if (maxHeight >= chunkToWorld(0, chunk->getPosition()[1]) &&
+                maxHeight < chunkToWorld(Chunk::CHUNK_SIZE, chunk->getPosition()[1])) {
                 chunk->setBlock(bx, maxHeight % Chunk::CHUNK_SIZE, bz, 3);
             }
-            if (maxHeight + 1 >= CHUNK_TO_WORLD(0, chunk->getPosition()[1]) &&
-                maxHeight + 1 < CHUNK_TO_WORLD(Chunk::CHUNK_SIZE, chunk->getPosition()[1])) {
+            if (maxHeight + 1 >= chunkToWorld(0, chunk->getPosition()[1]) &&
+                maxHeight + 1 < chunkToWorld(Chunk::CHUNK_SIZE, chunk->getPosition()[1])) {
                 chunk->setBlock(bx, (maxHeight + 1) % Chunk::CHUNK_SIZE, bz, kDIRT);
             }
-            if (maxHeight + 2 >= CHUNK_TO_WORLD(0, chunk->getPosition()[1]) &&
-                maxHeight + 2 < CHUNK_TO_WORLD(Chunk::CHUNK_SIZE, chunk->getPosition()[1])) {
+            if (maxHeight + 2 >= chunkToWorld(0, chunk->getPosition()[1]) &&
+                maxHeight + 2 < chunkToWorld(Chunk::CHUNK_SIZE, chunk->getPosition()[1])) {
                 chunk->setBlock(bx, (maxHeight + 2) % Chunk::CHUNK_SIZE, bz, kDIRT);
             }
-            if (maxHeight + 3 >= CHUNK_TO_WORLD(0, chunk->getPosition()[1]) &&
-                maxHeight + 3 < CHUNK_TO_WORLD(Chunk::CHUNK_SIZE, chunk->getPosition()[1])) {
+            if (maxHeight + 3 >= chunkToWorld(0, chunk->getPosition()[1]) &&
+                maxHeight + 3 < chunkToWorld(Chunk::CHUNK_SIZE, chunk->getPosition()[1])) {
                 auto biome = chunk->getBiomeDataAt(bx, bz);
                 if (biome == BiomeType::kPLAINS) {
                     chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, kGRASS);
@@ -82,9 +82,9 @@ void addCaves(Chunk* chunk, int64_t seed) {
     for (int bx = 0; bx < Chunk::CHUNK_SIZE; bx++) {
         for (int by = 0; by < Chunk::CHUNK_SIZE; by++) {
             for (int bz = 0; bz < Chunk::CHUNK_SIZE; bz++) {
-                int worldX = CHUNK_TO_WORLD(bx, chunk->getPosition()[0]);
-                int worldY = CHUNK_TO_WORLD(by, chunk->getPosition()[1]);
-                int worldZ = CHUNK_TO_WORLD(bz, chunk->getPosition()[2]);
+                int worldX = chunkToWorld(bx, chunk->getPosition()[0]);
+                int worldY = chunkToWorld(by, chunk->getPosition()[1]);
+                int worldZ = chunkToWorld(bz, chunk->getPosition()[2]);
 
                 float caveNoise = perlinNoise3D(worldX, worldY, worldZ, noise_config::kCAVE, seed);
 
@@ -103,7 +103,10 @@ void addCaves(Chunk* chunk, int64_t seed) {
 std::shared_ptr<Chunk> WorldManager::generateChunk(const glm::ivec3& pos) {
     ZoneScopedN("generateChunk");
     ZoneValue(pos[0]);
-    ZoneText(("Chunk(" + std::to_string(pos[0]) + "," + std::to_string(pos[1]) + "," + std::to_string(pos[2]) + ")").c_str(), 32);
+    ZoneText(("Chunk(" + std::to_string(pos[0]) + "," + std::to_string(pos[1]) + "," +
+              std::to_string(pos[2]) + ")")
+                 .c_str(),
+             32);
 
     std::shared_ptr<Chunk> chunk;
     {
@@ -121,7 +124,7 @@ std::shared_ptr<Chunk> WorldManager::generateChunk(const glm::ivec3& pos) {
         for (int bx = 0; bx < Chunk::CHUNK_SIZE; bx++) {
             for (int bz = 0; bz < Chunk::CHUNK_SIZE; bz++) {
                 heightMap[bx][bz] =
-                    getHeightValue(CHUNK_TO_WORLD(bx, pos[0]), CHUNK_TO_WORLD(bz, pos[2]),
+                    getHeightValue(chunkToWorld(bx, pos[0]), chunkToWorld(bz, pos[2]),
                                    chunk->getNoise(bx, bz, NoiseType::kCONTINENT),
                                    chunk->getBiomeDataAt(bx, bz), getHeightSpline());
             }
@@ -134,21 +137,21 @@ std::shared_ptr<Chunk> WorldManager::generateChunk(const glm::ivec3& pos) {
             for (int bz = 0; bz < Chunk::CHUNK_SIZE; bz++) {
                 int maxHeight = heightMap[bx][bz];
                 /* Under-surface fill */
-                if (maxHeight >= CHUNK_TO_WORLD(0, pos[1]) &&
-                    maxHeight < CHUNK_TO_WORLD(Chunk::CHUNK_SIZE, pos[1])) {
+                if (maxHeight >= chunkToWorld(0, pos[1]) &&
+                    maxHeight < chunkToWorld(Chunk::CHUNK_SIZE, pos[1])) {
                     chunk->setBlock(bx, maxHeight % Chunk::CHUNK_SIZE, bz, kDIRT);
                 }
-                if (maxHeight + 1 >= CHUNK_TO_WORLD(0, pos[1]) &&
-                    maxHeight + 1 < CHUNK_TO_WORLD(Chunk::CHUNK_SIZE, pos[1])) {
+                if (maxHeight + 1 >= chunkToWorld(0, pos[1]) &&
+                    maxHeight + 1 < chunkToWorld(Chunk::CHUNK_SIZE, pos[1])) {
                     chunk->setBlock(bx, (maxHeight + 1) % Chunk::CHUNK_SIZE, bz, kDIRT);
                 }
-                if (maxHeight + 2 >= CHUNK_TO_WORLD(0, pos[1]) &&
-                    maxHeight + 2 < CHUNK_TO_WORLD(Chunk::CHUNK_SIZE, pos[1])) {
+                if (maxHeight + 2 >= chunkToWorld(0, pos[1]) &&
+                    maxHeight + 2 < chunkToWorld(Chunk::CHUNK_SIZE, pos[1])) {
                     chunk->setBlock(bx, (maxHeight + 2) % Chunk::CHUNK_SIZE, bz, kDIRT);
                 }
                 /* Surface block based on biome */
-                if (maxHeight + 3 >= CHUNK_TO_WORLD(0, pos[1]) &&
-                    maxHeight + 3 < CHUNK_TO_WORLD(Chunk::CHUNK_SIZE, pos[1])) {
+                if (maxHeight + 3 >= chunkToWorld(0, pos[1]) &&
+                    maxHeight + 3 < chunkToWorld(Chunk::CHUNK_SIZE, pos[1])) {
                     auto biome = chunk->getBiomeDataAt(bx, bz);
                     if (biome == BiomeType::kPLAINS) {
                         chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, kGRASS);
@@ -158,17 +161,23 @@ std::shared_ptr<Chunk> WorldManager::generateChunk(const glm::ivec3& pos) {
                         chunk->setBlock(bx, (maxHeight + 3) % Chunk::CHUNK_SIZE, bz, kSAND);
                     }
                 }
+                // debug to see chunk borders
+                // if (bx == 0 || bz == 0) {
+                //     chunk->setBlock(bx, 0, bz, kBEDROCK);
+                // }
+                // if (bx == Chunk::CHUNK_SIZE - 1 || bz == Chunk::CHUNK_SIZE - 1) {
+                //     chunk->setBlock(bx, 0, bz, kBEDROCK);
+                // }
             }
         }
     }
-
     {
         ZoneScopedN("Stone fill below surface");
         for (int bx = 0; bx < Chunk::CHUNK_SIZE; bx++) {
             for (int bz = 0; bz < Chunk::CHUNK_SIZE; bz++) {
                 int maxHeight = heightMap[bx][bz];
                 for (int by = 0; by < Chunk::CHUNK_SIZE; by++) {
-                    if (CHUNK_TO_WORLD(by, pos[1]) < maxHeight) {
+                    if (chunkToWorld(by, pos[1]) < maxHeight) {
                         chunk->setBlock(bx, by, bz, kSTONE);
                     }
                 }
@@ -182,7 +191,7 @@ std::shared_ptr<Chunk> WorldManager::generateChunk(const glm::ivec3& pos) {
             for (int bz = 0; bz < Chunk::CHUNK_SIZE; bz++) {
                 for (int by = 0; by < Chunk::CHUNK_SIZE; by++) {
                     auto block = chunk->getBlock(bx, by, bz);
-                    if (CHUNK_TO_WORLD(by, pos[1]) < 60 && block == kAIR) {
+                    if (chunkToWorld(by, pos[1]) < 60 && block == kAIR) {
                         chunk->setBlock(bx, by, bz, kWATER);
                     }
                     if (block == kWATER) {
@@ -199,12 +208,14 @@ std::shared_ptr<Chunk> WorldManager::generateChunk(const glm::ivec3& pos) {
             for (int bz = 0; bz < Chunk::CHUNK_SIZE; bz++) {
                 for (int by = 0; by < Chunk::CHUNK_SIZE; by++) {
                     auto block = chunk->getBlock(bx, by, bz);
-                    float caveNoise = perlinNoise3D(CHUNK_TO_WORLD(bx, pos[0]), CHUNK_TO_WORLD(by, pos[1]),
-                                          CHUNK_TO_WORLD(bz, pos[2]), noise_config::kCAVE, kSEED);
+                    float caveNoise =
+                        perlinNoise3D(chunkToWorld(bx, pos[0]), chunkToWorld(by, pos[1]),
+                                      chunkToWorld(bz, pos[2]), noise_config::kCAVE, kSEED);
 
                     /* Spaghetti cave generation */
                     if ((caveNoise > 0.0F && caveNoise < 0.2F)) {
-                        if (block != kBEDROCK && block != kWATER && block != kGRASS && block != kSAND) {
+                        if (block != kBEDROCK && block != kWATER && block != kGRASS &&
+                            block != kSAND && block != kAIR) {
                             chunk->setBlock(bx, by, bz, kCAVE_AIR);
                         }
                     }

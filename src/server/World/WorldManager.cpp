@@ -11,21 +11,12 @@
 
 #include "common/Util/Util.hpp"
 
-#ifndef CHUNK_TO_WORLD
-#define CHUNK_TO_WORLD(b, c) ((c) * Chunk::CHUNK_SIZE + (b))
-#endif
 WorldManager::WorldManager(ThreadSafeQueue<ChunkRequest>& requestQueue,
                            ThreadSafeQueue<GenerationTask>& meshingQueue,
                            ThreadSafeQueue<MeshingComplete>& completionQueue)
     : _requestQueue(requestQueue), _meshingQueue(meshingQueue), _completionQueue(completionQueue) {
     std::vector<double> x;
     std::vector<double> y;
-    // x = {-1.0, -0.8, -0.5, -0.3, 0.1, 0.3, 0.5, 0.7, 0.8, 0.9, 1.0};
-    // // y = {20, 31, 45, 60, 70, 80, 119, 137, 148, 200, 255};
-    // x = {-1.0, -0.8, -0.5, -0.3, 0.0, 0.1, 0.5, 0.7, 0.75, 0.8, 1.0, 1.2};
-    // y = {20, 31, 35, 40, 50, 65, 69, 90, 100, 150, 200, 255};
-    // x = {-1.0, -0.8, -0.5, -0.3, 0.0, 0.5, 0.7, 0.75, 0.8, 1.0, 1.2};
-    // y = {20, 31, 35, 40, 50, 55, 60, 100, 130, 220, 255};
     x = {-1.0, -0.6, -0.15, -0.05, 0.0, 0.05, 0.3, 0.6, 0.8, 1.0, 1.2};
 
     // Y : Hauteur (0-255)
@@ -410,22 +401,23 @@ std::optional<glm::vec3> WorldManager::getTargetBlock(const Camera& camera) {
     target[0] = std::floor(target[0]);
     target[1] = std::floor(target[1]);
     target[2] = std::floor(target[2]);
-    if (getBlockValue(target) == 0) {
-        return std::nullopt; // Indicate no target block found
+    auto block = getBlockValue(target);
+    if (block == 0 || block == 8) {
+        return std::nullopt; // Indicate no target block or air block
     }
     return target;
 }
 
 uint8_t WorldManager::getBlockValue(glm::vec3 position) {
 
-    glm::vec3 chunkPosition = glm::vec3(position[0] / 32, position[1] / 32, position[2] / 32);
+    glm::ivec3 chunkPosition = glm::ivec3(worldToChunk(static_cast<int>(position[0])),
+                                          worldToChunk(static_cast<int>(position[1])),
+                                          worldToChunk(static_cast<int>(position[2])));
     std::shared_ptr<Chunk> chunk = getChunkAtPosition(chunkPosition);
     if (chunk) {
-        glm::ivec3 localPos;
-        localPos[0] = static_cast<int>(position[0]) % Chunk::CHUNK_SIZE;
-        localPos[1] = static_cast<int>(position[1]) % Chunk::CHUNK_SIZE;
-        localPos[2] = static_cast<int>(position[2]) % Chunk::CHUNK_SIZE;
-        return chunk->getBlock(localPos[0], localPos[1], localPos[2]);
+        return chunk->getBlock(worldToBlock(static_cast<int>(position[0])),
+                               worldToBlock(static_cast<int>(position[1])),
+                               worldToBlock(static_cast<int>(position[2])));
     }
     return 0;
 }
