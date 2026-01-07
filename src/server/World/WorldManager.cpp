@@ -395,17 +395,60 @@ void WorldManager::requestRemeshForAllChunks(const std::vector<glm::ivec3>& excl
 }
 
 std::optional<glm::vec3> WorldManager::getTargetBlock(const Camera& camera) {
+    glm::vec3 start = camera.getPosition();
+    glm::vec3 direction = glm::normalize(camera.getFront());
 
-    glm::vec3 target;
-    target = camera.getPosition() + camera.getFront() * 5.0F;
-    target[0] = std::floor(target[0]);
-    target[1] = std::floor(target[1]);
-    target[2] = std::floor(target[2]);
-    auto block = getBlockValue(target);
-    if (block == 0 || block == 8) {
-        return std::nullopt; // Indicate no target block or air block
+    int voxelX = std::floor(start[0]);
+    int voxelY = std::floor(start[1]);
+    int voxelZ = std::floor(start[2]);
+
+    int stepX = (direction[0] > 0) ? 1 : -1;
+    int stepY = (direction[1] > 0) ? 1 : -1;
+    int stepZ = (direction[2] > 0) ? 1 : -1;
+
+    // Utilisation de 1e30 pour éviter la division par zéro si direction est 0
+    float tDeltaX = (direction[0] == 0) ? 1e30F : std::abs(1.0F / direction[0]);
+    float tDeltaY = (direction[1] == 0) ? 1e30F : std::abs(1.0F / direction[1]);
+    float tDeltaZ = (direction[2] == 0) ? 1e30F : std::abs(1.0F / direction[2]);
+
+    float tMaxX = (direction[0] > 0 ? (std::floor(start[0]) + 1.0F - start[0])
+                                    : (start[0] - std::floor(start[0]))) *
+                  tDeltaX;
+    float tMaxY = (direction[1] > 0 ? (std::floor(start[1]) + 1.0F - start[1])
+                                    : (start[1] - std::floor(start[1]))) *
+                  tDeltaY;
+    float tMaxZ = (direction[2] > 0 ? (std::floor(start[2]) + 1.0F - start[2])
+                                    : (start[2] - std::floor(start[2]))) *
+                  tDeltaZ;
+
+    while (true) {
+        if (tMaxX < tMaxY && tMaxX < tMaxZ) {
+            if (tMaxX > REACH_DISTANCE) {
+                break;
+            }
+            voxelX += stepX;
+            tMaxX += tDeltaX;
+        } else if (tMaxY < tMaxZ) {
+            if (tMaxY > REACH_DISTANCE) {
+                break;
+            }
+            voxelY += stepY;
+            tMaxY += tDeltaY;
+        } else {
+            if (tMaxZ > REACH_DISTANCE) {
+                break;
+            }
+            voxelZ += stepZ;
+            tMaxZ += tDeltaZ;
+        }
+
+        auto block = getBlockValue({voxelX, voxelY, voxelZ});
+        if (block != 0 && block != 8) {
+            return glm::vec3(voxelX, voxelY, voxelZ);
+        }
     }
-    return target;
+
+    return std::nullopt;
 }
 
 uint8_t WorldManager::getBlockValue(glm::vec3 position) {

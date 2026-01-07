@@ -6,6 +6,7 @@
 
 #include "Spline.hpp"
 
+#define REACH_DISTANCE 5.0f
 struct NoiseParams {
     float baseFrequency;
     int octaves;
