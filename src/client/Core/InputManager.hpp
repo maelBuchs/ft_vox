@@ -32,8 +32,10 @@ class InputManager {
     // Mouse state
     [[nodiscard]] glm::vec2 getMouseDelta() const { return _mouseDelta; }
     [[nodiscard]] bool isMouseButtonPressed(int button) const;
+    int mouseInput(SDL_Event& event);
     void setMouseDelta(const glm::vec2& delta) { _mouseDelta = delta; }
     void updateCameraRotation(Camera& camera);
+
     // Camera update
     void updateCamera(Camera& camera, float deltaTime);
 

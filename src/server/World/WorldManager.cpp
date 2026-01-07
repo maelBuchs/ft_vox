@@ -394,6 +394,12 @@ void WorldManager::requestRemeshForAllChunks(const std::vector<glm::ivec3>& excl
     std::cout << "[WorldManager] Requested re-meshing for " << remeshedCount << " loaded chunks\n";
 }
 
+void WorldManager::remeshChunkAtPosition(const glm::ivec3& pos) {
+    std::unique_lock<std::shared_mutex> lock(_chunkMutex);
+    _dirtyChunks.insert(pos);
+    enqueueMeshingTaskInternal(pos);
+}
+
 std::optional<glm::vec3> WorldManager::getTargetBlock(const Camera& camera) {
     glm::vec3 start = camera.getPosition();
     glm::vec3 direction = glm::normalize(camera.getFront());
@@ -449,6 +455,18 @@ std::optional<glm::vec3> WorldManager::getTargetBlock(const Camera& camera) {
     }
 
     return std::nullopt;
+}
+
+void WorldManager::setBlockValue(glm::vec3 position, uint8_t blockId) {
+    glm::ivec3 chunkPosition = glm::ivec3(worldToChunk(static_cast<int>(position[0])),
+                                          worldToChunk(static_cast<int>(position[1])),
+                                          worldToChunk(static_cast<int>(position[2])));
+    std::shared_ptr<Chunk> chunk = getChunkAtPosition(chunkPosition);
+    if (chunk) {
+        chunk->setBlock(worldToBlock(static_cast<int>(position[0])),
+                        worldToBlock(static_cast<int>(position[1])),
+                        worldToBlock(static_cast<int>(position[2])), blockId);
+    }
 }
 
 uint8_t WorldManager::getBlockValue(glm::vec3 position) {

@@ -104,6 +104,7 @@ class WorldManager {
      */
     void requestRemeshForAllChunks(const std::vector<glm::ivec3>& excludeChunks);
 
+    void remeshChunkAtPosition(const glm::ivec3& pos);
 
     int64_t getSeed() const { return kSEED; }
     tk::spline& getHeightSpline() { return _heightSpline; }
@@ -117,6 +118,7 @@ class WorldManager {
     std::optional<glm::vec3> getTargetBlock(const Camera& camera);
 
     uint8_t getBlockValue(glm::vec3);
+    void setBlockValue(glm::vec3 position, uint8_t blockId);
 
     std::shared_ptr<Chunk> getChunkAtPosition(glm::ivec3 target);
 

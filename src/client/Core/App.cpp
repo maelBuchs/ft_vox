@@ -10,6 +10,7 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_events.h>
+#include <SDL3/SDL_oldnames.h>
 #include <tracy/Tracy.hpp>
 
 #include "client/Game/Camera.hpp"
@@ -292,21 +293,45 @@ void App::updateRender(Camera& camera, InputManager& inputManager) {
     _renderer->draw(_timeOfDay);
 }
 
-void manageWindowResize(InputManager& inputManager, Window& window, SDL_Event event,
-                        Renderer& renderer) {
+void App::manageInputs(InputManager& inputManager, Window& window, SDL_Event event) {
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_EVENT_WINDOW_RESIZED ||
             event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
             int w, h;
             SDL_GetWindowSizeInPixels(window.getSDLWindow(), &w, &h);
             window.updateSize(w, h);
-            renderer.resizeSwapchain();
+            _renderer->resizeSwapchain();
         }
 
         if (event.type == SDL_EVENT_QUIT) {
             SDL_HideWindow(window.getSDLWindow());
         }
-
+        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+            switch (inputManager.mouseInput(event)) {
+            case 1: {
+                auto block = _worldManager->getTargetBlock(_renderer->getCamera());
+                if (block.has_value()) {
+                    _worldManager->setBlockValue(block.value(), 0);
+                    glm::ivec3 chunkPos = {worldToChunk(static_cast<int>(block.value()[0])),
+                                           worldToChunk(static_cast<int>(block.value()[1])),
+                                           worldToChunk(static_cast<int>(block.value()[2]))};
+                    _worldManager->remeshChunkAtPosition(chunkPos);
+                }
+                break;
+            }
+            case 2: {
+                auto block2 = _worldManager->getTargetBlock(_renderer->getCamera());
+                if (block2.has_value()) {
+                    _worldManager->setBlockValue(block2.value(), 1);
+                    glm::ivec3 chunkPos = {worldToChunk(static_cast<int>(block2.value()[0])),
+                                           worldToChunk(static_cast<int>(block2.value()[1])),
+                                           worldToChunk(static_cast<int>(block2.value()[2]))};
+                    _worldManager->remeshChunkAtPosition(chunkPos);
+                }
+                break;
+            }
+            }
+        }
         inputManager.processEvent(event);
         ImGui_ImplSDL3_ProcessEvent(&event);
     }
@@ -349,7 +374,7 @@ void App::run() {
             _uiMode = !_uiMode;
             SDL_SetWindowRelativeMouseMode(_window->getSDLWindow(), !_uiMode);
         }
-        manageWindowResize(inputManager, *_window, event, *_renderer);
+        manageInputs(inputManager, *_window, event);
         inputManager.updateCameraRotation(camera);
         while (accumulator >= TIME_PER_TICK) {
             // LOGIC UPDATE GOES HERE

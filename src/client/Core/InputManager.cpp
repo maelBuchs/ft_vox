@@ -1,6 +1,10 @@
 #include "InputManager.hpp"
 
+#include <imgui_internal.h>
+#include <iostream>
+
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_mouse.h>
 
 #include "client/Game/Camera.hpp"
 
@@ -96,4 +100,14 @@ void InputManager::updateCamera(Camera& camera, float deltaTime) {
     if (isKeyPressed(SDL_SCANCODE_LSHIFT)) {
         camera.processKeyboard(CameraMovement::Down, deltaTime);
     }
+}
+
+int InputManager::mouseInput(SDL_Event& event) {
+    if (event.button.button == SDL_BUTTON_LEFT) {
+        return 1;
+    }
+    if (event.button.button == SDL_BUTTON_RIGHT) {
+        return 2;
+    }
+    return 0;
 }

@@ -5,6 +5,10 @@
 #include <unordered_set>
 #include <vector>
 
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_events.h>
+#include <SDL3/SDL_oldnames.h>
+
 #include <glm/vec3.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/hash.hpp>
@@ -46,6 +50,7 @@ class App {
      * @param centerChunk The center chunk position.
      */
     void enqueueChunkRequests(const glm::ivec3& centerChunk);
+    void manageInputs(InputManager& inputManager, Window& window, SDL_Event event);
 
     /**
      * @brief Rebuild the chunk request offsets based on the given radius.
