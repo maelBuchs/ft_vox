@@ -98,8 +98,8 @@ $(document).ready(function(){initNavTree('WorldManager_8hpp_source.html',''); in
 <div class="line"><a id="l00003" name="l00003"></a><span class="lineno">    3</span><span class="preprocessor">#include &lt;atomic&gt;</span></div>
 <div class="line"><a id="l00004" name="l00004"></a><span class="lineno">    4</span><span class="preprocessor">#include &lt;chrono&gt;</span></div>
 <div class="line"><a id="l00005" name="l00005"></a><span class="lineno">    5</span><span class="preprocessor">#include &lt;memory&gt;</span></div>
-<div class="line"><a id="l00006" name="l00006"></a><span class="lineno">    6</span><span class="preprocessor">#include &lt;mutex&gt;</span></div>
-<div class="line"><a id="l00007" name="l00007"></a><span class="lineno">    7</span><span class="preprocessor">#include &lt;random&gt;</span></div>
+<div class="line"><a id="l00006" name="l00006"></a><span class="lineno">    6</span><span class="preprocessor">#include &lt;random&gt;</span></div>
+<div class="line"><a id="l00007" name="l00007"></a><span class="lineno">    7</span><span class="preprocessor">#include &lt;shared_mutex&gt;</span></div>
 <div class="line"><a id="l00008" name="l00008"></a><span class="lineno">    8</span><span class="preprocessor">#include &lt;thread&gt;</span></div>
 <div class="line"><a id="l00009" name="l00009"></a><span class="lineno">    9</span><span class="preprocessor">#include &lt;unordered_map&gt;</span></div>
 <div class="line"><a id="l00010" name="l00010"></a><span class="lineno">   10</span><span class="preprocessor">#include &lt;unordered_set&gt;</span></div>
@@ -111,65 +111,59 @@ $(document).ready(function(){initNavTree('WorldManager_8hpp_source.html',''); in
 <div class="line"><a id="l00016" name="l00016"></a><span class="lineno">   16</span><span class="preprocessor">#define GLM_ENABLE_EXPERIMENTAL</span></div>
 <div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span><span class="preprocessor">#include &lt;glm/gtx/hash.hpp&gt;</span></div>
 <div class="line"><a id="l00018" name="l00018"></a><span class="lineno">   18</span> </div>
-<div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span><span class="preprocessor">#include &quot;common/Protocol/Protocol.hpp&quot;</span></div>
-<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span><span class="preprocessor">#include &quot;common/Util/ThreadSafeQueue.hpp&quot;</span></div>
-<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span><span class="preprocessor">#include &quot;common/Util/Util.hpp&quot;</span></div>
-<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span><span class="preprocessor">#include &quot;common/World/Chunk.hpp&quot;</span></div>
-<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span> </div>
-<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span><span class="preprocessor">#define CHUNK_TO_WORLD(b, c) (((c) * Chunk::CHUNK_SIZE) + (b))</span></div>
-<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span> </div>
-<div class="line"><a id="l00035" name="l00035"></a><span class="lineno"><a class="line" href="classWorldManager.html">   35</a></span><span class="keyword">class </span><a class="code hl_class" href="classWorldManager.html">WorldManager</a> {</div>
-<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>  <span class="keyword">public</span>:</div>
-<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>    <a class="code hl_class" href="classWorldManager.html">WorldManager</a>(<a class="code hl_class" href="classThreadSafeQueue.html">ThreadSafeQueue&lt;ChunkRequest&gt;</a>&amp; requestQueue,</div>
-<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>                 <a class="code hl_class" href="classThreadSafeQueue.html">ThreadSafeQueue&lt;GenerationTask&gt;</a>&amp; meshingQueue,</div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>                 <a class="code hl_class" href="classThreadSafeQueue.html">ThreadSafeQueue&lt;MeshingComplete&gt;</a>&amp; completionQueue);</div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>    <a class="code hl_class" href="classWorldManager.html">~WorldManager</a>();</div>
-<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span> </div>
-<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>    <a class="code hl_class" href="classWorldManager.html">WorldManager</a>(<span class="keyword">const</span> <a class="code hl_class" href="classWorldManager.html">WorldManager</a>&amp;) = <span class="keyword">delete</span>;</div>
-<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>    <a class="code hl_class" href="classWorldManager.html">WorldManager</a>&amp; operator=(<span class="keyword">const</span> <a class="code hl_class" href="classWorldManager.html">WorldManager</a>&amp;) = <span class="keyword">delete</span>;</div>
-<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>    <a class="code hl_class" href="classWorldManager.html">WorldManager</a>(<a class="code hl_class" href="classWorldManager.html">WorldManager</a>&amp;&amp;) = <span class="keyword">delete</span>;</div>
-<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>    <a class="code hl_class" href="classWorldManager.html">WorldManager</a>&amp; operator=(<a class="code hl_class" href="classWorldManager.html">WorldManager</a>&amp;&amp;) = <span class="keyword">delete</span>;</div>
-<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span> </div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>    <span class="keywordtype">void</span> <a class="code hl_function" href="classWorldManager.html#a53cb4a1b07d4d77747682dc180dbacec">start</a>();</div>
-<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span> </div>
-<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>    <span class="keywordtype">void</span> <a class="code hl_function" href="classWorldManager.html#a9f042d51b81bff5d48b913020d241477">stop</a>();</div>
-<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span> </div>
-<div class="line"><a id="l00060" name="l00060"></a><span class="lineno"><a class="line" href="structWorldManager_1_1QueueStats.html">   60</a></span>    <span class="keyword">struct </span><a class="code hl_struct" href="structWorldManager_1_1QueueStats.html">QueueStats</a> {</div>
-<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>        <span class="keywordtype">size_t</span> requestQueueSize;</div>
-<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>        <span class="keywordtype">size_t</span> meshingQueueSize;</div>
-<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>        <span class="keywordtype">size_t</span> loadedChunksCount;</div>
-<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>        <span class="keywordtype">size_t</span> generatingChunksCount;</div>
-<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>        <span class="keywordtype">size_t</span> meshingChunksCount;</div>
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>        <span class="keywordtype">size_t</span> chunksToUnloadCount;</div>
-<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>    };</div>
-<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>    <a class="code hl_struct" href="structWorldManager_1_1QueueStats.html">QueueStats</a> getQueueStats() <span class="keyword">const</span>;</div>
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span> </div>
-<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>    <span class="keywordtype">void</span> <a class="code hl_function" href="classWorldManager.html#aaa5165aa7bd0b20a8e95a56e4a851887">markChunkForUnload</a>(<span class="keyword">const</span> glm::ivec3&amp; pos);</div>
-<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span> </div>
-<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>    <span class="keywordtype">void</span> <a class="code hl_function" href="classWorldManager.html#a5cb3900bf0b0c3a9fc73ac91ec775797">unmarkChunkForUnload</a>(<span class="keyword">const</span> glm::ivec3&amp; pos);</div>
-<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span> </div>
-<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>    std::vector&lt;glm::ivec3&gt; <a class="code hl_function" href="classWorldManager.html#a1c387978e7b6fe3188997f738043ff5f">unloadMarkedChunks</a>();</div>
-<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span> </div>
-<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>    std::vector&lt;glm::ivec3&gt; <a class="code hl_function" href="classWorldManager.html#acad8add58059e66f431e11ac21edde41">getLoadedChunkPositions</a>() <span class="keyword">const</span>;</div>
-<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span> </div>
-<div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span>    <span class="keywordtype">bool</span> <a class="code hl_function" href="classWorldManager.html#a5f9069bfbd741a601d38d3aa9b688cc6">isChunkLoaded</a>(<span class="keyword">const</span> glm::ivec3&amp; pos) <span class="keyword">const</span>;</div>
-<div class="line"><a id="l00100" name="l00100"></a><span class="lineno">  100</span> </div>
-<div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span>    <span class="keywordtype">void</span> <a class="code hl_function" href="classWorldManager.html#aef8bf22e2529238629c23e1a6a83cb92">requestRemeshForAllChunks</a>(<span class="keyword">const</span> std::vector&lt;glm::ivec3&gt;&amp; excludeChunks);</div>
+<div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span><span class="preprocessor">#include &quot;client/Game/Camera.hpp&quot;</span></div>
+<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span><span class="preprocessor">#include &quot;common/Protocol/Protocol.hpp&quot;</span></div>
+<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span><span class="preprocessor">#include &quot;common/Util/ThreadSafeQueue.hpp&quot;</span></div>
+<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span><span class="preprocessor">#include &quot;common/Util/Util.hpp&quot;</span></div>
+<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span><span class="preprocessor">#include &quot;common/World/Chunk.hpp&quot;</span></div>
+<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span> </div>
+<div class="line"><a id="l00034" name="l00034"></a><span class="lineno"><a class="line" href="classWorldManager.html">   34</a></span><span class="keyword">class </span><a class="code hl_class" href="classWorldManager.html">WorldManager</a> {</div>
+<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span>  <span class="keyword">public</span>:</div>
+<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>    <a class="code hl_class" href="classWorldManager.html">WorldManager</a>(<a class="code hl_class" href="classThreadSafeQueue.html">ThreadSafeQueue&lt;ChunkRequest&gt;</a>&amp; requestQueue,</div>
+<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>                 <a class="code hl_class" href="classThreadSafeQueue.html">ThreadSafeQueue&lt;GenerationTask&gt;</a>&amp; meshingQueue,</div>
+<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>                 <a class="code hl_class" href="classThreadSafeQueue.html">ThreadSafeQueue&lt;MeshingComplete&gt;</a>&amp; completionQueue);</div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>    <a class="code hl_class" href="classWorldManager.html">~WorldManager</a>();</div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span> </div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>    <a class="code hl_class" href="classWorldManager.html">WorldManager</a>(<span class="keyword">const</span> <a class="code hl_class" href="classWorldManager.html">WorldManager</a>&amp;) = <span class="keyword">delete</span>;</div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>    <a class="code hl_class" href="classWorldManager.html">WorldManager</a>&amp; operator=(<span class="keyword">const</span> <a class="code hl_class" href="classWorldManager.html">WorldManager</a>&amp;) = <span class="keyword">delete</span>;</div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>    <a class="code hl_class" href="classWorldManager.html">WorldManager</a>(<a class="code hl_class" href="classWorldManager.html">WorldManager</a>&amp;&amp;) = <span class="keyword">delete</span>;</div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>    <a class="code hl_class" href="classWorldManager.html">WorldManager</a>&amp; operator=(<a class="code hl_class" href="classWorldManager.html">WorldManager</a>&amp;&amp;) = <span class="keyword">delete</span>;</div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span> </div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>    <span class="keywordtype">void</span> <a class="code hl_function" href="classWorldManager.html#a53cb4a1b07d4d77747682dc180dbacec">start</a>();</div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span> </div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>    <span class="keywordtype">void</span> <a class="code hl_function" href="classWorldManager.html#a9f042d51b81bff5d48b913020d241477">stop</a>();</div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span> </div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno"><a class="line" href="structWorldManager_1_1QueueStats.html">   59</a></span>    <span class="keyword">struct </span><a class="code hl_struct" href="structWorldManager_1_1QueueStats.html">QueueStats</a> {</div>
+<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>        <span class="keywordtype">size_t</span> requestQueueSize;</div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>        <span class="keywordtype">size_t</span> meshingQueueSize;</div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>        <span class="keywordtype">size_t</span> loadedChunksCount;</div>
+<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>        <span class="keywordtype">size_t</span> generatingChunksCount;</div>
+<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>        <span class="keywordtype">size_t</span> meshingChunksCount;</div>
+<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>        <span class="keywordtype">size_t</span> chunksToUnloadCount;</div>
+<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>    };</div>
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>    <a class="code hl_struct" href="structWorldManager_1_1QueueStats.html">QueueStats</a> getQueueStats() <span class="keyword">const</span>;</div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span> </div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>    <span class="keywordtype">void</span> <a class="code hl_function" href="classWorldManager.html#aaa5165aa7bd0b20a8e95a56e4a851887">markChunkForUnload</a>(<span class="keyword">const</span> glm::ivec3&amp; pos);</div>
+<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span> </div>
+<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>    <span class="keywordtype">void</span> <a class="code hl_function" href="classWorldManager.html#a5cb3900bf0b0c3a9fc73ac91ec775797">unmarkChunkForUnload</a>(<span class="keyword">const</span> glm::ivec3&amp; pos);</div>
+<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span> </div>
+<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>    std::vector&lt;glm::ivec3&gt; <a class="code hl_function" href="classWorldManager.html#a1c387978e7b6fe3188997f738043ff5f">unloadMarkedChunks</a>();</div>
+<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span> </div>
+<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>    std::vector&lt;glm::ivec3&gt; <a class="code hl_function" href="classWorldManager.html#acad8add58059e66f431e11ac21edde41">getLoadedChunkPositions</a>() <span class="keyword">const</span>;</div>
+<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span> </div>
+<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span>    <span class="keywordtype">bool</span> <a class="code hl_function" href="classWorldManager.html#a5f9069bfbd741a601d38d3aa9b688cc6">isChunkLoaded</a>(<span class="keyword">const</span> glm::ivec3&amp; pos) <span class="keyword">const</span>;</div>
+<div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span> </div>
+<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>    <span class="keywordtype">void</span> <a class="code hl_function" href="classWorldManager.html#aef8bf22e2529238629c23e1a6a83cb92">requestRemeshForAllChunks</a>(<span class="keyword">const</span> std::vector&lt;glm::ivec3&gt;&amp; excludeChunks);</div>
+<div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span> </div>
 <div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span> </div>
-<div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span>    <a class="code hl_class" href="classChunk.html">Chunk</a>* getCurrentChunk(<span class="keyword">const</span> glm::vec3&amp; position) {</div>
-<div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span>        glm::ivec3 chunkPos = {<span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(std::floor(position[0] / 32)),</div>
-<div class="line"><a id="l00110" name="l00110"></a><span class="lineno">  110</span>                               <span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(std::floor(position[1] / 32)),</div>
-<div class="line"><a id="l00111" name="l00111"></a><span class="lineno">  111</span>                               <span class="keyword">static_cast&lt;</span><span class="keywordtype">int</span><span class="keyword">&gt;</span>(std::floor(position[2] / 32))};</div>
-<div class="line"><a id="l00112" name="l00112"></a><span class="lineno">  112</span> </div>
-<div class="line"><a id="l00113" name="l00113"></a><span class="lineno">  113</span>        std::lock_guard&lt;std::mutex&gt; lock(_chunkMutex);</div>
-<div class="line"><a id="l00114" name="l00114"></a><span class="lineno">  114</span>        <span class="keyword">auto</span> it = _loadedChunks.find(chunkPos);</div>
-<div class="line"><a id="l00115" name="l00115"></a><span class="lineno">  115</span>        <span class="keywordflow">if</span> (it != _loadedChunks.end() &amp;&amp; it-&gt;second) {</div>
-<div class="line"><a id="l00116" name="l00116"></a><span class="lineno">  116</span>            <span class="keywordflow">return</span> it-&gt;second.get();</div>
-<div class="line"><a id="l00117" name="l00117"></a><span class="lineno">  117</span>        }</div>
-<div class="line"><a id="l00118" name="l00118"></a><span class="lineno">  118</span>        <span class="keywordflow">return</span> <span class="keyword">nullptr</span>; <span class="comment">// Return nullptr if not found</span></div>
-<div class="line"><a id="l00119" name="l00119"></a><span class="lineno">  119</span>    }</div>
-<div class="line"><a id="l00120" name="l00120"></a><span class="lineno">  120</span>    int64_t getSeed()<span class="keyword"> const </span>{ <span class="keywordflow">return</span> kSEED; }</div>
-<div class="line"><a id="l00121" name="l00121"></a><span class="lineno">  121</span>    tk::spline&amp; getHeightSpline() { <span class="keywordflow">return</span> _heightSpline; }</div>
+<div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span>    int64_t getSeed()<span class="keyword"> const </span>{ <span class="keywordflow">return</span> kSEED; }</div>
+<div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span>    tk::spline&amp; getHeightSpline() { <span class="keywordflow">return</span> _heightSpline; }</div>
+<div class="line"><a id="l00110" name="l00110"></a><span class="lineno">  110</span> </div>
+<div class="line"><a id="l00117" name="l00117"></a><span class="lineno">  117</span>    std::optional&lt;glm::vec3&gt; <a class="code hl_function" href="classWorldManager.html#ae8bd600a94d7028aaea6a3a750259c9c">getTargetBlock</a>(<span class="keyword">const</span> <a class="code hl_class" href="classCamera.html">Camera</a>&amp; camera);</div>
+<div class="line"><a id="l00118" name="l00118"></a><span class="lineno">  118</span> </div>
+<div class="line"><a id="l00119" name="l00119"></a><span class="lineno">  119</span>    uint8_t getBlockValue(glm::vec3);</div>
+<div class="line"><a id="l00120" name="l00120"></a><span class="lineno">  120</span> </div>
+<div class="line"><a id="l00121" name="l00121"></a><span class="lineno">  121</span>    std::shared_ptr&lt;Chunk&gt; getChunkAtPosition(glm::ivec3 target);</div>
 <div class="line"><a id="l00122" name="l00122"></a><span class="lineno">  122</span> </div>
 <div class="line"><a id="l00123" name="l00123"></a><span class="lineno">  123</span>  <span class="keyword">private</span>:</div>
 <div class="line"><a id="l00128" name="l00128"></a><span class="lineno">  128</span>    <span class="keywordtype">void</span> generationWorkerLoop();</div>
@@ -198,7 +192,7 @@ $(document).ready(function(){initNavTree('WorldManager_8hpp_source.html',''); in
 <div class="line"><a id="l00173" name="l00173"></a><span class="lineno">  173</span>    <span class="keyword">static</span> <span class="keyword">constexpr</span> <span class="keywordtype">int</span> kNUM_GENERATION_WORKERS = 4; <span class="comment">// Parallel generation threads</span></div>
 <div class="line"><a id="l00174" name="l00174"></a><span class="lineno">  174</span> </div>
 <div class="line"><a id="l00175" name="l00175"></a><span class="lineno">  175</span>    <span class="comment">// Chunk storage and tracking (protected by mutex)</span></div>
-<div class="line"><a id="l00176" name="l00176"></a><span class="lineno">  176</span>    <span class="keyword">mutable</span> std::mutex _chunkMutex;</div>
+<div class="line"><a id="l00176" name="l00176"></a><span class="lineno">  176</span>    <span class="keyword">mutable</span> std::shared_mutex _chunkMutex;</div>
 <div class="line"><a id="l00177" name="l00177"></a><span class="lineno">  177</span>    std::unordered_map&lt;glm::ivec3, std::shared_ptr&lt;Chunk&gt;&gt; _loadedChunks;</div>
 <div class="line"><a id="l00178" name="l00178"></a><span class="lineno">  178</span>    std::unordered_set&lt;glm::ivec3&gt; _generatingChunks; <span class="comment">// Chunks currently being generated</span></div>
 <div class="line"><a id="l00179" name="l00179"></a><span class="lineno">  179</span>    std::unordered_set&lt;glm::ivec3&gt; _meshingChunks;    <span class="comment">// Chunks currently being meshed</span></div>
@@ -213,18 +207,19 @@ $(document).ready(function(){initNavTree('WorldManager_8hpp_source.html',''); in
 <div class="line"><a id="l00188" name="l00188"></a><span class="lineno">  188</span>    tk::spline _heightSpline;</div>
 <div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span>    <span class="keyword">const</span> int64_t kSEED = std::random_device{}();</div>
 <div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span>};</div>
-<div class="ttc" id="aclassChunk_html"><div class="ttname"><a href="classChunk.html">Chunk</a></div><div class="ttdef"><b>Definition:</b> Chunk.hpp:46</div></div>
+<div class="ttc" id="aclassCamera_html"><div class="ttname"><a href="classCamera.html">Camera</a></div><div class="ttdef"><b>Definition:</b> Camera.hpp:10</div></div>
 <div class="ttc" id="aclassThreadSafeQueue_html"><div class="ttname"><a href="classThreadSafeQueue.html">ThreadSafeQueue</a></div><div class="ttdef"><b>Definition:</b> ThreadSafeQueue.hpp:13</div></div>
-<div class="ttc" id="aclassWorldManager_html"><div class="ttname"><a href="classWorldManager.html">WorldManager</a></div><div class="ttdef"><b>Definition:</b> WorldManager.hpp:35</div></div>
-<div class="ttc" id="aclassWorldManager_html_a1c387978e7b6fe3188997f738043ff5f"><div class="ttname"><a href="classWorldManager.html#a1c387978e7b6fe3188997f738043ff5f">WorldManager::unloadMarkedChunks</a></div><div class="ttdeci">std::vector&lt; glm::ivec3 &gt; unloadMarkedChunks()</div><div class="ttdef"><b>Definition:</b> WorldManager.cpp:330</div></div>
-<div class="ttc" id="aclassWorldManager_html_a53cb4a1b07d4d77747682dc180dbacec"><div class="ttname"><a href="classWorldManager.html#a53cb4a1b07d4d77747682dc180dbacec">WorldManager::start</a></div><div class="ttdeci">void start()</div><div class="ttdef"><b>Definition:</b> WorldManager.cpp:37</div></div>
-<div class="ttc" id="aclassWorldManager_html_a5cb3900bf0b0c3a9fc73ac91ec775797"><div class="ttname"><a href="classWorldManager.html#a5cb3900bf0b0c3a9fc73ac91ec775797">WorldManager::unmarkChunkForUnload</a></div><div class="ttdeci">void unmarkChunkForUnload(const glm::ivec3 &amp;pos)</div><div class="ttdef"><b>Definition:</b> WorldManager.cpp:325</div></div>
-<div class="ttc" id="aclassWorldManager_html_a5f9069bfbd741a601d38d3aa9b688cc6"><div class="ttname"><a href="classWorldManager.html#a5f9069bfbd741a601d38d3aa9b688cc6">WorldManager::isChunkLoaded</a></div><div class="ttdeci">bool isChunkLoaded(const glm::ivec3 &amp;pos) const</div><div class="ttdef"><b>Definition:</b> WorldManager.cpp:370</div></div>
-<div class="ttc" id="aclassWorldManager_html_a9f042d51b81bff5d48b913020d241477"><div class="ttname"><a href="classWorldManager.html#a9f042d51b81bff5d48b913020d241477">WorldManager::stop</a></div><div class="ttdeci">void stop()</div><div class="ttdef"><b>Definition:</b> WorldManager.cpp:59</div></div>
-<div class="ttc" id="aclassWorldManager_html_aaa5165aa7bd0b20a8e95a56e4a851887"><div class="ttname"><a href="classWorldManager.html#aaa5165aa7bd0b20a8e95a56e4a851887">WorldManager::markChunkForUnload</a></div><div class="ttdeci">void markChunkForUnload(const glm::ivec3 &amp;pos)</div><div class="ttdef"><b>Definition:</b> WorldManager.cpp:320</div></div>
-<div class="ttc" id="aclassWorldManager_html_acad8add58059e66f431e11ac21edde41"><div class="ttname"><a href="classWorldManager.html#acad8add58059e66f431e11ac21edde41">WorldManager::getLoadedChunkPositions</a></div><div class="ttdeci">std::vector&lt; glm::ivec3 &gt; getLoadedChunkPositions() const</div><div class="ttdef"><b>Definition:</b> WorldManager.cpp:358</div></div>
-<div class="ttc" id="aclassWorldManager_html_aef8bf22e2529238629c23e1a6a83cb92"><div class="ttname"><a href="classWorldManager.html#aef8bf22e2529238629c23e1a6a83cb92">WorldManager::requestRemeshForAllChunks</a></div><div class="ttdeci">void requestRemeshForAllChunks(const std::vector&lt; glm::ivec3 &gt; &amp;excludeChunks)</div><div class="ttdef"><b>Definition:</b> WorldManager.cpp:375</div></div>
-<div class="ttc" id="astructWorldManager_1_1QueueStats_html"><div class="ttname"><a href="structWorldManager_1_1QueueStats.html">WorldManager::QueueStats</a></div><div class="ttdef"><b>Definition:</b> WorldManager.hpp:60</div></div>
+<div class="ttc" id="aclassWorldManager_html"><div class="ttname"><a href="classWorldManager.html">WorldManager</a></div><div class="ttdef"><b>Definition:</b> WorldManager.hpp:34</div></div>
+<div class="ttc" id="aclassWorldManager_html_a1c387978e7b6fe3188997f738043ff5f"><div class="ttname"><a href="classWorldManager.html#a1c387978e7b6fe3188997f738043ff5f">WorldManager::unloadMarkedChunks</a></div><div class="ttdeci">std::vector&lt; glm::ivec3 &gt; unloadMarkedChunks()</div><div class="ttdef"><b>Definition:</b> WorldManager.cpp:328</div></div>
+<div class="ttc" id="aclassWorldManager_html_a53cb4a1b07d4d77747682dc180dbacec"><div class="ttname"><a href="classWorldManager.html#a53cb4a1b07d4d77747682dc180dbacec">WorldManager::start</a></div><div class="ttdeci">void start()</div><div class="ttdef"><b>Definition:</b> WorldManager.cpp:32</div></div>
+<div class="ttc" id="aclassWorldManager_html_a5cb3900bf0b0c3a9fc73ac91ec775797"><div class="ttname"><a href="classWorldManager.html#a5cb3900bf0b0c3a9fc73ac91ec775797">WorldManager::unmarkChunkForUnload</a></div><div class="ttdeci">void unmarkChunkForUnload(const glm::ivec3 &amp;pos)</div><div class="ttdef"><b>Definition:</b> WorldManager.cpp:323</div></div>
+<div class="ttc" id="aclassWorldManager_html_a5f9069bfbd741a601d38d3aa9b688cc6"><div class="ttname"><a href="classWorldManager.html#a5f9069bfbd741a601d38d3aa9b688cc6">WorldManager::isChunkLoaded</a></div><div class="ttdeci">bool isChunkLoaded(const glm::ivec3 &amp;pos) const</div><div class="ttdef"><b>Definition:</b> WorldManager.cpp:368</div></div>
+<div class="ttc" id="aclassWorldManager_html_a9f042d51b81bff5d48b913020d241477"><div class="ttname"><a href="classWorldManager.html#a9f042d51b81bff5d48b913020d241477">WorldManager::stop</a></div><div class="ttdeci">void stop()</div><div class="ttdef"><b>Definition:</b> WorldManager.cpp:54</div></div>
+<div class="ttc" id="aclassWorldManager_html_aaa5165aa7bd0b20a8e95a56e4a851887"><div class="ttname"><a href="classWorldManager.html#aaa5165aa7bd0b20a8e95a56e4a851887">WorldManager::markChunkForUnload</a></div><div class="ttdeci">void markChunkForUnload(const glm::ivec3 &amp;pos)</div><div class="ttdef"><b>Definition:</b> WorldManager.cpp:318</div></div>
+<div class="ttc" id="aclassWorldManager_html_acad8add58059e66f431e11ac21edde41"><div class="ttname"><a href="classWorldManager.html#acad8add58059e66f431e11ac21edde41">WorldManager::getLoadedChunkPositions</a></div><div class="ttdeci">std::vector&lt; glm::ivec3 &gt; getLoadedChunkPositions() const</div><div class="ttdef"><b>Definition:</b> WorldManager.cpp:356</div></div>
+<div class="ttc" id="aclassWorldManager_html_ae8bd600a94d7028aaea6a3a750259c9c"><div class="ttname"><a href="classWorldManager.html#ae8bd600a94d7028aaea6a3a750259c9c">WorldManager::getTargetBlock</a></div><div class="ttdeci">std::optional&lt; glm::vec3 &gt; getTargetBlock(const Camera &amp;camera)</div><div class="ttdoc">Get the Target Block object.</div><div class="ttdef"><b>Definition:</b> WorldManager.cpp:397</div></div>
+<div class="ttc" id="aclassWorldManager_html_aef8bf22e2529238629c23e1a6a83cb92"><div class="ttname"><a href="classWorldManager.html#aef8bf22e2529238629c23e1a6a83cb92">WorldManager::requestRemeshForAllChunks</a></div><div class="ttdeci">void requestRemeshForAllChunks(const std::vector&lt; glm::ivec3 &gt; &amp;excludeChunks)</div><div class="ttdef"><b>Definition:</b> WorldManager.cpp:373</div></div>
+<div class="ttc" id="astructWorldManager_1_1QueueStats_html"><div class="ttname"><a href="structWorldManager_1_1QueueStats.html">WorldManager::QueueStats</a></div><div class="ttdef"><b>Definition:</b> WorldManager.hpp:59</div></div>
 </div><!-- fragment --></div><!-- contents -->
 </div><!-- doc-content -->
 <!-- start footer part -->

@@ -141,15 +141,21 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a5f9069bfbd741a601d38d3aa9b688cc6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aef8bf22e2529238629c23e1a6a83cb92"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classWorldManager.html#aef8bf22e2529238629c23e1a6a83cb92">requestRemeshForAllChunks</a> (const std::vector&lt; glm::ivec3 &gt; &amp;excludeChunks)</td></tr>
 <tr class="separator:aef8bf22e2529238629c23e1a6a83cb92"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a474b56fcb9b91de3a655088f358a3925"><td class="memItemLeft" align="right" valign="top"><a id="a474b56fcb9b91de3a655088f358a3925" name="a474b56fcb9b91de3a655088f358a3925"></a>
-<a class="el" href="classChunk.html">Chunk</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>getCurrentChunk</b> (const glm::vec3 &amp;position)</td></tr>
-<tr class="separator:a474b56fcb9b91de3a655088f358a3925"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a107d6472976978e1cf775db544df753d"><td class="memItemLeft" align="right" valign="top"><a id="a107d6472976978e1cf775db544df753d" name="a107d6472976978e1cf775db544df753d"></a>
 int64_t&#160;</td><td class="memItemRight" valign="bottom"><b>getSeed</b> () const</td></tr>
 <tr class="separator:a107d6472976978e1cf775db544df753d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a271b727c86575ff4d038bf7b24b0664c"><td class="memItemLeft" align="right" valign="top"><a id="a271b727c86575ff4d038bf7b24b0664c" name="a271b727c86575ff4d038bf7b24b0664c"></a>
 tk::spline &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>getHeightSpline</b> ()</td></tr>
 <tr class="separator:a271b727c86575ff4d038bf7b24b0664c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae8bd600a94d7028aaea6a3a750259c9c"><td class="memItemLeft" align="right" valign="top">std::optional&lt; glm::vec3 &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classWorldManager.html#ae8bd600a94d7028aaea6a3a750259c9c">getTargetBlock</a> (const <a class="el" href="classCamera.html">Camera</a> &amp;camera)</td></tr>
+<tr class="memdesc:ae8bd600a94d7028aaea6a3a750259c9c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Get the Target Block object.  <a href="classWorldManager.html#ae8bd600a94d7028aaea6a3a750259c9c">More...</a><br /></td></tr>
+<tr class="separator:ae8bd600a94d7028aaea6a3a750259c9c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:afcb1fccb22b91ee190a2f276852d2e6d"><td class="memItemLeft" align="right" valign="top"><a id="afcb1fccb22b91ee190a2f276852d2e6d" name="afcb1fccb22b91ee190a2f276852d2e6d"></a>
+uint8_t&#160;</td><td class="memItemRight" valign="bottom"><b>getBlockValue</b> (glm::vec3)</td></tr>
+<tr class="separator:afcb1fccb22b91ee190a2f276852d2e6d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a249624359d084d82422bc7f3c0cb1ecb"><td class="memItemLeft" align="right" valign="top"><a id="a249624359d084d82422bc7f3c0cb1ecb" name="a249624359d084d82422bc7f3c0cb1ecb"></a>
+std::shared_ptr&lt; <a class="el" href="classChunk.html">Chunk</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>getChunkAtPosition</b> (glm::ivec3 target)</td></tr>
+<tr class="separator:a249624359d084d82422bc7f3c0cb1ecb"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p ><a class="el" href="classWorldManager.html">WorldManager</a> runs on dedicated generation worker threads. Responsibilities:</p><ul>
@@ -175,6 +181,33 @@ tk::spline &amp;&#160;</td><td class="memItemRight" valign="bottom"><b>getHeight
       </table>
 </div><div class="memdoc">
 <p >Get a copy of all currently loaded chunk positions. Thread-safe. Useful for determining which chunks are far from camera and should be unloaded. </p>
+
+</div>
+</div>
+<a id="ae8bd600a94d7028aaea6a3a750259c9c" name="ae8bd600a94d7028aaea6a3a750259c9c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ae8bd600a94d7028aaea6a3a750259c9c">&#9670;&#160;</a></span>getTargetBlock()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">std::optional&lt; glm::vec3 &gt; WorldManager::getTargetBlock </td>
+          <td>(</td>
+          <td class="paramtype">const <a class="el" href="classCamera.html">Camera</a> &amp;&#160;</td>
+          <td class="paramname"><em>camera</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Get the Target Block object. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">camera</td><td></td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>glm::vec3 </dd></dl>
 
 </div>
 </div>

@@ -2,6 +2,7 @@ var classWorldManager =
 [
     [ "QueueStats", "structWorldManager_1_1QueueStats.html", null ],
     [ "getLoadedChunkPositions", "classWorldManager.html#acad8add58059e66f431e11ac21edde41", null ],
+    [ "getTargetBlock", "classWorldManager.html#ae8bd600a94d7028aaea6a3a750259c9c", null ],
     [ "isChunkLoaded", "classWorldManager.html#a5f9069bfbd741a601d38d3aa9b688cc6", null ],
     [ "markChunkForUnload", "classWorldManager.html#aaa5165aa7bd0b20a8e95a56e4a851887", null ],
     [ "requestRemeshForAllChunks", "classWorldManager.html#aef8bf22e2529238629c23e1a6a83cb92", null ],

@@ -132,6 +132,23 @@ $(document).ready(function(){initNavTree('Util_8hpp_source.html',''); initResiza
 <div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span><span class="keywordtype">float</span> perlinNoise3D(<span class="keywordtype">int</span> x, <span class="keywordtype">int</span> y, <span class="keywordtype">int</span> z, <a class="code hl_struct" href="structNoiseParams.html">NoiseParams</a> params, int64_t seed);</div>
 <div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span> </div>
 <div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>uint32_t quadraticCongruential(<span class="keywordtype">int</span> x, <span class="keywordtype">int</span> y, uint32_t seed);</div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span> </div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span><span class="comment">// On garde (int b, int c) comme dans ton code original</span></div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span><span class="keyword">constexpr</span> <span class="keywordtype">int</span> chunkToWorld(<span class="keywordtype">int</span> b, <span class="keywordtype">int</span> c) {</div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>    <span class="comment">// Utiliser + au lieu de | est plus sûr si b est hors limites (ex: 32)</span></div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>    <span class="keywordflow">return</span> (c &lt;&lt; 5) + b;</div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>}</div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span> </div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span><span class="keyword">constexpr</span> <span class="keywordtype">int</span> worldToChunk(<span class="keywordtype">int</span> w) {</div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>    <span class="comment">// Le décalage de bits (arithmétique) est l&#39;équivalent parfait de floor(w/32.0)</span></div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>    <span class="comment">// Fonctionne pour -1 (donne -1) et -32 (donne -1) et -33 (donne -2)</span></div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>    <span class="keywordflow">return</span> w &gt;&gt; 5;</div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>}</div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span> </div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span><span class="keyword">constexpr</span> <span class="keywordtype">int</span> worldToBlock(<span class="keywordtype">int</span> w) {</div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>    <span class="comment">// Le masque &amp; 31 remplace avantageusement le modulo pour les nombres négatifs</span></div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>    <span class="keywordflow">return</span> w &amp; 31;</div>
+<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>}</div>
 <div class="ttc" id="astructBiomeParams_html"><div class="ttname"><a href="structBiomeParams.html">BiomeParams</a></div><div class="ttdef"><b>Definition:</b> Util.hpp:15</div></div>
 <div class="ttc" id="astructNoiseParams_html"><div class="ttname"><a href="structNoiseParams.html">NoiseParams</a></div><div class="ttdef"><b>Definition:</b> Util.hpp:9</div></div>
 </div><!-- fragment --></div><!-- contents -->
