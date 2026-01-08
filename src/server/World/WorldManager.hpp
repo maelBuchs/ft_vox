@@ -105,6 +105,7 @@ class WorldManager {
     void requestRemeshForAllChunks(const std::vector<glm::ivec3>& excludeChunks);
 
     void remeshChunkAtPosition(const glm::ivec3& pos);
+    void updatedBlockAt(glm::ivec3 worldPos);
 
     int64_t getSeed() const { return kSEED; }
     tk::spline& getHeightSpline() { return _heightSpline; }

@@ -315,7 +315,7 @@ void App::manageInputs(InputManager& inputManager, Window& window, SDL_Event eve
                     glm::ivec3 chunkPos = {worldToChunk(static_cast<int>(block.value()[0])),
                                            worldToChunk(static_cast<int>(block.value()[1])),
                                            worldToChunk(static_cast<int>(block.value()[2]))};
-                    _worldManager->remeshChunkAtPosition(chunkPos);
+                    _worldManager->updatedBlockAt(block.value());
                 }
                 break;
             }
@@ -326,7 +326,7 @@ void App::manageInputs(InputManager& inputManager, Window& window, SDL_Event eve
                     glm::ivec3 chunkPos = {worldToChunk(static_cast<int>(block2.value()[0])),
                                            worldToChunk(static_cast<int>(block2.value()[1])),
                                            worldToChunk(static_cast<int>(block2.value()[2]))};
-                    _worldManager->remeshChunkAtPosition(chunkPos);
+                    _worldManager->updatedBlockAt(block2.value());
                 }
                 break;
             }

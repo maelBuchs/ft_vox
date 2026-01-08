@@ -400,6 +400,29 @@ void WorldManager::remeshChunkAtPosition(const glm::ivec3& pos) {
     enqueueMeshingTaskInternal(pos);
 }
 
+void WorldManager::updatedBlockAt(glm::ivec3 worldPos) {
+    glm::ivec3 chunkPos =
+        glm::ivec3(worldToChunk(worldPos.x), worldToChunk(worldPos.y), worldToChunk(worldPos.z));
+    remeshChunkAtPosition(chunkPos);
+    if (worldToBlock(worldPos.x) == Chunk::CHUNK_SIZE - 1) {
+        remeshChunkAtPosition(chunkPos + glm::ivec3(1, 0, 0));
+    } else if (worldToBlock(worldPos.x) == 0) {
+        remeshChunkAtPosition(chunkPos + glm::ivec3(-1, 0, 0));
+    }
+    if (worldToBlock(worldPos.y) == Chunk::CHUNK_SIZE - 1) {
+        remeshChunkAtPosition(chunkPos + glm::ivec3(0, 1, 0));
+    } else if (worldToBlock(worldPos.y) == 0) {
+        remeshChunkAtPosition(chunkPos + glm::ivec3(0, -1, 0));
+    }
+    if (worldToBlock(worldPos.z) == Chunk::CHUNK_SIZE - 1) {
+        remeshChunkAtPosition(chunkPos + glm::ivec3(0, 0, 1));
+    } else if (worldToBlock(worldPos.z) == 0) {
+        remeshChunkAtPosition(chunkPos + glm::ivec3(0, 0, -1));
+    }
+
+    std::unique_lock<std::shared_mutex> lock(_chunkMutex);
+}
+
 std::optional<glm::vec3> WorldManager::getTargetBlock(const Camera& camera) {
     glm::vec3 start = camera.getPosition();
     glm::vec3 direction = glm::normalize(camera.getFront());
