@@ -123,7 +123,7 @@ struct TaskPayloadEntry {
 
 struct TaskPayloadData {
     uint meshCount;                 // Total mesh workgroups emitted by this task workgroup
-    TaskPayloadEntry entries[2048]; // 2048 entries = 16KB (hardware limit)
+    TaskPayloadEntry entries[2047]; // 2047 entries = 16380 bytes (fits in 16384 maxTaskPayloadSize)
 };
 
 // Maximum possible mesh tasks with PHASE 1 fix:

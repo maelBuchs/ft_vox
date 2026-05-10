@@ -5,7 +5,6 @@
 #include "../Core/VulkanDevice.hpp"
 #include "RenderContext.hpp"
 
-
 CommandExecutor::CommandExecutor(VulkanDevice& device, RenderContext& context)
     : _device(device), _context(context) {}
 
@@ -16,13 +15,84 @@ VkImageAspectFlags CommandExecutor::getImageAspectMask(VkImageLayout layout) {
 
 VkImageMemoryBarrier2 CommandExecutor::createImageBarrier(VkImage image, VkImageLayout oldLayout,
                                                           VkImageLayout newLayout) {
+    VkPipelineStageFlags2 srcStage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    VkAccessFlags2 srcAccess = 0;
+    VkPipelineStageFlags2 dstStage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    VkAccessFlags2 dstAccess = 0;
+
+    // Source layout determines what we're waiting on
+    switch (oldLayout) {
+    case VK_IMAGE_LAYOUT_UNDEFINED:
+        srcStage = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+        srcAccess = 0;
+        break;
+    case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+        srcStage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        srcAccess = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+        break;
+    case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL:
+        srcStage = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+                   VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+        srcAccess = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        break;
+    case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+        srcStage = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+        srcAccess = VK_ACCESS_2_TRANSFER_READ_BIT;
+        break;
+    case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+        srcStage = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+        srcAccess = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+        break;
+    case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+        srcStage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+        srcAccess = VK_ACCESS_2_SHADER_READ_BIT;
+        break;
+    default:
+        srcStage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        srcAccess = VK_ACCESS_2_MEMORY_WRITE_BIT;
+        break;
+    }
+
+    // Destination layout determines what needs to be visible
+    switch (newLayout) {
+    case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+        dstStage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dstAccess = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+        break;
+    case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL:
+        dstStage = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+                   VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+        dstAccess = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                    VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        break;
+    case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+        dstStage = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+        dstAccess = VK_ACCESS_2_TRANSFER_READ_BIT;
+        break;
+    case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+        dstStage = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+        dstAccess = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+        break;
+    case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+        dstStage = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+        dstAccess = VK_ACCESS_2_SHADER_READ_BIT;
+        break;
+    case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+        dstStage = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
+        dstAccess = 0;
+        break;
+    default:
+        dstStage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        dstAccess = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
+        break;
+    }
+
     VkImageMemoryBarrier2 barrier{.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
                                   .pNext = nullptr,
-                                  .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                                  .srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT,
-                                  .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                                  .dstAccessMask =
-                                      VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT,
+                                  .srcStageMask = srcStage,
+                                  .srcAccessMask = srcAccess,
+                                  .dstStageMask = dstStage,
+                                  .dstAccessMask = dstAccess,
                                   .oldLayout = oldLayout,
                                   .newLayout = newLayout,
                                   .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
