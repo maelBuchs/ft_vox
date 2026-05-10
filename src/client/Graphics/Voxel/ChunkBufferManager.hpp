@@ -99,6 +99,8 @@ class ChunkBufferManager {
 
     // Buffers
     [[nodiscard]] VkBuffer getIndirectBuffer() const { return _indirectBuffer.buffer; }
+    [[nodiscard]] AllocatedBuffer& getIndirectBufferAllocation() { return _indirectBuffer; }
+    [[nodiscard]] const AllocatedBuffer& getIndirectBufferAllocation() const { return _indirectBuffer; }
     [[nodiscard]] AllocatedBuffer& getChunkDataBuffer(uint32_t frameIndex) { return _chunkDataBuffers[frameIndex]; }
     [[nodiscard]] AllocatedBuffer& getFrustumUniformBuffer() { return _frustumUniformBuffer; }
     [[nodiscard]] AllocatedBuffer& getCulledIndirectBuffer() { return _culledIndirectBuffer; }
