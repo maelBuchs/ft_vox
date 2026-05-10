@@ -1,10 +1,9 @@
 #version 460
 #extension GL_EXT_mesh_shader : require
+#extension GL_EXT_debug_printf : enable
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_buffer_reference2 : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
-// #extension GL_EXT_debug_printf : enable  // DISABLED: Causes massive performance overhead
-// (GPU→CPU sync)
 
 // Mesh shader for GPU-driven voxel rendering
 // Fetches 64-bit vertex data from per-chunk buffers and emits primitives
@@ -58,7 +57,7 @@ struct TaskPayloadEntry {
 
 struct TaskPayloadData {
     uint meshCount;
-    TaskPayloadEntry entries[2048]; // Must match task shader payload size
+    TaskPayloadEntry entries[2047]; // Must match task shader payload size
 };
 
 taskPayloadSharedEXT TaskPayloadData payload;
@@ -116,6 +115,10 @@ void main() {
 
     // SAFETY CHECK: Prevent GPU crash on iGPUs when chunk is unloaded
     if (chunk.vertexBufferAddress == 0) {
+        if (localID == 0) {
+            debugPrintfEXT("[MESH WG=%u] WARNING: chunk %u has null vertex buffer address, dropping tile=%u\n",
+                           gl_WorkGroupID.x, task.chunkIndex, task.tileIndex);
+        }
         SetMeshOutputsEXT(0, 0);
         return;
     }
@@ -141,6 +144,16 @@ void main() {
     // Clamp to mesh shader limits
     uint actualPrimitives = min(tilePrimitiveCount, 85);
     uint actualVertices = actualPrimitives * 3; // 3 vertices per triangle
+
+    if (actualVertices == 0) {
+        if (localID == 0) {
+            debugPrintfEXT("[MESH WG=%u] WARNING: zero-sized tile for chunk=%u tile=%u indexCount=%u tileStart=%u tileEnd=%u\n",
+                           gl_WorkGroupID.x, task.chunkIndex, task.tileIndex, chunk.indexCount,
+                           tileStart, tileEnd);
+        }
+        SetMeshOutputsEXT(0, 0);
+        return;
+    }
 
     // Set mesh output counts (must be done by all threads, or just first thread)
     SetMeshOutputsEXT(actualVertices, actualPrimitives);

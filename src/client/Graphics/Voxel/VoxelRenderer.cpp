@@ -1,5 +1,7 @@
 #include "VoxelRenderer.hpp"
 
+#include <iostream>
+
 #include <tracy/Tracy.hpp>
 
 #include "../Core/VulkanBuffer.hpp"
@@ -11,7 +13,6 @@
 #include "ChunkBufferManager.hpp"
 #include "VoxelDrawDispatcher.hpp"
 #include "VoxelPipelineManager.hpp"
-#include "common/Types/RenderTypes.hpp"
 #include "common/Util/ThreadSafeQueue.hpp"
 
 VoxelRenderer::VoxelRenderer(VulkanDevice& device, MeshManager& /*meshManager*/,
@@ -52,7 +53,10 @@ void VoxelRenderer::initPipelines(VkImageView atlasView, VkSampler atlasSampler,
 
     // Only initialize traditional pipelines if mesh shaders are not supported
     if (!meshShadersSupported) {
+        std::cout << "[VoxelRenderer] Mesh shaders unavailable, using traditional voxel pipeline\n";
         _pipelineManager->initTraditionalPipelines();
+    } else {
+        std::cout << "[VoxelRenderer] Mesh shader pipeline enabled\n";
     }
 
     // Initialize buffer manager with atlas

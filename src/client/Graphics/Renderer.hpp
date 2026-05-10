@@ -70,7 +70,7 @@ class Renderer {
     [[nodiscard]] bool needsGammaCorrection() const;
 
   private:
-    static void checkVkResult(VkResult result, const char* errorMessage);
+    void checkVkResult(VkResult result, const char* errorMessage);
     void initImGui();
     void loadTextureAtlas();
     void loadBlueNoiseTexture();

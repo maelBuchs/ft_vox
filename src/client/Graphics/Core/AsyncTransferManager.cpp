@@ -67,7 +67,10 @@ AsyncTransferManager::~AsyncTransferManager() {
     VkDevice vkDevice = _device.getDevice();
 
     // Wait for all transfers to complete
-    vkDeviceWaitIdle(vkDevice);
+    VkResult idleResult = vkDeviceWaitIdle(vkDevice);
+    if (idleResult == VK_ERROR_DEVICE_LOST) {
+        _device.logDeviceFaultInfo("[AsyncTransferManager] vkDeviceWaitIdle during cleanup");
+    }
 
     // Destroy fences
     for (auto fence : _transferFences) {
@@ -103,8 +106,18 @@ VkSemaphore AsyncTransferManager::submitTransfer(
     VkSemaphore semaphore = _transferSemaphores[frame];
 
     // Wait for previous transfer on this frame index to complete
-    vkWaitForFences(vkDevice, 1, &fence, VK_TRUE, UINT64_MAX);
-    vkResetFences(vkDevice, 1, &fence);
+    VkResult waitResult = vkWaitForFences(vkDevice, 1, &fence, VK_TRUE, UINT64_MAX);
+    if (waitResult == VK_ERROR_DEVICE_LOST) {
+        _device.logDeviceFaultInfo("[AsyncTransferManager] vkWaitForFences");
+    }
+    if (waitResult != VK_SUCCESS) {
+        throw std::runtime_error("[AsyncTransferManager] Failed to wait for transfer fence");
+    }
+
+    VkResult resetResult = vkResetFences(vkDevice, 1, &fence);
+    if (resetResult != VK_SUCCESS) {
+        throw std::runtime_error("[AsyncTransferManager] Failed to reset transfer fence");
+    }
 
     // Begin command buffer
     VkCommandBufferBeginInfo beginInfo{};
@@ -132,7 +145,11 @@ VkSemaphore AsyncTransferManager::submitTransfer(
     submitInfo.pSignalSemaphores = &semaphore; // Signal when transfer completes
 
     VkQueue transferQueue = _device.getTransferQueue();
-    if (vkQueueSubmit(transferQueue, 1, &submitInfo, fence) != VK_SUCCESS) {
+    VkResult submitResult = vkQueueSubmit(transferQueue, 1, &submitInfo, fence);
+    if (submitResult == VK_ERROR_DEVICE_LOST) {
+        _device.logDeviceFaultInfo("[AsyncTransferManager] vkQueueSubmit");
+    }
+    if (submitResult != VK_SUCCESS) {
         throw std::runtime_error("[AsyncTransferManager] Failed to submit to transfer queue");
     }
 

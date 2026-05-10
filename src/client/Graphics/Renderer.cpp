@@ -200,6 +200,8 @@ void Renderer::draw(float timeOfDay) {
     if (ret == VK_ERROR_OUT_OF_DATE_KHR) {
         resizeSwapchain();
         return;
+    } else if (ret == VK_ERROR_DEVICE_LOST) {
+        checkVkResult(ret, "Failed to acquire next image");
     } else if (ret != VK_SUCCESS && ret != VK_SUBOPTIMAL_KHR) {
         throw std::runtime_error("Failed to acquire next image");
     }
@@ -235,13 +237,9 @@ void Renderer::draw(float timeOfDay) {
                                       VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
     // Transition depth image to DEPTH_ATTACHMENT_OPTIMAL
-    static bool firstFrame = true;
-    if (firstFrame) {
-        _commandExecutor->transitionImage(commandBuffer, depthImage.image,
-                                          VK_IMAGE_LAYOUT_UNDEFINED,
-                                          VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-        firstFrame = false;
-    }
+    _commandExecutor->transitionImage(commandBuffer, depthImage.image,
+                                      VK_IMAGE_LAYOUT_UNDEFINED,
+                                      VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
     // Render sky first (will fill the background)
     {
@@ -364,6 +362,8 @@ void Renderer::draw(float timeOfDay) {
     ret = vkQueuePresentKHR(_device.getQueue(), &presentInfo);
     if (ret == VK_ERROR_OUT_OF_DATE_KHR || ret == VK_SUBOPTIMAL_KHR) {
         resizeSwapchain();
+    } else if (ret == VK_ERROR_DEVICE_LOST) {
+        checkVkResult(ret, "Failed to present swapchain image");
     } else if (ret != VK_SUCCESS) {
         throw std::runtime_error("Failed to present swapchain image");
     }
@@ -372,6 +372,9 @@ void Renderer::draw(float timeOfDay) {
 }
 
 void Renderer::checkVkResult(VkResult result, const char* errorMessage) {
+    if (result == VK_ERROR_DEVICE_LOST) {
+        _device.logDeviceFaultInfo(errorMessage);
+    }
     if (result != VK_SUCCESS) {
         throw std::runtime_error(errorMessage);
     }
@@ -379,7 +382,8 @@ void Renderer::checkVkResult(VkResult result, const char* errorMessage) {
 
 void Renderer::resizeSwapchain() {
     // Wait for all GPU operations to complete
-    vkDeviceWaitIdle(_device.getDevice());
+    VkResult waitResult = vkDeviceWaitIdle(_device.getDevice());
+    checkVkResult(waitResult, "Failed to wait for device idle during swapchain resize");
 
     // Destroy old images
     _renderContext->destroyDrawImages();

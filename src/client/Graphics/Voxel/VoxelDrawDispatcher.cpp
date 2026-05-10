@@ -1,6 +1,7 @@
 #include "VoxelDrawDispatcher.hpp"
 
 #include <array>
+#include <iostream>
 
 #include <tracy/Tracy.hpp>
 
@@ -24,6 +25,7 @@ void VoxelDrawDispatcher::draw(VkCommandBuffer cmd, Camera& camera, bool wirefra
                                bool enableGPUCulling) {
     ZoneScopedN("VoxelDrawDispatcher::draw");
 
+    bool meshShadersSupported = _pipelineManager.supportsMeshShaders();
     const uint32_t frameIndex = static_cast<uint32_t>(
         _renderer.getFrameNumber() % ChunkBufferManager::CHUNK_BUFFER_COUNT);
 
@@ -54,18 +56,22 @@ void VoxelDrawDispatcher::draw(VkCommandBuffer cmd, Camera& camera, bool wirefra
         chunkDataBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
         chunkDataBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
+        VkPipelineStageFlags shaderStages = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
+                                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        if (meshShadersSupported) {
+            shaderStages |= VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT |
+                            VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT;
+        }
+
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
-                             VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT |
-                                 VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT |
-                                 VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
-                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             shaderStages,
                              0, 1, &chunkDataBarrier, 0, nullptr, 0, nullptr);
     }
 
     // GPU frustum culling
     if (enableGPUCulling) {
         dispatchGPUCulling(cmd, camera, _bufferMgr.getMaxLoadDistance());
-    } else if (!_pipelineManager.supportsMeshShaders()) {
+    } else if (!meshShadersSupported) {
         buildCPUIndirectCommands(cmd);
     }
 
@@ -109,7 +115,7 @@ void VoxelDrawDispatcher::draw(VkCommandBuffer cmd, Camera& camera, bool wirefra
                                .pDepthAttachment = &depthAttachment,
                                .pStencilAttachment = nullptr};
 
-    if (_pipelineManager.supportsMeshShaders()) {
+    if (meshShadersSupported) {
         uploadCameraData(cmd, camera, frameIndex);
     }
 
@@ -127,7 +133,7 @@ void VoxelDrawDispatcher::draw(VkCommandBuffer cmd, Camera& camera, bool wirefra
     VkRect2D scissor{.offset = {0, 0}, .extent = drawExtent};
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-    if (_pipelineManager.supportsMeshShaders()) {
+    if (meshShadersSupported) {
         drawMeshShaderPath(cmd, wireframeMode);
     } else {
         drawTraditionalPath(cmd, camera, wireframeMode, enableGPUCulling);
@@ -290,6 +296,12 @@ void VoxelDrawDispatcher::buildCPUIndirectCommands(VkCommandBuffer cmd) {
 void VoxelDrawDispatcher::drawMeshShaderPath(VkCommandBuffer cmd, bool wireframeMode) {
     ZoneScopedN("Mesh Shader Rendering");
     TracyVkZone(_device.getTracyCtx(), cmd, "GPU Mesh Shader Rendering");
+
+    static bool loggedMeshShaderPath = false;
+    if (!loggedMeshShaderPath) {
+        std::cout << "[VoxelDrawDispatcher] Mesh shader path active\n";
+        loggedMeshShaderPath = true;
+    }
 
     const uint32_t frameIndex = static_cast<uint32_t>(
         _renderer.getFrameNumber() % ChunkBufferManager::CHUNK_BUFFER_COUNT);

@@ -41,6 +41,8 @@ class VulkanDevice {
     };
     [[nodiscard]] VRAMStats getVRAMStats() const;
 
+    void logDeviceFaultInfo(const char* context) const;
+
   private:
     VkInstance _instance;
     VkDebugUtilsMessengerEXT _debugMessenger;
@@ -54,6 +56,8 @@ class VulkanDevice {
     VkCommandBuffer _tracyCommandBuffer;
     TracyVkCtx _tracyCtx;
     bool _meshShaderSupported;
+    bool _supportsDeviceFault;
+    PFN_vkGetDeviceFaultInfoEXT _getDeviceFaultInfo;
 
     bool _hasAsyncTransfer;
     VkQueue _transferQueue;

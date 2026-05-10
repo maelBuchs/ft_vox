@@ -1,7 +1,7 @@
 #version 460
 #extension GL_EXT_mesh_shader : require
+#extension GL_EXT_debug_printf : enable
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
-// #extension GL_EXT_debug_printf : enable  // DISABLED: Causes massive performance overhead (~1,900 GPU→CPU syncs per frame)
 
 // Task shader for GPU-driven frustum culling and dynamic chunk tiling
 // Performs frustum culling on chunks and subdivides large chunks for mesh shader
@@ -202,9 +202,8 @@ void main() {
                 visibleChunkIndices[slot] = chunkIndex;
                 visibleChunkTiles[slot] = tileCount;
             } else {
-                // DEBUG: This should NEVER happen - log overflow
-                // debugPrintfEXT("[TASK WG=%u] WARNING: Chunk %u dropped! visibleCount overflow (slot=%u) - TOO MANY VISIBLE CHUNKS\n",
-                //                workgroupID, chunkIndex, slot);
+                debugPrintfEXT("[TASK WG=%u] WARNING: Chunk %u dropped! visibleCount overflow (slot=%u) - TOO MANY VISIBLE CHUNKS\n",
+                               workgroupID, chunkIndex, slot);
             }
         }
     }
@@ -212,19 +211,10 @@ void main() {
     // ===== EMIT MESH SHADER TASKS =====
     barrier();
 
-    // DEBUG: Log visible count per workgroup
-    // if (localID == 0) {
-    //     debugPrintfEXT("[TASK WG=%u] After culling: visibleCount=%u (out of 32 possible chunks)\n",
-    //                    workgroupID, visibleCount);
-    // }
 
     // Only first thread emits mesh tasks
     if (localID == 0) {
-        const uint maxPayloadEntries = min(2048u, push.maxMeshWorkgroupsPerTask);
-
-        // DEBUG: Log task workgroup state
-        // debugPrintfEXT("[TASK WG=%u] visibleCount=%u maxEntries=%u\n", workgroupID, visibleCount,
-        //                maxPayloadEntries);
+        const uint maxPayloadEntries = min(2047u, push.maxMeshWorkgroupsPerTask);
 
         // Build payload for each mesh workgroup
         uint payloadIndex = 0;
@@ -235,11 +225,6 @@ void main() {
             uint tiles = visibleChunkTiles[i];
             totalTilesNeeded += tiles;
 
-            // DEBUG: Log payload building for first few chunks
-            // if (i < 3) {
-            //     debugPrintfEXT("[TASK WG=%u] Building payload: chunk=%u tiles=%u payloadStart=%u\n",
-            //                    workgroupID, chunkIdx, tiles, payloadIndex);
-            // }
 
             for (uint tile = 0; tile < tiles; tile++) {
                 if (payloadIndex < maxPayloadEntries) { // Safety check
@@ -247,18 +232,15 @@ void main() {
                     payload.entries[payloadIndex].tileIndex = tile;
                     payloadIndex++;
                 } else {
-                    // debugPrintfEXT("[TASK WG=%u] ERROR: Payload overflow! chunk=%u tile=%u/%u dropped (payloadIndex=%u maxEntries=%u)\n",
-                    //                workgroupID, chunkIdx, tile, tiles, payloadIndex,
-                    //                maxPayloadEntries);
+                    debugPrintfEXT("[TASK WG=%u] ERROR: Payload overflow! chunk=%u tile=%u/%u dropped (payloadIndex=%u maxEntries=%u)\n",
+                                   workgroupID, chunkIdx, tile, tiles, payloadIndex,
+                                   maxPayloadEntries);
                 }
             }
         }
 
         payload.meshCount = payloadIndex;
 
-        // debugPrintfEXT("[TASK WG=%u] Emitting: visibleChunks=%u totalTilesNeeded=%u actualEmitting=%u (maxEntries=%u)\n",
-        //                workgroupID, safeVisibleCount, totalTilesNeeded, payload.meshCount,
-        //                maxPayloadEntries);
 
         // Emit mesh shader workgroups
         // Each mesh workgroup handles one tile of one chunk

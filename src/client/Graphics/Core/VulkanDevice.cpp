@@ -8,8 +8,10 @@
 #include "VulkanDevice.hpp"
 
 #include <chrono>
+#include <cstring>
 #include <fstream>
 #include <iostream>
+#include <vector>
 #include <VkBootstrap.h>
 
 #include <SDL3/SDL_vulkan.h>
@@ -19,11 +21,117 @@
 
 // VMA callbacks for Tracy memory tracking
 namespace {
+bool hasDeviceExtension(VkPhysicalDevice device, const char* extensionName) {
+    uint32_t extensionCount = 0;
+    VkResult result = vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
+    if (result != VK_SUCCESS) {
+        return false;
+    }
+
+    std::vector<VkExtensionProperties> extensions(extensionCount);
+    result = vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount,
+                                                  extensions.data());
+    if (result != VK_SUCCESS) {
+        return false;
+    }
+
+    for (const VkExtensionProperties& extension : extensions) {
+        if (std::strcmp(extension.extensionName, extensionName) == 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+const char* deviceFaultAddressTypeToString(VkDeviceFaultAddressTypeEXT addressType) {
+    switch (addressType) {
+    case VK_DEVICE_FAULT_ADDRESS_TYPE_NONE_EXT:
+        return "NONE";
+    case VK_DEVICE_FAULT_ADDRESS_TYPE_READ_INVALID_EXT:
+        return "READ_INVALID";
+    case VK_DEVICE_FAULT_ADDRESS_TYPE_WRITE_INVALID_EXT:
+        return "WRITE_INVALID";
+    case VK_DEVICE_FAULT_ADDRESS_TYPE_EXECUTE_INVALID_EXT:
+        return "EXECUTE_INVALID";
+    case VK_DEVICE_FAULT_ADDRESS_TYPE_INSTRUCTION_POINTER_UNKNOWN_EXT:
+        return "INSTRUCTION_POINTER_UNKNOWN";
+    case VK_DEVICE_FAULT_ADDRESS_TYPE_INSTRUCTION_POINTER_INVALID_EXT:
+        return "INSTRUCTION_POINTER_INVALID";
+    case VK_DEVICE_FAULT_ADDRESS_TYPE_INSTRUCTION_POINTER_FAULT_EXT:
+        return "INSTRUCTION_POINTER_FAULT";
+    default:
+        return "UNKNOWN";
+    }
+}
+
 void vmaAllocationCallback(VmaAllocator allocator, uint32_t memoryType, VkDeviceMemory memory,
                            VkDeviceSize size, void* pUserData) {
     // Track VRAM allocation in Tracy
     TracyAllocN(reinterpret_cast<void*>(static_cast<uintptr_t>(reinterpret_cast<uint64_t>(memory))),
                 size, "VRAM");
+}
+
+const char* debugSeverityToString(VkDebugUtilsMessageSeverityFlagBitsEXT severity) {
+    switch (severity) {
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
+        return "VERBOSE";
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
+        return "INFO";
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
+        return "WARNING";
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
+        return "ERROR";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+    VkDebugUtilsMessageTypeFlagsEXT messageTypes,
+    const VkDebugUtilsMessengerCallbackDataEXT* callbackData, void* /*userData*/) {
+    std::ostream& output = (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+                               ? std::cerr
+                               : std::cout;
+
+    output << "[Vulkan][" << debugSeverityToString(messageSeverity) << "][";
+
+    bool firstType = true;
+    if ((messageTypes & VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT) != 0U) {
+        output << "GENERAL";
+        firstType = false;
+    }
+    if ((messageTypes & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT) != 0U) {
+        if (!firstType) {
+            output << '|';
+        }
+        output << "VALIDATION";
+        firstType = false;
+    }
+    if ((messageTypes & VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT) != 0U) {
+        if (!firstType) {
+            output << '|';
+        }
+        output << "PERFORMANCE";
+        firstType = false;
+    }
+    if (firstType) {
+        output << "UNKNOWN";
+    }
+
+    output << "] ";
+
+    if (callbackData->pMessageIdName != nullptr) {
+        output << callbackData->pMessageIdName << " (" << callbackData->messageIdNumber << ")";
+    }
+
+    if (callbackData->pMessage != nullptr) {
+        output << ": " << callbackData->pMessage;
+    }
+
+    output << '\n';
+    return VK_FALSE;
 }
 
 void vmaDeallocationCallback(VmaAllocator allocator, uint32_t memoryType, VkDeviceMemory memory,
@@ -37,13 +145,27 @@ void vmaDeallocationCallback(VmaAllocator allocator, uint32_t memoryType, VkDevi
 VulkanDevice::VulkanDevice(SDL_Window* window)
     : _instance(nullptr), _debugMessenger(nullptr), _surface(nullptr), _physicalDevice(nullptr),
       _device(nullptr), _graphicsQueue(nullptr), _allocator(nullptr), _tracyCommandPool(nullptr),
-      _tracyCommandBuffer(nullptr), _tracyCtx(nullptr), _meshShaderSupported(false),
+    _tracyCommandBuffer(nullptr), _tracyCtx(nullptr), _meshShaderSupported(false),
+    _supportsDeviceFault(false), _getDeviceFaultInfo(nullptr),
       _hasAsyncTransfer(false), _transferQueue(nullptr), _transferQueueFamily(UINT32_MAX) {
 
     vkb::InstanceBuilder instanceBuilder;
     auto instRet = instanceBuilder.set_app_name("ft_vox")
                        .request_validation_layers(true)
-                       .use_default_debug_messenger()
+                       .set_debug_callback(vulkanDebugCallback)
+                       .set_debug_messenger_severity(VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+                                                     VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
+                                                     VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                                                     VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+                       .set_debug_messenger_type(VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                                                 VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                                                 VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT)
+                       .add_validation_feature_enable(
+                           VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT)
+                       .add_validation_feature_enable(
+                           VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT)
+                       .add_validation_feature_enable(
+                           VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT)
                        .require_api_version(1, 3)
                        .build();
 
@@ -96,8 +218,32 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
                                  physicalDeviceRet.error().message());
     }
 
-    const vkb::PhysicalDevice& vkbPhysicalDevice = physicalDeviceRet.value();
+    vkb::PhysicalDevice vkbPhysicalDevice = physicalDeviceRet.value();
     _physicalDevice = vkbPhysicalDevice.physical_device;
+
+    const bool supportsDeviceFaultExtension =
+        hasDeviceExtension(_physicalDevice, VK_EXT_DEVICE_FAULT_EXTENSION_NAME);
+
+    VkPhysicalDeviceFaultFeaturesEXT faultFeaturesQuery{};
+    faultFeaturesQuery.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT;
+
+    VkPhysicalDeviceFeatures2 faultFeaturesQuery2{};
+    faultFeaturesQuery2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    faultFeaturesQuery2.pNext = supportsDeviceFaultExtension ? &faultFeaturesQuery : nullptr;
+
+    if (supportsDeviceFaultExtension) {
+        vkGetPhysicalDeviceFeatures2(_physicalDevice, &faultFeaturesQuery2);
+        _supportsDeviceFault = (faultFeaturesQuery.deviceFault == VK_TRUE);
+    }
+
+    VkPhysicalDeviceFaultFeaturesEXT faultFeaturesCreate{};
+    faultFeaturesCreate.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT;
+    faultFeaturesCreate.deviceFault = VK_TRUE;
+    faultFeaturesCreate.deviceFaultVendorBinary = VK_FALSE;
+
+    if (_supportsDeviceFault) {
+        vkbPhysicalDevice.enable_extension_if_present(VK_EXT_DEVICE_FAULT_EXTENSION_NAME);
+    }
 
     // Check for mesh shader support
     VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeatures{};
@@ -180,8 +326,17 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
             VK_EXT_MESH_SHADER_EXTENSION_NAME // ADD THIS!
         };
 
+        if (_supportsDeviceFault) {
+            deviceExts.push_back(VK_EXT_DEVICE_FAULT_EXTENSION_NAME);
+        }
+
         // Build pNext chain
-        features13.pNext = &meshShaderFeatures;
+        if (_supportsDeviceFault) {
+            faultFeaturesCreate.pNext = &meshShaderFeatures;
+            features13.pNext = &faultFeaturesCreate;
+        } else {
+            features13.pNext = &meshShaderFeatures;
+        }
         features12.pNext = &features13;
         features11.pNext = &features12;
         deviceFeatures2.pNext = &features11;
@@ -208,6 +363,10 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
 
     if (!_meshShaderSupported) {
         vkb::DeviceBuilder deviceBuilder{vkbPhysicalDevice};
+        if (_supportsDeviceFault) {
+            faultFeaturesCreate.pNext = nullptr;
+            deviceBuilder.add_pNext(&faultFeaturesCreate);
+        }
         auto deviceRet = deviceBuilder.build();
 
         if (!deviceRet) {
@@ -249,6 +408,14 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
         auto testFnPtr = vkGetDeviceProcAddr(_device, "vkCmdDrawMeshTasksEXT");
         if (testFnPtr == nullptr) {
             _meshShaderSupported = false;
+        }
+    }
+
+    if (_supportsDeviceFault) {
+        _getDeviceFaultInfo = reinterpret_cast<PFN_vkGetDeviceFaultInfoEXT>(
+            vkGetDeviceProcAddr(_device, "vkGetDeviceFaultInfoEXT"));
+        if (_getDeviceFaultInfo == nullptr) {
+            _supportsDeviceFault = false;
         }
     }
 
@@ -325,6 +492,67 @@ VulkanDevice::~VulkanDevice() {
 
     if (_instance != nullptr) {
         vkDestroyInstance(_instance, nullptr);
+    }
+}
+
+void VulkanDevice::logDeviceFaultInfo(const char* context) const {
+    std::cerr << "[Vulkan][DeviceLost] " << context << "\n";
+
+    if (!_supportsDeviceFault || _device == nullptr || _getDeviceFaultInfo == nullptr) {
+        std::cerr << "  VK_EXT_device_fault is not available on this device\n";
+        return;
+    }
+
+    VkDeviceFaultCountsEXT faultCounts{};
+    faultCounts.sType = VK_STRUCTURE_TYPE_DEVICE_FAULT_COUNTS_EXT;
+
+    VkResult countsResult = _getDeviceFaultInfo(_device, &faultCounts, nullptr);
+    if (countsResult != VK_SUCCESS) {
+        std::cerr << "  Failed to query device fault counts: " << countsResult << "\n";
+        return;
+    }
+
+    std::vector<VkDeviceFaultAddressInfoEXT> addressInfos(faultCounts.addressInfoCount);
+    std::vector<VkDeviceFaultVendorInfoEXT> vendorInfos(faultCounts.vendorInfoCount);
+    std::vector<uint8_t> vendorBinaryData(static_cast<size_t>(faultCounts.vendorBinarySize));
+
+    VkDeviceFaultInfoEXT faultInfo{};
+    faultInfo.sType = VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_EXT;
+    faultInfo.pAddressInfos = addressInfos.empty() ? nullptr : addressInfos.data();
+    faultInfo.pVendorInfos = vendorInfos.empty() ? nullptr : vendorInfos.data();
+    faultInfo.pVendorBinaryData = vendorBinaryData.empty() ? nullptr : vendorBinaryData.data();
+
+    VkResult infoResult = _getDeviceFaultInfo(_device, &faultCounts, &faultInfo);
+    if (infoResult != VK_SUCCESS && infoResult != VK_INCOMPLETE) {
+        std::cerr << "  Failed to query device fault info: " << infoResult << "\n";
+        return;
+    }
+
+    if (faultInfo.description[0] != '\0') {
+        std::cerr << "  Description: " << faultInfo.description << "\n";
+    }
+
+    std::cerr << "  Address infos: " << faultCounts.addressInfoCount << "\n";
+    for (uint32_t i = 0; i < faultCounts.addressInfoCount; ++i) {
+        const VkDeviceFaultAddressInfoEXT& addressInfo = addressInfos[i];
+        std::cerr << "    [" << i << "] type=" << deviceFaultAddressTypeToString(addressInfo.addressType)
+                  << " address=0x" << std::hex << addressInfo.reportedAddress << std::dec
+                  << " precision=" << addressInfo.addressPrecision << "\n";
+    }
+
+    std::cerr << "  Vendor infos: " << faultCounts.vendorInfoCount << "\n";
+    for (uint32_t i = 0; i < faultCounts.vendorInfoCount; ++i) {
+        const VkDeviceFaultVendorInfoEXT& vendorInfo = vendorInfos[i];
+        std::cerr << "    [" << i << "] code=" << vendorInfo.vendorFaultCode
+                  << " data=" << vendorInfo.vendorFaultData;
+        if (vendorInfo.description[0] != '\0') {
+            std::cerr << " desc=" << vendorInfo.description;
+        }
+        std::cerr << "\n";
+    }
+
+    if (faultCounts.vendorBinarySize > 0) {
+        std::cerr << "  Vendor binary size: " << faultCounts.vendorBinarySize << " bytes\n";
     }
 }
 
