@@ -40,7 +40,13 @@ void VoxelDrawDispatcher::draw(VkCommandBuffer cmd, Camera& camera, bool wirefra
         return;
     }
 
-    _bufferMgr.ensureBufferCapacity(static_cast<uint32_t>(chunkDrawData.size()));
+    const uint32_t requiredChunks = static_cast<uint32_t>(chunkDrawData.size());
+    if (!meshShadersSupported && requiredChunks > _bufferMgr.getCurrentMaxChunks()) {
+        _bufferMgr.ensureBufferCapacity(requiredChunks);
+        return;
+    }
+
+    _bufferMgr.ensureBufferCapacity(requiredChunks);
 
     {
         ZoneScopedN("Upload Chunk Data");
@@ -277,9 +283,15 @@ void VoxelDrawDispatcher::buildCPUIndirectCommands(VkCommandBuffer cmd) {
 
     const auto& indirectCommands = _bufferMgr.getIndirectCommands();
 
+<<<<<<< HEAD
     _bufferManager.uploadToBuffer(
         AllocatedBuffer{_bufferMgr.getIndirectBuffer(), VK_NULL_HANDLE},
         indirectCommands.data(), indirectCommands.size() * sizeof(VkDrawIndexedIndirectCommand));
+=======
+    _bufferManager.uploadToBuffer(_bufferMgr.getIndirectBufferAllocation(),
+                                  indirectCommands.data(),
+                                  indirectCommands.size() * sizeof(VkDrawIndexedIndirectCommand));
+>>>>>>> a7cffcf (Test ?)
 
     VkMemoryBarrier hostBarrier{};
     hostBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
