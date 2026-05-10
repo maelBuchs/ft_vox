@@ -6,9 +6,9 @@
 #include <tracy/Tracy.hpp>
 
 #include "../../Game/Camera.hpp"
-#include "../GraphicsUtils.hpp"
 #include "../Core/VulkanBuffer.hpp"
 #include "../Core/VulkanDevice.hpp"
+#include "../GraphicsUtils.hpp"
 #include "../Renderer.hpp"
 #include "../Rendering/RenderContext.hpp"
 #include "ChunkBufferManager.hpp"
@@ -26,8 +26,8 @@ void VoxelDrawDispatcher::draw(VkCommandBuffer cmd, Camera& camera, bool wirefra
     ZoneScopedN("VoxelDrawDispatcher::draw");
 
     bool meshShadersSupported = _pipelineManager.supportsMeshShaders();
-    const uint32_t frameIndex = static_cast<uint32_t>(
-        _renderer.getFrameNumber() % ChunkBufferManager::CHUNK_BUFFER_COUNT);
+    const uint32_t frameIndex =
+        static_cast<uint32_t>(_renderer.getFrameNumber() % ChunkBufferManager::CHUNK_BUFFER_COUNT);
 
     const auto& chunkDrawData = _bufferMgr.getChunkDrawData();
 
@@ -56,16 +56,15 @@ void VoxelDrawDispatcher::draw(VkCommandBuffer cmd, Camera& camera, bool wirefra
         chunkDataBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
         chunkDataBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-        VkPipelineStageFlags shaderStages = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
-                                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        VkPipelineStageFlags shaderStages =
+            VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
         if (meshShadersSupported) {
-            shaderStages |= VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT |
-                            VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT;
+            shaderStages |=
+                VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT | VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT;
         }
 
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
-                             shaderStages,
-                             0, 1, &chunkDataBarrier, 0, nullptr, 0, nullptr);
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT, shaderStages, 0, 1, &chunkDataBarrier,
+                             0, nullptr, 0, nullptr);
     }
 
     // GPU frustum culling
@@ -142,7 +141,8 @@ void VoxelDrawDispatcher::draw(VkCommandBuffer cmd, Camera& camera, bool wirefra
     vkCmdEndRendering(cmd);
 }
 
-void VoxelDrawDispatcher::uploadCameraData(VkCommandBuffer cmd, Camera& camera, uint32_t frameIndex) {
+void VoxelDrawDispatcher::uploadCameraData(VkCommandBuffer cmd, Camera& camera,
+                                           uint32_t frameIndex) {
     ZoneScopedN("Upload Mesh Shader Camera Data");
 
     VkExtent2D drawExtent = _context.getDrawExtent();
@@ -214,9 +214,8 @@ void VoxelDrawDispatcher::dispatchGPUCulling(VkCommandBuffer cmd, Camera& camera
         hostBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
         hostBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
-                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &hostBarrier, 0, nullptr,
-                             0, nullptr);
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             0, 1, &hostBarrier, 0, nullptr, 0, nullptr);
     }
 
     // Reset draw counter
@@ -254,7 +253,8 @@ void VoxelDrawDispatcher::dispatchGPUCulling(VkCommandBuffer cmd, Camera& camera
     pushConstants._padding = 0;
 
     vkCmdPushConstants(cmd, _pipelineManager.getFrustumCullPipelineLayout(),
-                       VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputeCullingPushConstants), &pushConstants);
+                       VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputeCullingPushConstants),
+                       &pushConstants);
 
     // Dispatch
     {
@@ -280,9 +280,9 @@ void VoxelDrawDispatcher::buildCPUIndirectCommands(VkCommandBuffer cmd) {
 
     const auto& indirectCommands = _bufferMgr.getIndirectCommands();
 
-    _bufferManager.uploadToBuffer(
-        AllocatedBuffer{_bufferMgr.getIndirectBuffer(), VK_NULL_HANDLE},
-        indirectCommands.data(), indirectCommands.size() * sizeof(VkDrawIndexedIndirectCommand));
+    _bufferManager.uploadToBuffer(AllocatedBuffer{_bufferMgr.getIndirectBuffer(), VK_NULL_HANDLE},
+                                  indirectCommands.data(),
+                                  indirectCommands.size() * sizeof(VkDrawIndexedIndirectCommand));
 
     VkMemoryBarrier hostBarrier{};
     hostBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
@@ -303,8 +303,8 @@ void VoxelDrawDispatcher::drawMeshShaderPath(VkCommandBuffer cmd, bool wireframe
         loggedMeshShaderPath = true;
     }
 
-    const uint32_t frameIndex = static_cast<uint32_t>(
-        _renderer.getFrameNumber() % ChunkBufferManager::CHUNK_BUFFER_COUNT);
+    const uint32_t frameIndex =
+        static_cast<uint32_t>(_renderer.getFrameNumber() % ChunkBufferManager::CHUNK_BUFFER_COUNT);
 
     Pipeline& activePipeline = wireframeMode ? _pipelineManager.getMeshShaderWireframePipeline()
                                              : _pipelineManager.getMeshShaderPipeline();
@@ -347,17 +347,19 @@ void VoxelDrawDispatcher::drawTraditionalPath(VkCommandBuffer cmd, Camera& camer
     ZoneScopedN("Traditional Rendering");
     TracyVkZone(_device.getTracyCtx(), cmd, "GPU Traditional Rendering");
 
-    const uint32_t frameIndex = static_cast<uint32_t>(
-        _renderer.getFrameNumber() % ChunkBufferManager::CHUNK_BUFFER_COUNT);
+    const uint32_t frameIndex =
+        static_cast<uint32_t>(_renderer.getFrameNumber() % ChunkBufferManager::CHUNK_BUFFER_COUNT);
 
     Pipeline& activePipeline = wireframeMode ? _pipelineManager.getVoxelWireframePipeline()
                                              : _pipelineManager.getVoxelPipeline();
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, activePipeline.getPipeline());
 
-    VkDescriptorSet activeChunkSet = enableGPUCulling ? _bufferMgr.getCulledChunkDescriptorSet()
-                                                      : _bufferMgr.getChunkDescriptorSet(frameIndex);
+    VkDescriptorSet activeChunkSet = enableGPUCulling
+                                         ? _bufferMgr.getCulledChunkDescriptorSet()
+                                         : _bufferMgr.getChunkDescriptorSet(frameIndex);
 
-    VkDescriptorSet descriptorSets[] = {activeChunkSet, _bufferMgr.getTraditionalFragDescriptorSet()};
+    VkDescriptorSet descriptorSets[] = {activeChunkSet,
+                                        _bufferMgr.getTraditionalFragDescriptorSet()};
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             _pipelineManager.getVoxelPipelineLayout(), 0, 2, descriptorSets, 0,
                             nullptr);
@@ -398,4 +400,3 @@ void VoxelDrawDispatcher::drawTraditionalPath(VkCommandBuffer cmd, Camera& camer
                                  sizeof(VkDrawIndexedIndirectCommand));
     }
 }
-
