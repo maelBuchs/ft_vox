@@ -275,6 +275,8 @@ void ChunkBufferManager::executeBufferResize() {
     for (auto& buffer : _chunkDataBuffers) {
         _bufferManager.destroyBuffer(buffer);
     }
+    _bufferManager.destroyBuffer(_culledIndirectBuffer);
+    _bufferManager.destroyBuffer(_culledChunkDataBuffer);
 
     // Create new larger buffers
     _indirectBuffer = _bufferManager.createBuffer(
@@ -288,6 +290,19 @@ void ChunkBufferManager::executeBufferResize() {
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             VMA_MEMORY_USAGE_CPU_TO_GPU);
     }
+
+    const size_t indirectBufferSize =
+        sizeof(uint32_t) + (sizeof(VkDrawIndexedIndirectCommand) * newCapacity);
+    _culledIndirectBuffer = _bufferManager.createBuffer(
+        indirectBufferSize,
+        VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY);
+
+    _culledChunkDataBuffer = _bufferManager.createBuffer(
+        sizeof(GPUChunkData) * newCapacity,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VMA_MEMORY_USAGE_GPU_ONLY);
 
     // Update descriptor sets
     for (uint32_t i = 0; i < CHUNK_BUFFER_COUNT; ++i) {
@@ -305,6 +320,23 @@ void ChunkBufferManager::executeBufferResize() {
             writer.updateSet(_device.getDevice(), _meshShaderDescriptorSets[i]);
         }
     }
+
+    DescriptorWriter computeWriter;
+    computeWriter.writeBuffer(0, _chunkDataBuffers[0].buffer,
+                              sizeof(GPUChunkData) * newCapacity, 0,
+                              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    computeWriter.writeBuffer(2, _culledIndirectBuffer.buffer, indirectBufferSize, 0,
+                              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    computeWriter.writeBuffer(3, _culledChunkDataBuffer.buffer,
+                              sizeof(GPUChunkData) * newCapacity, 0,
+                              VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    computeWriter.updateSet(_device.getDevice(), _frustumCullDescriptorSet);
+
+    DescriptorWriter culledWriter;
+    culledWriter.writeBuffer(0, _culledChunkDataBuffer.buffer,
+                             sizeof(GPUChunkData) * newCapacity, 0,
+                             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    culledWriter.updateSet(_device.getDevice(), _culledChunkDescriptorSet);
 
     _currentMaxChunks = newCapacity;
 
