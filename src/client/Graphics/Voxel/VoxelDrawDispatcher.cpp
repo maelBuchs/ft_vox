@@ -54,11 +54,14 @@ void VoxelDrawDispatcher::draw(VkCommandBuffer cmd, Camera& camera, bool wirefra
         chunkDataBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
         chunkDataBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
-                             VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT |
-                                 VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT |
-                                 VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
-                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        VkPipelineStageFlags dstStages = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
+                                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        if (_pipelineManager.supportsMeshShaders()) {
+            dstStages |= VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT |
+                         VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT;
+        }
+
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT, dstStages,
                              0, 1, &chunkDataBarrier, 0, nullptr, 0, nullptr);
     }
 
