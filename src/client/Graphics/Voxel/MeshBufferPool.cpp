@@ -117,7 +117,7 @@ MeshBufferPool::MeshBufferPool(VulkanDevice& device, VulkanBuffer& bufferManager
         _currentIndexBufferSize,
         VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VMA_MEMORY_USAGE_GPU_ONLY);
+        VMA_MEMORY_USAGE_AUTO);
 }
 
 MeshBufferPool::~MeshBufferPool() {
@@ -164,7 +164,7 @@ ChunkMeshBuffers MeshBufferPool::allocateChunkBuffers(
         vertexSize,
         VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-        VMA_MEMORY_USAGE_GPU_ONLY);
+        VMA_MEMORY_USAGE_AUTO);
 
     // Get buffer device address for shader access
     VkBufferDeviceAddressInfo vertexAddressInfo{};
@@ -442,7 +442,7 @@ void MeshBufferPool::ensureIndexBufferCapacity(
         newCapacity,
         VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VMA_MEMORY_USAGE_GPU_ONLY);
+        VMA_MEMORY_USAGE_AUTO);
 
     // Verify buffer was created successfully
     if (newIndexBuffer.buffer == VK_NULL_HANDLE) {

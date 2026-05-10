@@ -16,6 +16,7 @@ class RenderContext {
         VmaAllocation allocation;
         VkExtent3D extent;
         VkFormat format;
+        VkImageLayout currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     };
 
     explicit RenderContext(VulkanDevice& device);
@@ -29,9 +30,12 @@ class RenderContext {
     void createDrawImages(VkExtent2D extent);
     void destroyDrawImages();
     void createImmediateSubmitStructures();
+    void setCurrentFrameIndex(uint32_t frameIndex) { _currentFrameIndex = frameIndex; }
 
-    [[nodiscard]] const AllocatedImage& getDrawImage() const { return _drawImage; }
-    [[nodiscard]] const AllocatedImage& getDepthImage() const { return _depthImage; }
+    [[nodiscard]] AllocatedImage& getDrawImage() { return _drawImages[_currentFrameIndex]; }
+    [[nodiscard]] AllocatedImage& getDepthImage() { return _depthImages[_currentFrameIndex]; }
+    [[nodiscard]] const AllocatedImage& getDrawImage() const { return _drawImages[_currentFrameIndex]; }
+    [[nodiscard]] const AllocatedImage& getDepthImage() const { return _depthImages[_currentFrameIndex]; }
     [[nodiscard]] VkExtent2D getDrawExtent() const { return _drawExtent; }
     [[nodiscard]] VkFence getImmediateFence() const { return _immFence; }
     [[nodiscard]] VkCommandPool getImmediateCommandPool() const { return _immCommandPool; }
@@ -39,9 +43,10 @@ class RenderContext {
 
   private:
     VulkanDevice& _device;
-    AllocatedImage _drawImage;
-    AllocatedImage _depthImage;
+    AllocatedImage _drawImages[2]; // Using 2 for FRAME_OVERLAP
+    AllocatedImage _depthImages[2];
     VkExtent2D _drawExtent;
+    uint32_t _currentFrameIndex = 0;
 
     // Immediate submit structures
     VkFence _immFence;

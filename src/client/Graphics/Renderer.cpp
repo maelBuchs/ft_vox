@@ -228,18 +228,20 @@ void Renderer::draw(float timeOfDay) {
 
     TracyVkCollect(_device.getTracyCtx(), commandBuffer);
 
-    // Get images from RenderContext
-    const RenderContext::AllocatedImage& drawImage = _renderContext->getDrawImage();
-    const RenderContext::AllocatedImage& depthImage = _renderContext->getDepthImage();
+    uint32_t frameIndex = _frameManager->getFrameNumber() % 2; // FrameManager::FRAME_OVERLAP
+    _renderContext->setCurrentFrameIndex(frameIndex);
+    RenderContext::AllocatedImage& drawImage = _renderContext->getDrawImage();
+    RenderContext::AllocatedImage& depthImage = _renderContext->getDepthImage();
 
     // Transition draw image to COLOR_ATTACHMENT_OPTIMAL
-    _commandExecutor->transitionImage(commandBuffer, drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED,
+    _commandExecutor->transitionImage(commandBuffer, drawImage.image, drawImage.currentLayout,
                                       VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    drawImage.currentLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     // Transition depth image to DEPTH_ATTACHMENT_OPTIMAL
-    _commandExecutor->transitionImage(commandBuffer, depthImage.image,
-                                      VK_IMAGE_LAYOUT_UNDEFINED,
+    _commandExecutor->transitionImage(commandBuffer, depthImage.image, depthImage.currentLayout,
                                       VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+    depthImage.currentLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 
     // Render sky first (will fill the background)
     {
@@ -269,8 +271,9 @@ void Renderer::draw(float timeOfDay) {
 
         // Transition draw image to TRANSFER_SRC for copying to swapchain
         _commandExecutor->transitionImage(commandBuffer, drawImage.image,
-                                          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                          drawImage.currentLayout,
                                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        drawImage.currentLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 
         swapchainImage = _swapchain->getSwapchainImages().at(swapchainImageIndex);
         _commandExecutor->transitionImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_UNDEFINED,
@@ -326,7 +329,8 @@ void Renderer::draw(float timeOfDay) {
                                    .pNext = nullptr,
                                    .semaphore = _swapchainSemaphores[semaphoreIndex],
                                    .value = 0,
-                                   .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                   .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT |
+                                                VK_PIPELINE_STAGE_2_TRANSFER_BIT,
                                    .deviceIndex = 0};
     VkSemaphore renderFinishedSemaphore = _renderSemaphores[swapchainImageIndex];
     VkSemaphoreSubmitInfo signalInfo{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
@@ -627,8 +631,8 @@ void Renderer::loadTextureAtlas() {
                                      .usage = atlasImageUsages};
 
     VmaAllocationCreateInfo atlasAllocInfo{
-        .usage = VMA_MEMORY_USAGE_GPU_ONLY,
-        .requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)};
+        .usage = VMA_MEMORY_USAGE_AUTO,
+        .requiredFlags = 0};
 
     VkResult ret = vmaCreateImage(_device.getAllocator(), &atlasImageInfo, &atlasAllocInfo,
                                   &_textureAtlas.image, &_textureAtlas.allocation, nullptr);
@@ -738,8 +742,8 @@ void Renderer::loadBlueNoiseTexture() {
                                 .usage =
                                     VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT};
 
-    VmaAllocationCreateInfo allocInfo{.usage = VMA_MEMORY_USAGE_GPU_ONLY,
-                                      .requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT};
+    VmaAllocationCreateInfo allocInfo{.usage = VMA_MEMORY_USAGE_AUTO,
+                                      .requiredFlags = 0};
 
     VkResult ret = vmaCreateImage(_device.getAllocator(), &imageInfo, &allocInfo,
                                   &_blueNoiseTexture.image, &_blueNoiseTexture.allocation, nullptr);

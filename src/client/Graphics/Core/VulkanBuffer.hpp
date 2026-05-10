@@ -45,6 +45,8 @@ class VulkanBuffer {
     [[nodiscard]] size_t getTotalVmaAllocations() const { return _totalVmaAllocations; }
     [[nodiscard]] size_t getTotalVmaDeallocations() const { return _totalVmaDeallocations; }
 
+    VmaPool getPoolForMemoryType(uint32_t memoryTypeIndex, VkDeviceSize blockSize);
+
   private:
     VulkanDevice& _device;
 
@@ -53,4 +55,7 @@ class VulkanBuffer {
     uint64_t _nextBufferId = 1;
     size_t _totalVmaAllocations = 0;
     size_t _totalVmaDeallocations = 0;
+
+    // Custom VMA Pools per memory type to force sub-allocation for small buffers
+    std::unordered_map<uint32_t, VmaPool> _customPools;
 };

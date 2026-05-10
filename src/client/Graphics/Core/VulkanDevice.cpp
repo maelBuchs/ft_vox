@@ -91,6 +91,14 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(
     VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
     VkDebugUtilsMessageTypeFlagsEXT messageTypes,
     const VkDebugUtilsMessengerCallbackDataEXT* callbackData, void* /*userData*/) {
+    // Filter out BestPractices warnings for small dedicated allocations.
+    // VMA correctly falls back to dedicated allocations when the driver requests it
+    // (e.g. NVIDIA drivers for VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT), making
+    // these Validation Layer warnings a false positive for our architecture.
+    if (callbackData->messageIdNumber == 280337739 || callbackData->messageIdNumber == 1147161417) {
+        return VK_FALSE;
+    }
+
     std::ostream& output = (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
                                ? std::cerr
                                : std::cout;
@@ -323,7 +331,8 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
         // Build extension list
         std::vector<const char*> deviceExts = {
             VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-            VK_EXT_MESH_SHADER_EXTENSION_NAME // ADD THIS!
+            VK_EXT_MESH_SHADER_EXTENSION_NAME, // ADD THIS!
+            VK_EXT_MEMORY_BUDGET_EXTENSION_NAME
         };
 
         if (_supportsDeviceFault) {
@@ -425,11 +434,13 @@ VulkanDevice::VulkanDevice(SDL_Window* window)
     vmaCallbacks.pfnFree = vmaDeallocationCallback;
     vmaCallbacks.pUserData = nullptr;
 
-    VmaAllocatorCreateInfo allocatorInfo = {.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+    VmaAllocatorCreateInfo allocatorInfo = {.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT |
+                                                     VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT,
                                             .physicalDevice = _physicalDevice,
                                             .device = _device,
                                             .pDeviceMemoryCallbacks = &vmaCallbacks,
-                                            .instance = _instance};
+                                            .instance = _instance,
+                                            .vulkanApiVersion = VK_API_VERSION_1_3};
     vmaCreateAllocator(&allocatorInfo, &_allocator);
 
     // Create Tracy command pool and buffer
