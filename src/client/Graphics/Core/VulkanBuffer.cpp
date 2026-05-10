@@ -87,15 +87,15 @@ AllocatedBuffer VulkanBuffer::createBuffer(size_t size, VkBufferUsageFlags usage
     if (size < 1048576) {
         uint32_t memTypeIndex = UINT32_MAX;
         vmaFindMemoryTypeIndexForBufferInfo(_device.getAllocator(), &bufferInfo, &allocInfo, &memTypeIndex);
-        
+
         if (memTypeIndex == UINT32_MAX) {
             // Fallback: manually find a suitable memory type index
             VkPhysicalDeviceMemoryProperties memProps;
             vkGetPhysicalDeviceMemoryProperties(_device.getPhysicalDevice(), &memProps);
             VkMemoryPropertyFlags targetFlags = (actualUsage == VMA_MEMORY_USAGE_AUTO && (allocFlags & VMA_ALLOCATION_CREATE_MAPPED_BIT) == 0)
-                                                ? VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT 
+                                                ? VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
                                                 : (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-            
+
             for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
                 if ((memProps.memoryTypes[i].propertyFlags & targetFlags) == targetFlags) {
                     memTypeIndex = i;
@@ -103,11 +103,11 @@ AllocatedBuffer VulkanBuffer::createBuffer(size_t size, VkBufferUsageFlags usage
                 }
             }
         }
-        
+
         if (memTypeIndex != UINT32_MAX) {
             // Use a custom pool with 256MB block size for sub-allocations
             allocInfo.pool = getPoolForMemoryType(memTypeIndex, 256ull * 1024 * 1024);
-            
+
             // To be absolutely certain VMA sub-allocates, we try NEVER_ALLOCATE first.
             // If the pool is empty, we must allow it to allocate the FIRST block, so we don't
             // actually use NEVER_ALLOCATE_BIT unless we know the pool has blocks.
@@ -145,8 +145,8 @@ void VulkanBuffer::destroyBuffer(const AllocatedBuffer& buffer) {
 
     auto it = _activeAllocations.find(buffer.buffer);
     if (it == _activeAllocations.end()) {
-        std::cerr << "[VulkanBuffer] destroyBuffer: buffer not found in tracking!" << std::endl;
-        vmaDestroyBuffer(_device.getAllocator(), buffer.buffer, buffer.allocation);
+        std::cerr << "[VulkanBuffer] destroyBuffer: buffer not found in tracking!"
+                  << std::endl;
         return;
     }
 
