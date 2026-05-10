@@ -476,6 +476,14 @@ void ChunkBufferManager::update(const glm::ivec3& cameraChunkPos, int maxLoadDis
                     if (idx != _chunkDrawInfos.size() - 1) {
                         _chunkDrawInfos[idx] = _chunkDrawInfos.back();
                         _chunkDrawLookup[_chunkDrawInfos[idx].chunkCoords] = idx;
+                        
+                        if (idx >= _dirtyChunkIndices.size()) {
+                            _dirtyChunkIndices.resize(idx + 1, false);
+                        }
+                        if (!_dirtyChunkIndices[idx]) {
+                            _dirtyChunkIndices[idx] = true;
+                            _dirtyChunkList.push_back(static_cast<uint32_t>(idx));
+                        }
                     }
                     _chunkDrawInfos.pop_back();
                     _chunkDrawLookup.erase(it);
@@ -762,6 +770,15 @@ void ChunkBufferManager::rebuildMeshPool(const std::vector<glm::ivec3>& unloaded
 
         _chunkDrawLookup.erase(it);
         _chunkDataDirty = true;
+        _dirtyChunkCount++;
+
+        if (idx >= _dirtyChunkIndices.size()) {
+            _dirtyChunkIndices.resize(idx + 1, false);
+        }
+        if (!_dirtyChunkIndices[idx]) {
+            _dirtyChunkIndices[idx] = true;
+            _dirtyChunkList.push_back(static_cast<uint32_t>(idx));
+        }
     }
 
     if (_chunkDrawInfos.empty()) {
