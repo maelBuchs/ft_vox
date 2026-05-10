@@ -235,13 +235,9 @@ void Renderer::draw(float timeOfDay) {
                                       VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
     // Transition depth image to DEPTH_ATTACHMENT_OPTIMAL
-    static bool firstFrame = true;
-    if (firstFrame) {
-        _commandExecutor->transitionImage(commandBuffer, depthImage.image,
-                                          VK_IMAGE_LAYOUT_UNDEFINED,
-                                          VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-        firstFrame = false;
-    }
+    _commandExecutor->transitionImage(commandBuffer, depthImage.image,
+                                      VK_IMAGE_LAYOUT_UNDEFINED,
+                                      VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
     // Render sky first (will fill the background)
     {

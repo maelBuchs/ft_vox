@@ -132,5 +132,5 @@ class Renderer {
     // ImGui
     VkDescriptorPool _imguiPool = VK_NULL_HANDLE;
 
-    std::unique_ptr<WorldManager> _worldManager = nullptr;
+    WorldManager* _worldManager = nullptr;
 };

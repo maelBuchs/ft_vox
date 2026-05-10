@@ -58,7 +58,7 @@ struct TaskPayloadEntry {
 
 struct TaskPayloadData {
     uint meshCount;
-    TaskPayloadEntry entries[2048]; // Must match task shader payload size
+    TaskPayloadEntry entries[2047]; // Must match task shader payload size
 };
 
 taskPayloadSharedEXT TaskPayloadData payload;
