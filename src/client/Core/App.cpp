@@ -229,8 +229,9 @@ void App::updateRender(Camera& camera, InputManager& inputManager) {
     const int chunkZ = worldToChunk(static_cast<int>(cameraPos.z));
 
     const glm::ivec3 currentCenter(chunkX, chunkY, chunkZ);
+    bool stillLoadingShells = (_currentShellRadius < _loadRadius);
     if (_needsRequestRefresh || currentCenter != _lastRequestedCenter ||
-        _loadRadius != _lastLoadRadius) {
+        _loadRadius != _lastLoadRadius || stillLoadingShells) {
         enqueueChunkRequests(currentCenter);
     }
 

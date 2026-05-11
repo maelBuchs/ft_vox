@@ -27,8 +27,7 @@ namespace Projection {
 // =============================================================================
 
 namespace Chunk {
-    constexpr float SIZE_FLOAT = 32.0F;       // Chunk size in world units (must match Chunk::CHUNK_SIZE)
-    constexpr int RENDER_DISTANCE_MARGIN = 2; // Extra chunks margin to prevent pop-in
+    constexpr float SIZE_FLOAT = 32.0F; // Chunk size in world units (must match Chunk::CHUNK_SIZE)
 }
 
 // =============================================================================
@@ -113,10 +112,22 @@ namespace Workgroup {
 }
 
 /**
- * @brief Calculate render distance in world units from chunk distance.
+ * @brief Calculate render distance in world units from chunk load radius.
+ *
+ * Chunks are loaded in a Chebyshev distance pattern (cube), but culling uses Euclidean distance.
+ * For a chunk at Chebyshev distance N, the farthest point (corner chunk center) is at:
+ * Euclidean distance = sqrt(3) * (N + 0.5) * chunkSize
+ *
+ * @param loadDistanceChunks Chunk load radius (Chebyshev distance)
+ * @return Maximum render distance in world units to include all loaded chunks
  */
 [[nodiscard]] constexpr float calculateRenderDistance(int loadDistanceChunks) {
-    return static_cast<float>(loadDistanceChunks + Chunk::RENDER_DISTANCE_MARGIN) * Chunk::SIZE_FLOAT;
+    // sqrt(3) ≈ 1.732051 - diagonal distance factor for cube
+    // +0.5 accounts for chunk center offset from corner
+    // +0.1 adds small margin for numerical stability
+    const float diagonalDistance = 1.732051F * (static_cast<float>(loadDistanceChunks) + 0.5F);
+    const float margin = 0.1F;
+    return (diagonalDistance + margin) * Chunk::SIZE_FLOAT;
 }
 
 }
