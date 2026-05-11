@@ -119,14 +119,49 @@ constexpr uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>calcula
 constexpr uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>calculateTaskWorkgroups</b> (uint32_t totalChunks)</td></tr>
 <tr class="memdesc:a981f0b606399d05e177600668439221e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Calculate number of task workgroups needed for mesh shader dispatch. <br /></td></tr>
 <tr class="separator:a981f0b606399d05e177600668439221e"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a9ded05f19ea310489dd79f9f21ba303c"><td class="memItemLeft" align="right" valign="top"><a id="a9ded05f19ea310489dd79f9f21ba303c" name="a9ded05f19ea310489dd79f9f21ba303c"></a>
-constexpr float&#160;</td><td class="memItemRight" valign="bottom"><b>calculateRenderDistance</b> (int loadDistanceChunks)</td></tr>
-<tr class="memdesc:a9ded05f19ea310489dd79f9f21ba303c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Calculate render distance in world units from chunk distance. <br /></td></tr>
+<tr class="memitem:a9ded05f19ea310489dd79f9f21ba303c"><td class="memItemLeft" align="right" valign="top">constexpr float&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceGraphicsUtils.html#a9ded05f19ea310489dd79f9f21ba303c">calculateRenderDistance</a> (int loadDistanceChunks)</td></tr>
+<tr class="memdesc:a9ded05f19ea310489dd79f9f21ba303c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Calculate render distance in world units from chunk load radius.  <a href="namespaceGraphicsUtils.html#a9ded05f19ea310489dd79f9f21ba303c">More...</a><br /></td></tr>
 <tr class="separator:a9ded05f19ea310489dd79f9f21ba303c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p >Centralized graphics utilities and constants. </p>
 </div><h2 class="groupheader">Function Documentation</h2>
+<a id="a9ded05f19ea310489dd79f9f21ba303c" name="a9ded05f19ea310489dd79f9f21ba303c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a9ded05f19ea310489dd79f9f21ba303c">&#9670;&#160;</a></span>calculateRenderDistance()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">constexpr float GraphicsUtils::calculateRenderDistance </td>
+          <td>(</td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>loadDistanceChunks</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">constexpr</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Calculate render distance in world units from chunk load radius. </p>
+<p >Chunks are loaded in a Chebyshev distance pattern (cube), but culling uses Euclidean distance. For a chunk at Chebyshev distance N, the farthest point (corner chunk center) is at: Euclidean distance = sqrt(3) * (N + 0.5) * chunkSize</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">loadDistanceChunks</td><td><a class="el" href="classChunk.html">Chunk</a> load radius (Chebyshev distance) </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>Maximum render distance in world units to include all loaded chunks </dd></dl>
+
+</div>
+</div>
 <a id="a16281c6769ba5c30ecb9aebb4dcb0bc9" name="a16281c6769ba5c30ecb9aebb4dcb0bc9"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a16281c6769ba5c30ecb9aebb4dcb0bc9">&#9670;&#160;</a></span>createVulkanProjection()</h2>
 
