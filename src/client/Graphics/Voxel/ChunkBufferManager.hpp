@@ -43,6 +43,7 @@ class ChunkBufferManager {
     struct ChunkDrawInfo {
         glm::ivec3 chunkCoords{};
         glm::vec3 worldPosition{};
+        uint32_t lodLevel = 0;
         ChunkMeshBuffers meshBuffers{};
     };
 
@@ -209,6 +210,8 @@ class ChunkBufferManager {
 
     // --- Throttling Parameters ---
     int _maxLoadDistance = 24;
+    glm::ivec3 _lastCameraChunkPos{};
+    bool _hasLastCameraChunkPos = false;
     static constexpr uint32_t MIN_CHUNKS_FOR_UPLOAD = 32;
     static constexpr uint32_t MAX_MS_BETWEEN_UPLOADS = 16;
     static constexpr uint32_t MAX_MESHES_PER_BATCH = 256;

@@ -18,7 +18,7 @@ struct GPUChunkData {
     uint indexCount;
     uint64_t vertexBufferAddress;
     uint firstIndex; // Offset in mega index buffer
-    uint _padding;
+    uint lodLevel;
 };
 
 layout(set = 0, binding = 0, std430) readonly buffer InputChunkData {

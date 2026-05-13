@@ -41,7 +41,7 @@ struct alignas(16) GPUChunkData {
     uint32_t indexCount;
     uint64_t vertexBufferAddress; // VkDeviceAddress for per-chunk vertex buffer
     uint32_t firstIndex;          // Offset in mega index buffer (needed for GPU culling)
-    uint32_t _padding;            // Align to 16 bytes
+    uint32_t lodLevel;            // 0 = full detail, 1+ = coarser far detail
 };
 
 // GPU frustum data for compute culling

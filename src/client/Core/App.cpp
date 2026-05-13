@@ -399,6 +399,18 @@ void App::run() {
 }
 
 void App::enqueueChunkRequests(const glm::ivec3& centerChunk) {
+    auto computeRequestLod = [this](int chebyshevDistance) -> uint32_t {
+        const int lod1Start = std::max(6, _loadRadius / 3);
+        const int lod2Start = std::max(lod1Start + 4, (_loadRadius * 2) / 3);
+        if (chebyshevDistance >= lod2Start) {
+            return 2;
+        }
+        if (chebyshevDistance >= lod1Start) {
+            return 1;
+        }
+        return 0;
+    };
+
     if (centerChunk != _lastRequestedCenter) {
         _currentShellRadius = 0;
 
@@ -406,7 +418,8 @@ void App::enqueueChunkRequests(const glm::ivec3& centerChunk) {
             static_cast<int>(static_cast<float>(_loadRadius) * _unloadDistanceMultiplier);
         std::unordered_set<glm::ivec3> chunksToRemove;
 
-        for (const glm::ivec3& requestedPos : _requestedChunks) {
+        for (const auto& [requestedPos, lodLevel] : _requestedChunks) {
+            static_cast<void>(lodLevel);
             const glm::ivec3 offset = requestedPos - centerChunk;
             const int chebyshevDistance =
                 std::max({std::abs(offset.x), std::abs(offset.y), std::abs(offset.z)});
@@ -452,21 +465,18 @@ void App::enqueueChunkRequests(const glm::ivec3& centerChunk) {
             continue;
         }
 
-        if (_requestedChunks.find(chunkPos) != _requestedChunks.end()) {
+        const uint32_t requestedLod = computeRequestLod(currentDistance);
+        auto requestedIt = _requestedChunks.find(chunkPos);
+        if (requestedIt != _requestedChunks.end() && requestedIt->second == requestedLod) {
             continue;
         }
 
         if (chunkPos[1] >= 0) {
-            // CRITICAL FIX: Only unmark from unload queue if chunk is NOT already loaded
-            if (!_worldManager->isChunkLoaded(chunkPos)) {
-                _worldManager->unmarkChunkForUnload(chunkPos);
+            _worldManager->unmarkChunkForUnload(chunkPos);
+            _chunkRequestQueue.push(ChunkRequest(chunkPos, requestedLod));
+            requestsThisFrame++;
 
-                _chunkRequestQueue.push(ChunkRequest(chunkPos));
-                requestsThisFrame++;
-            }
-
-            // Mark as requested regardless (tracks both loaded and in-queue chunks)
-            _requestedChunks.insert(chunkPos);
+            _requestedChunks[chunkPos] = requestedLod;
         }
 
         if (requestsThisFrame >= MAX_REQUESTS_PER_FRAME) {

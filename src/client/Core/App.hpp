@@ -2,6 +2,7 @@
 
 #include <limits>
 #include <memory>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -90,7 +91,7 @@ class App {
     // Request throttling
     static constexpr int MAX_REQUESTS_PER_FRAME = 512; // Don't flood the queue
     int _currentShellRadius = 0;                       // For breadth-first chunk loading
-    std::unordered_set<glm::ivec3> _requestedChunks;   // Track what we've already requested
+    std::unordered_map<glm::ivec3, uint32_t> _requestedChunks; // Track requested chunks and target LOD
 
     // Worker threads
     std::unique_ptr<WorldManager> _worldManager;

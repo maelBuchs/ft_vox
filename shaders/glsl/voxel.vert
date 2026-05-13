@@ -30,7 +30,7 @@ struct GPUChunkData {
     uint indexCount;
     uint64_t vertexBufferAddress; // Device address of this chunk's vertex buffer
     uint firstIndex;              // First index in the mega index buffer
-    uint _padding;                // Padding to match C++ struct alignment
+    uint lodLevel;                // 0 = full detail, 1+ = coarser far detail
     // Note: Index buffer is shared (mega buffer), accessed via traditional binding
 };
 
@@ -96,7 +96,6 @@ void main() {
 
     vec3 inPosition = vec3(float(x), float(y), float(z));
     vec3 normal = NORMALS[normalId];
-
     // Scale UVs by greedy quad dimensions for texture tiling
     vec2 baseUV = UVS[uvId];
     vec2 uv = baseUV * vec2(float(greedyWidth), float(greedyHeight));

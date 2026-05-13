@@ -37,7 +37,7 @@ struct GPUChunkData {
     uint indexCount;
     uint64_t vertexBufferAddress;
     uint firstIndex;
-    uint _padding;
+    uint lodLevel;
 };
 
 layout(set = 0, binding = 1, std430) readonly buffer ChunkDataBuffer {
@@ -175,7 +175,6 @@ void main() {
 
         vec3 inPosition = vec3(float(x), float(y), float(z));
         vec3 normal = NORMALS[normalId];
-
         // Scale UVs by greedy quad dimensions for texture tiling
         vec2 baseUV = UVS[uvId];
         vec2 uv = baseUV * vec2(float(greedyWidth), float(greedyHeight));

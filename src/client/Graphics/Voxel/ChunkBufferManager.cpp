@@ -13,6 +13,26 @@
 #include "VoxelPipelineManager.hpp"
 #include "common/World/Chunk.hpp"
 
+namespace {
+uint32_t computeChunkLodLevel(const glm::ivec3& cameraChunkPos, const glm::ivec3& chunkCoords,
+                              int maxLoadDistance) {
+    const glm::ivec3 offset = chunkCoords - cameraChunkPos;
+    const int chebyshevDistance = std::max({std::abs(offset.x), std::abs(offset.y), std::abs(offset.z)});
+
+    const int lod1Start = std::max(6, maxLoadDistance / 3);
+    const int lod2Start = std::max(lod1Start + 4, (maxLoadDistance * 2) / 3);
+
+    if (chebyshevDistance >= lod2Start) {
+        return 2;
+    }
+    if (chebyshevDistance >= lod1Start) {
+        return 1;
+    }
+    return 0;
+}
+
+} // namespace
+
 ChunkBufferManager::ChunkBufferManager(
     VulkanDevice& device, VulkanBuffer& bufferManager,
     DescriptorAllocatorGrowable& descriptorAllocator, CommandExecutor& executor,
@@ -360,6 +380,12 @@ void ChunkBufferManager::update(const glm::ivec3& cameraChunkPos, int maxLoadDis
     ZoneScoped;
     _maxLoadDistance = maxLoadDistance;
 
+    if (!_hasLastCameraChunkPos || _lastCameraChunkPos != cameraChunkPos) {
+        _hasLastCameraChunkPos = true;
+        _lastCameraChunkPos = cameraChunkPos;
+        _chunkDataDirty = true;
+    }
+
     // Adaptive batch sizing
     {
         const auto now = std::chrono::steady_clock::now();
@@ -480,6 +506,8 @@ void ChunkBufferManager::update(const glm::ivec3& cameraChunkPos, int maxLoadDis
 
                 info.chunkCoords = chunkCoords;
                 info.worldPosition = chunkWorldPos;
+                info.lodLevel =
+                    std::max(meshData.lodLevel, computeChunkLodLevel(cameraChunkPos, chunkCoords, maxLoadDistance));
                 info.meshBuffers = chunkBuffers;
                 _chunkDataDirty = true;
                 _dirtyChunkCount++;
@@ -505,6 +533,8 @@ void ChunkBufferManager::update(const glm::ivec3& cameraChunkPos, int maxLoadDis
                     ChunkDrawInfo& info = _chunkDrawInfos[reuseIndex];
                     info.chunkCoords = chunkCoords;
                     info.worldPosition = chunkWorldPos;
+                    info.lodLevel = std::max(
+                        meshData.lodLevel, computeChunkLodLevel(cameraChunkPos, chunkCoords, maxLoadDistance));
                     info.meshBuffers = chunkBuffers;
                     _chunkDrawLookup.emplace(chunkCoords, reuseIndex);
                     chunkIndex = reuseIndex;
@@ -512,6 +542,9 @@ void ChunkBufferManager::update(const glm::ivec3& cameraChunkPos, int maxLoadDis
                     chunkIndex = _chunkDrawInfos.size();
                     _chunkDrawInfos.push_back(ChunkDrawInfo{.chunkCoords = chunkCoords,
                                                             .worldPosition = chunkWorldPos,
+                                                            .lodLevel = std::max(
+                                                                meshData.lodLevel,
+                                                                computeChunkLodLevel(cameraChunkPos, chunkCoords, maxLoadDistance)),
                                                             .meshBuffers = chunkBuffers});
                     _chunkDrawLookup.emplace(chunkCoords, chunkIndex);
                 }
@@ -534,6 +567,25 @@ void ChunkBufferManager::update(const glm::ivec3& cameraChunkPos, int maxLoadDis
         _meshPool->submitPendingUploads([this](std::function<void(VkCommandBuffer)>&& func) {
             _executor.immediateSubmit(std::move(func));
         });
+    }
+
+    // Re-evaluate LOD bands as camera moves so far chunks can switch to coarser detail.
+    for (size_t i = 0; i < _chunkDrawInfos.size(); ++i) {
+        ChunkDrawInfo& info = _chunkDrawInfos[i];
+        const uint32_t newLod = computeChunkLodLevel(cameraChunkPos, info.chunkCoords, maxLoadDistance);
+        if (newLod == info.lodLevel) {
+            continue;
+        }
+        info.lodLevel = newLod;
+        _chunkDataDirty = true;
+        _dirtyChunkCount++;
+        if (i >= _dirtyChunkIndices.size()) {
+            _dirtyChunkIndices.resize(i + 1, false);
+        }
+        if (!_dirtyChunkIndices[i]) {
+            _dirtyChunkIndices[i] = true;
+            _dirtyChunkList.push_back(static_cast<uint32_t>(i));
+        }
     }
 
     // Throttled GPU upload for mesh shader path
@@ -566,93 +618,30 @@ void ChunkBufferManager::update(const glm::ivec3& cameraChunkPos, int maxLoadDis
 
         for (const ChunkDrawInfo& drawInfo : _chunkDrawInfos) {
             const ChunkMeshBuffers& buffers = drawInfo.meshBuffers;
-
+            if (buffers.indexCount == 0) {
+                continue;
+            }
             GPUChunkData chunkData{};
             chunkData.chunkWorldPos = drawInfo.worldPosition;
             chunkData.indexCount = buffers.indexCount;
             chunkData.vertexBufferAddress = buffers.vertexAddress;
             chunkData.firstIndex = buffers.firstIndex;
-            chunkData._padding = 0;
+            chunkData.lodLevel = drawInfo.lodLevel;
             _chunkDrawData.push_back(chunkData);
         }
 
         if (!_chunkDrawData.empty()) {
-            if (!_dirtyChunkList.empty() && _dirtyChunkList.size() < _chunkDrawData.size()) {
-                ZoneScopedN("Upload Dirty Chunks Only (Batched)");
-
-                // Build copy regions and dirty data together with same filter
-                // This ensures srcOffset matches the position in _dirtyDataBuffer
-                const VkDeviceSize bufferSize = static_cast<VkDeviceSize>(_currentMaxChunks) * sizeof(GPUChunkData);
-
-                _dirtyDataBuffer.clear();
-                _dirtyDataBuffer.reserve(_dirtyChunkList.size());
-                _copyRegions.clear();
-                _copyRegions.reserve(_dirtyChunkList.size());
-
-                for (uint32_t idx : _dirtyChunkList) {
-                    // Skip if index is out of bounds for either data or GPU buffer
-                    if (idx >= _chunkDrawData.size() || idx >= _currentMaxChunks) {
-                        continue;
-                    }
-
-                    const VkDeviceSize dstOffset = static_cast<VkDeviceSize>(idx) * sizeof(GPUChunkData);
-
-                    // Final safety check: ensure we don't write past buffer end
-                    if (dstOffset + sizeof(GPUChunkData) > bufferSize) {
-                        continue;
-                    }
-
-                    // Add data and corresponding copy region
-                    VkBufferCopy copyRegion{};
-                    copyRegion.srcOffset = _dirtyDataBuffer.size() * sizeof(GPUChunkData);
-                    copyRegion.dstOffset = dstOffset;
-                    copyRegion.size = sizeof(GPUChunkData);
-
-                    _dirtyDataBuffer.push_back(_chunkDrawData[idx]);
-                    _copyRegions.push_back(copyRegion);
-                }
-
-                // Only proceed if we have valid data to copy
-                if (!_dirtyDataBuffer.empty() && !_copyRegions.empty()) {
-                    const VkDeviceSize stagingSize = _dirtyDataBuffer.size() * sizeof(GPUChunkData);
-                    AllocatedBuffer stagingBuffer = _meshPool->acquireStagingBuffer(
-                        stagingSize, MeshBufferPool::StagingType::Generic);
-
-                    _bufferManager.uploadToBuffer(stagingBuffer, _dirtyDataBuffer.data(),
-                                                  _dirtyDataBuffer.size() * sizeof(GPUChunkData));
-
-                    // Single batched copy command instead of N individual copies
-                    _executor.immediateSubmit([&](VkCommandBuffer cmd) {
-                        vkCmdCopyBuffer(cmd, stagingBuffer.buffer,
-                                        _chunkDataBuffers[frameIndex].buffer,
-                                        static_cast<uint32_t>(_copyRegions.size()),
-                                        _copyRegions.data());
-
-                        VkMemoryBarrier transferBarrier{};
-                        transferBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-                        transferBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-                        transferBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-                        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                             VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT |
-                                                 VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT |
-                                                 VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
-                                             0, 1, &transferBarrier, 0, nullptr, 0, nullptr);
-                    });
-                }
-            } else {
-                ZoneScopedN("Upload All Chunks");
-                _bufferManager.uploadToBuffer(_chunkDataBuffers[frameIndex], _chunkDrawData.data(),
-                                              _chunkDrawData.size() * sizeof(GPUChunkData));
-            }
-
-            for (uint32_t idx : _dirtyChunkList) {
-                if (idx < _dirtyChunkIndices.size()) {
-                    _dirtyChunkIndices[idx] = false;
-                }
-            }
-            _dirtyChunkList.clear();
+            ZoneScopedN("Upload All Chunks");
+            _bufferManager.uploadToBuffer(_chunkDataBuffers[frameIndex], _chunkDrawData.data(),
+                                          _chunkDrawData.size() * sizeof(GPUChunkData));
         }
+
+        for (uint32_t idx : _dirtyChunkList) {
+            if (idx < _dirtyChunkIndices.size()) {
+                _dirtyChunkIndices[idx] = false;
+            }
+        }
+        _dirtyChunkList.clear();
 
         _chunkDataDirty = false;
         _dirtyChunkCount = 0;
@@ -677,28 +666,24 @@ void ChunkBufferManager::buildIndirectCommands() {
         if (buffers.indexCount == 0) {
             continue;
         }
-
         GPUChunkData chunkData{};
         chunkData.chunkWorldPos = drawInfo.worldPosition;
         chunkData.indexCount = buffers.indexCount;
         chunkData.vertexBufferAddress = buffers.vertexAddress;
         chunkData.firstIndex = buffers.firstIndex;
-        chunkData._padding = 0;
+        chunkData.lodLevel = drawInfo.lodLevel;
         _chunkDrawData.push_back(chunkData);
     }
 
     _indirectCommands.clear();
     _indirectCommands.reserve(_chunkDrawInfos.size());
 
-    for (const auto& drawInfo : _chunkDrawInfos) {
-        const ChunkMeshBuffers& buffers = drawInfo.meshBuffers;
-        if (buffers.indexCount == 0)
-            continue;
+    for (const auto& chunkData : _chunkDrawData) {
 
         VkDrawIndexedIndirectCommand indirectCmd{};
-        indirectCmd.indexCount = buffers.indexCount;
+        indirectCmd.indexCount = chunkData.indexCount;
         indirectCmd.instanceCount = 1;
-        indirectCmd.firstIndex = buffers.firstIndex;
+        indirectCmd.firstIndex = chunkData.firstIndex;
         indirectCmd.vertexOffset = 0;
         indirectCmd.firstInstance = 0;
         _indirectCommands.push_back(indirectCmd);

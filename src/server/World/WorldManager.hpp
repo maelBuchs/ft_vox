@@ -152,12 +152,13 @@ class WorldManager {
      * Returns true if task was enqueued, false if already in progress.
      */
     bool enqueueMeshingTask(const glm::ivec3& pos);
+    bool enqueueMeshingTask(const glm::ivec3& pos, uint32_t lodLevel);
 
     /**
      * Internal version of enqueueMeshingTask that assumes _chunkMutex is already locked.
      * Used to avoid deadlock when called from functions that already hold the lock.
      */
-    bool enqueueMeshingTaskInternal(const glm::ivec3& pos);
+    bool enqueueMeshingTaskInternal(const glm::ivec3& pos, uint32_t lodLevel);
 
     /**
      * Mark neighbors as dirty for re-meshing.
@@ -182,6 +183,7 @@ class WorldManager {
     std::unordered_set<glm::ivec3> _meshingChunks;    // Chunks currently being meshed
     std::unordered_set<glm::ivec3> _dirtyChunks;      // Chunks that need re-meshing
     std::unordered_set<glm::ivec3> _chunksToUnload;   // Chunks marked for unloading
+    std::unordered_map<glm::ivec3, uint32_t> _chunkLodLevels;
 
     // Performance instrumentation
     std::atomic<uint64_t> _totalChunksGenerated{0};

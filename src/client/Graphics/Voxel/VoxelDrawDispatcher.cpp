@@ -254,7 +254,7 @@ void VoxelDrawDispatcher::dispatchGPUCulling(VkCommandBuffer cmd, Camera& camera
     ComputeCullingPushConstants pushConstants{};
     pushConstants.totalChunks = static_cast<uint32_t>(_bufferMgr.getChunkDrawData().size());
     pushConstants.chunkSize = GraphicsUtils::Chunk::SIZE_FLOAT;
-    pushConstants.debugMode = 1; // Skip distance, use frustum only
+    pushConstants.debugMode = 0; // Full culling path (distance + frustum)
     pushConstants._padding = 0;
 
     vkCmdPushConstants(cmd, _pipelineManager.getFrustumCullPipelineLayout(),
@@ -396,4 +396,3 @@ void VoxelDrawDispatcher::drawTraditionalPath(VkCommandBuffer cmd, Camera& camer
                                  sizeof(VkDrawIndexedIndirectCommand));
     }
 }
-
