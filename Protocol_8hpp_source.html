@@ -109,52 +109,58 @@ $(document).ready(function(){initNavTree('Protocol_8hpp_source.html',''); initRe
 <div class="line"><a id="l00014" name="l00014"></a><span class="lineno">   14</span><span class="comment">// Client -&gt; Server: Request to load/generate a chunk</span></div>
 <div class="line"><a id="l00015" name="l00015"></a><span class="lineno"><a class="line" href="structChunkRequest.html">   15</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structChunkRequest.html">ChunkRequest</a> {</div>
 <div class="line"><a id="l00016" name="l00016"></a><span class="lineno">   16</span>    glm::ivec3 chunkPosition;</div>
-<div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span> </div>
-<div class="line"><a id="l00018" name="l00018"></a><span class="lineno">   18</span>    <a class="code hl_struct" href="structChunkRequest.html">ChunkRequest</a>() = <span class="keywordflow">default</span>;</div>
-<div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span>    <span class="keyword">explicit</span> <a class="code hl_struct" href="structChunkRequest.html">ChunkRequest</a>(<span class="keyword">const</span> glm::ivec3&amp; pos) : chunkPosition(pos) {}</div>
-<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span>};</div>
-<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span> </div>
-<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span><span class="comment">// Server -&gt; Meshing Thread: Chunk data ready for meshing</span></div>
-<div class="line"><a id="l00023" name="l00023"></a><span class="lineno"><a class="line" href="structGenerationTask.html">   23</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structGenerationTask.html">GenerationTask</a> {</div>
-<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span>    glm::ivec3 chunkPosition;</div>
-<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span>    std::shared_ptr&lt;Chunk&gt; chunkData; <span class="comment">// The main chunk to mesh</span></div>
-<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span> </div>
-<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span>    <span class="comment">// Neighbor chunks for face culling (can be nullptr if not loaded)</span></div>
-<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span>    std::shared_ptr&lt;Chunk&gt; neighborNorth;  <span class="comment">// +Z</span></div>
-<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span>    std::shared_ptr&lt;Chunk&gt; neighborSouth;  <span class="comment">// -Z</span></div>
-<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span>    std::shared_ptr&lt;Chunk&gt; neighborEast;   <span class="comment">// +X</span></div>
-<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span>    std::shared_ptr&lt;Chunk&gt; neighborWest;   <span class="comment">// -X</span></div>
-<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span>    std::shared_ptr&lt;Chunk&gt; neighborTop;    <span class="comment">// +Y</span></div>
-<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span>    std::shared_ptr&lt;Chunk&gt; neighborBottom; <span class="comment">// -Y</span></div>
-<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span> </div>
-<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span>    <a class="code hl_struct" href="structGenerationTask.html">GenerationTask</a>() = <span class="keywordflow">default</span>;</div>
-<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>    <span class="keyword">explicit</span> <a class="code hl_struct" href="structGenerationTask.html">GenerationTask</a>(<span class="keyword">const</span> glm::ivec3&amp; pos, std::shared_ptr&lt;Chunk&gt; chunk)</div>
-<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>        : chunkPosition(pos), chunkData(std::move(chunk)) {}</div>
-<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>};</div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span> </div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span><span class="comment">// Meshing Thread -&gt; Client: Finished mesh data ready for GPU upload</span></div>
-<div class="line"><a id="l00041" name="l00041"></a><span class="lineno"><a class="line" href="structMeshData.html">   41</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structMeshData.html">MeshData</a> {</div>
-<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>    glm::ivec3 chunkPosition;</div>
-<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>    std::vector&lt;VoxelVertex&gt; vertices; <span class="comment">// Packed vertex data</span></div>
-<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>    std::vector&lt;uint32_t&gt; indices;</div>
-<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span> </div>
-<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>    <a class="code hl_struct" href="structMeshData.html">MeshData</a>() = <span class="keywordflow">default</span>;</div>
-<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>    <a class="code hl_struct" href="structMeshData.html">MeshData</a>(<span class="keyword">const</span> glm::ivec3&amp; pos, std::vector&lt;VoxelVertex&gt; verts, std::vector&lt;uint32_t&gt; idx)</div>
-<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>        : chunkPosition(pos), vertices(std::move(verts)), indices(std::move(idx)) {}</div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>};</div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span> </div>
-<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span><span class="comment">// Meshing completion notification (chunk position only)</span></div>
-<div class="line"><a id="l00052" name="l00052"></a><span class="lineno"><a class="line" href="structMeshingComplete.html">   52</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structMeshingComplete.html">MeshingComplete</a> {</div>
-<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>    glm::ivec3 chunkPosition;</div>
+<div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span>    uint32_t lodLevel = 0;</div>
+<div class="line"><a id="l00018" name="l00018"></a><span class="lineno">   18</span> </div>
+<div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span>    <a class="code hl_struct" href="structChunkRequest.html">ChunkRequest</a>() = <span class="keywordflow">default</span>;</div>
+<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span>    <span class="keyword">explicit</span> <a class="code hl_struct" href="structChunkRequest.html">ChunkRequest</a>(<span class="keyword">const</span> glm::ivec3&amp; pos, uint32_t lod = 0) : chunkPosition(pos), lodLevel(lod) {}</div>
+<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span>};</div>
+<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span> </div>
+<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span><span class="comment">// Server -&gt; Meshing Thread: Chunk data ready for meshing</span></div>
+<div class="line"><a id="l00024" name="l00024"></a><span class="lineno"><a class="line" href="structGenerationTask.html">   24</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structGenerationTask.html">GenerationTask</a> {</div>
+<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span>    glm::ivec3 chunkPosition;</div>
+<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span>    uint32_t lodLevel = 0;</div>
+<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span>    std::shared_ptr&lt;Chunk&gt; chunkData; <span class="comment">// The main chunk to mesh</span></div>
+<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span> </div>
+<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span>    <span class="comment">// Neighbor chunks for face culling (can be nullptr if not loaded)</span></div>
+<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span>    std::shared_ptr&lt;Chunk&gt; neighborNorth;  <span class="comment">// +Z</span></div>
+<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span>    std::shared_ptr&lt;Chunk&gt; neighborSouth;  <span class="comment">// -Z</span></div>
+<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span>    std::shared_ptr&lt;Chunk&gt; neighborEast;   <span class="comment">// +X</span></div>
+<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span>    std::shared_ptr&lt;Chunk&gt; neighborWest;   <span class="comment">// -X</span></div>
+<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span>    std::shared_ptr&lt;Chunk&gt; neighborTop;    <span class="comment">// +Y</span></div>
+<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span>    std::shared_ptr&lt;Chunk&gt; neighborBottom; <span class="comment">// -Y</span></div>
+<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span> </div>
+<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>    <a class="code hl_struct" href="structGenerationTask.html">GenerationTask</a>() = <span class="keywordflow">default</span>;</div>
+<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>    <span class="keyword">explicit</span> <a class="code hl_struct" href="structGenerationTask.html">GenerationTask</a>(<span class="keyword">const</span> glm::ivec3&amp; pos, std::shared_ptr&lt;Chunk&gt; chunk, uint32_t lod = 0)</div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>        : chunkPosition(pos), lodLevel(lod), chunkData(std::move(chunk)) {}</div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>};</div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span> </div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span><span class="comment">// Meshing Thread -&gt; Client: Finished mesh data ready for GPU upload</span></div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno"><a class="line" href="structMeshData.html">   43</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structMeshData.html">MeshData</a> {</div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>    glm::ivec3 chunkPosition;</div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>    uint32_t lodLevel = 0;</div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>    std::vector&lt;VoxelVertex&gt; vertices; <span class="comment">// Packed vertex data</span></div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>    std::vector&lt;uint32_t&gt; indices;</div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span> </div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>    <a class="code hl_struct" href="structMeshData.html">MeshData</a>() = <span class="keywordflow">default</span>;</div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>    <a class="code hl_struct" href="structMeshData.html">MeshData</a>(<span class="keyword">const</span> glm::ivec3&amp; pos, std::vector&lt;VoxelVertex&gt; verts, std::vector&lt;uint32_t&gt; idx,</div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>             uint32_t lod = 0)</div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>        : chunkPosition(pos), lodLevel(lod), vertices(std::move(verts)), indices(std::move(idx)) {}</div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>};</div>
 <div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span> </div>
-<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>    <a class="code hl_struct" href="structMeshingComplete.html">MeshingComplete</a>() = <span class="keywordflow">default</span>;</div>
-<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>    <span class="keyword">explicit</span> <a class="code hl_struct" href="structMeshingComplete.html">MeshingComplete</a>(<span class="keyword">const</span> glm::ivec3&amp; pos) : chunkPosition(pos) {}</div>
-<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>};</div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span><span class="comment">// Meshing completion notification (chunk position only)</span></div>
+<div class="line"><a id="l00056" name="l00056"></a><span class="lineno"><a class="line" href="structMeshingComplete.html">   56</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structMeshingComplete.html">MeshingComplete</a> {</div>
+<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>    glm::ivec3 chunkPosition;</div>
+<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>    uint32_t lodLevel = 0;</div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span> </div>
+<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>    <a class="code hl_struct" href="structMeshingComplete.html">MeshingComplete</a>() = <span class="keywordflow">default</span>;</div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>    <span class="keyword">explicit</span> <a class="code hl_struct" href="structMeshingComplete.html">MeshingComplete</a>(<span class="keyword">const</span> glm::ivec3&amp; pos, uint32_t lod = 0)</div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>        : chunkPosition(pos), lodLevel(lod) {}</div>
+<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>};</div>
 <div class="ttc" id="aclassChunk_html"><div class="ttname"><a href="classChunk.html">Chunk</a></div><div class="ttdef"><b>Definition:</b> Chunk.hpp:46</div></div>
 <div class="ttc" id="astructChunkRequest_html"><div class="ttname"><a href="structChunkRequest.html">ChunkRequest</a></div><div class="ttdef"><b>Definition:</b> Protocol.hpp:15</div></div>
-<div class="ttc" id="astructGenerationTask_html"><div class="ttname"><a href="structGenerationTask.html">GenerationTask</a></div><div class="ttdef"><b>Definition:</b> Protocol.hpp:23</div></div>
-<div class="ttc" id="astructMeshData_html"><div class="ttname"><a href="structMeshData.html">MeshData</a></div><div class="ttdef"><b>Definition:</b> Protocol.hpp:41</div></div>
-<div class="ttc" id="astructMeshingComplete_html"><div class="ttname"><a href="structMeshingComplete.html">MeshingComplete</a></div><div class="ttdef"><b>Definition:</b> Protocol.hpp:52</div></div>
+<div class="ttc" id="astructGenerationTask_html"><div class="ttname"><a href="structGenerationTask.html">GenerationTask</a></div><div class="ttdef"><b>Definition:</b> Protocol.hpp:24</div></div>
+<div class="ttc" id="astructMeshData_html"><div class="ttname"><a href="structMeshData.html">MeshData</a></div><div class="ttdef"><b>Definition:</b> Protocol.hpp:43</div></div>
+<div class="ttc" id="astructMeshingComplete_html"><div class="ttname"><a href="structMeshingComplete.html">MeshingComplete</a></div><div class="ttdef"><b>Definition:</b> Protocol.hpp:56</div></div>
 </div><!-- fragment --></div><!-- contents -->
 </div><!-- doc-content -->
 <!-- start footer part -->

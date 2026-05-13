@@ -136,7 +136,7 @@ $(document).ready(function(){initNavTree('RenderTypes_8hpp_source.html',''); ini
 <div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>    uint32_t indexCount;</div>
 <div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>    uint64_t vertexBufferAddress; <span class="comment">// VkDeviceAddress for per-chunk vertex buffer</span></div>
 <div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>    uint32_t firstIndex;          <span class="comment">// Offset in mega index buffer (needed for GPU culling)</span></div>
-<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>    uint32_t _padding;            <span class="comment">// Align to 16 bytes</span></div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>    uint32_t lodLevel;            <span class="comment">// 0 = full detail, 1+ = coarser far detail</span></div>
 <div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>};</div>
 <div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span> </div>
 <div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span><span class="comment">// GPU frustum data for compute culling</span></div>
