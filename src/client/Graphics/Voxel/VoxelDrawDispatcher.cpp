@@ -24,6 +24,7 @@ void VoxelDrawDispatcher::draw(VkCommandBuffer cmd, Camera& camera, bool wirefra
                                bool enableGPUCulling) {
     ZoneScopedN("VoxelDrawDispatcher::draw");
 
+    bool meshShadersSupported = _pipelineManager.supportsMeshShaders();
     const uint32_t frameIndex = static_cast<uint32_t>(
         _renderer.getFrameNumber() % ChunkBufferManager::CHUNK_BUFFER_COUNT);
 
@@ -283,17 +284,11 @@ void VoxelDrawDispatcher::buildCPUIndirectCommands(VkCommandBuffer cmd) {
 
     const auto& indirectCommands = _bufferMgr.getIndirectCommands();
 
-<<<<<<< HEAD
-    _bufferManager.uploadToBuffer(
-        AllocatedBuffer{_bufferMgr.getIndirectBuffer(), VK_NULL_HANDLE},
-        indirectCommands.data(), indirectCommands.size() * sizeof(VkDrawIndexedIndirectCommand));
-=======
     _bufferManager.uploadToBuffer(_bufferMgr.getIndirectBufferAllocation(),
                                   indirectCommands.data(),
                                   indirectCommands.size() * sizeof(VkDrawIndexedIndirectCommand));
->>>>>>> a7cffcf (Test ?)
 
-    VkMemoryBarrier hostBarrier{};
+                                  VkMemoryBarrier hostBarrier{};
     hostBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
     hostBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
     hostBarrier.dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
