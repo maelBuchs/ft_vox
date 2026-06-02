@@ -499,6 +499,41 @@ float Renderer::getMeshPoolUsage() const {
     return 0.0f;
 }
 
+uint32_t Renderer::getLodResidentCount(uint32_t lodLevel) const {
+    if (_voxelRenderer) {
+        return _voxelRenderer->getLodResidentCount(lodLevel);
+    }
+    return 0;
+}
+
+uint32_t Renderer::getLodSubmittedCount(uint32_t lodLevel) const {
+    if (_voxelRenderer) {
+        return _voxelRenderer->getLodSubmittedCount(lodLevel);
+    }
+    return 0;
+}
+
+uint32_t Renderer::getLodMeshUpdateCount(uint32_t lodLevel) const {
+    if (_voxelRenderer) {
+        return _voxelRenderer->getLodMeshUpdateCount(lodLevel);
+    }
+    return 0;
+}
+
+uint32_t Renderer::getLodUpgradeCount() const {
+    if (_voxelRenderer) {
+        return _voxelRenderer->getLodUpgradeCount();
+    }
+    return 0;
+}
+
+uint32_t Renderer::getLodDowngradeCount() const {
+    if (_voxelRenderer) {
+        return _voxelRenderer->getLodDowngradeCount();
+    }
+    return 0;
+}
+
 bool Renderer::needsGammaCorrection() const {
     return _swapchain->getSwapchainImageFormat() == VK_FORMAT_A2B10G10R10_UNORM_PACK32;
 }

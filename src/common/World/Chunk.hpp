@@ -86,6 +86,10 @@ class Chunk {
                       const Chunk* neighborEast, const Chunk* neighborWest,
                       const Chunk* neighborTop, const Chunk* neighborBottom);
 
+    [[nodiscard]] bool isPaddingValid(const Chunk* neighborNorth, const Chunk* neighborSouth,
+                                       const Chunk* neighborEast, const Chunk* neighborWest,
+                                       const Chunk* neighborTop, const Chunk* neighborBottom) const;
+
     void setBlock(int x, int y, int z, uint8_t blockId);
 
     // Helper functions
@@ -170,5 +174,12 @@ class Chunk {
     void generateChunk();
     bool loadChunk();
     int64_t kSEED;
-    // void saveChunk();
+
+    uint32_t _blocksVersion{0};
+    uint32_t _paddingVersion{1};
+    uint32_t _paddingNeighborVersions[6]{};
+
+    static uint32_t getNeighborVersion(const Chunk* neighbor) {
+        return neighbor ? neighbor->_blocksVersion : 0;
+    }
 };

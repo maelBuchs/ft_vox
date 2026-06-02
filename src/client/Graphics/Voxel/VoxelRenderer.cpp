@@ -87,3 +87,23 @@ size_t VoxelRenderer::getLoadedChunkCount() const {
 float VoxelRenderer::getMeshPoolUsage() const {
     return _bufferManager->getMeshPoolUsage();
 }
+
+uint32_t VoxelRenderer::getLodResidentCount(uint32_t lodLevel) const {
+    return _bufferManager->getLodResidentCount(lodLevel);
+}
+
+uint32_t VoxelRenderer::getLodSubmittedCount(uint32_t lodLevel) const {
+    return _bufferManager->getLodSubmittedCount(lodLevel);
+}
+
+uint32_t VoxelRenderer::getLodMeshUpdateCount(uint32_t lodLevel) const {
+    return _bufferManager->getLodMeshUpdateCount(lodLevel);
+}
+
+uint32_t VoxelRenderer::getLodUpgradeCount() const {
+    return _bufferManager->getLodUpgradeCount();
+}
+
+uint32_t VoxelRenderer::getLodDowngradeCount() const {
+    return _bufferManager->getLodDowngradeCount();
+}

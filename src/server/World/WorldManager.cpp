@@ -72,9 +72,15 @@ void WorldManager::stop() {
     if (_completionProcessor && _completionProcessor->joinable()) {
         _completionProcessor->join();
     }
+
     {
-        std::unique_lock<std::shared_mutex> lock(_chunkMutex);
+        std::unique_lock<std::shared_mutex> mapLock(_chunkMapMutex);
+        std::lock_guard<std::mutex> stateLock(_stateMutex);
         _loadedChunks.clear();
+        _generatingChunks.clear();
+        _meshingChunks.clear();
+        _dirtyChunks.clear();
+        _chunkLodLevels.clear();
     }
     std::cout << "[WorldManager] All threads stopped\n";
     std::cout << "[WorldManager] Stats - Chunks generated: " << _totalChunksGenerated.load()
@@ -97,9 +103,10 @@ void WorldManager::generationWorkerLoop() {
 
         bool shouldGenerate = false;
 
-        // Check if chunk is already loaded or being generated (with lock)
+        // Check if chunk is already loaded or being generated
         {
-            std::unique_lock<std::shared_mutex> lock(_chunkMutex);
+            std::unique_lock<std::shared_mutex> mapLock(_chunkMapMutex);
+            std::lock_guard<std::mutex> stateLock(_stateMutex);
 
             if (_loadedChunks.contains(pos)) {
                 _chunkLodLevels[pos] = request.lodLevel;
@@ -120,20 +127,11 @@ void WorldManager::generationWorkerLoop() {
         }
 
         // Generate the chunk (this is the expensive part - do it outside the lock)
-        auto startTime = std::chrono::high_resolution_clock::now();
         std::shared_ptr<Chunk> mainChunk = generateChunk(pos);
-        auto endTime = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
-
-        // Log slow generation (>5ms)
-        // if (duration.count() > 5000) {
-        //     std::cout << "[WorldManager] Chunk generation at (" << pos[0] << ", " << pos[1] << ",
-        //     "
-        //               << pos[2] << ") took " << duration.count() / 1000.0F << "ms\n";
-        // }
 
         {
-            std::unique_lock<std::shared_mutex> lock(_chunkMutex);
+            std::unique_lock<std::shared_mutex> mapLock(_chunkMapMutex);
+            std::lock_guard<std::mutex> stateLock(_stateMutex);
             _loadedChunks[pos] = mainChunk;
             _generatingChunks.erase(pos);
             _totalChunksGenerated.fetch_add(1);
@@ -148,7 +146,7 @@ void WorldManager::generationWorkerLoop() {
 }
 
 std::shared_ptr<Chunk> WorldManager::getChunkFromCache(const glm::ivec3& pos) {
-    // Caller must hold _chunkMutex lock
+    // Caller must hold necessary locks
     auto it = _loadedChunks.find(pos);
     if (it != _loadedChunks.end()) {
         return it->second;
@@ -160,25 +158,22 @@ void WorldManager::markNeighborsDirty(const glm::ivec3& pos) {
     static constexpr glm::ivec3 kNEIGHBOR_OFFSETS[] = {{1, 0, 0},  {-1, 0, 0}, {0, 1, 0},
                                                        {0, -1, 0}, {0, 0, 1},  {0, 0, -1}};
 
-    std::shared_lock<std::shared_mutex> lock(_chunkMutex);
+    std::shared_lock<std::shared_mutex> mapLock(_chunkMapMutex);
+    std::lock_guard<std::mutex> stateLock(_stateMutex);
 
     for (const glm::ivec3& offset : kNEIGHBOR_OFFSETS) {
         const glm::ivec3 kNEIGHBOR_POS = pos + offset;
 
         // Only mark dirty if chunk is loaded
         if (_loadedChunks.contains(kNEIGHBOR_POS)) {
-            // bool wasAlreadyDirty = _dirtyChunks.find(kNEIGHBOR_POS) != _dirtyChunks.end();
             _dirtyChunks.insert(kNEIGHBOR_POS);
 
-            // This prevents cascading re-meshes where chunks get meshed 5-7 times
             // Count how many neighbors exist (loaded) vs how many are possible
             int loadedNeighbors = 0;
             int possibleNeighbors = 0;
             for (const glm::ivec3& checkOffset : kNEIGHBOR_OFFSETS) {
                 const glm::ivec3 kCHECK_POS = kNEIGHBOR_POS + checkOffset;
 
-                // Count this as a possible neighbor if it's within world bounds
-                // (Y >= 0 for bottom boundary check - no chunks below Y=0)
                 if (kCHECK_POS[1] >= 0) {
                     possibleNeighbors++;
                     if (_loadedChunks.contains(kCHECK_POS)) {
@@ -188,9 +183,7 @@ void WorldManager::markNeighborsDirty(const glm::ivec3& pos) {
             }
 
             // Re-mesh ONLY if chunk has ALL POSSIBLE neighbors loaded
-            // This handles edge cases like Y=0 chunks that can't have a bottom neighbor
             if (loadedNeighbors == possibleNeighbors && !_meshingChunks.contains(kNEIGHBOR_POS)) {
-                // Remove from dirty set since we're about to mesh it
                 _dirtyChunks.erase(kNEIGHBOR_POS);
                 _meshingChunks.insert(kNEIGHBOR_POS);
 
@@ -218,7 +211,8 @@ void WorldManager::markNeighborsDirty(const glm::ivec3& pos) {
 }
 
 WorldManager::QueueStats WorldManager::getQueueStats() const {
-    std::shared_lock<std::shared_mutex> lock(_chunkMutex);
+    std::shared_lock<std::shared_mutex> mapLock(_chunkMapMutex);
+    std::lock_guard<std::mutex> stateLock(_stateMutex);
     return QueueStats{_requestQueue.size(),     _meshingQueue.size(),  _loadedChunks.size(),
                       _generatingChunks.size(), _meshingChunks.size(), _chunksToUnload.size()};
 }
@@ -236,14 +230,14 @@ void WorldManager::completionProcessorLoop() {
 
         const glm::ivec3& pos = completion.chunkPosition;
 
-        std::shared_lock<std::shared_mutex> lock(_chunkMutex);
+        std::shared_lock<std::shared_mutex> mapLock(_chunkMapMutex);
+        std::lock_guard<std::mutex> stateLock(_stateMutex);
 
         // Remove from meshing set
         _meshingChunks.erase(pos);
 
         // Check if chunk is dirty (needs re-meshing)
         if (_dirtyChunks.contains(pos)) {
-            // Count how many neighbors are loaded vs possible
             static constexpr glm::ivec3 kNEIGHBOR_OFFSETS[] = {{1, 0, 0},  {-1, 0, 0}, {0, 1, 0},
                                                                {0, -1, 0}, {0, 0, 1},  {0, 0, -1}};
             int loadedNeighbors = 0;
@@ -251,7 +245,6 @@ void WorldManager::completionProcessorLoop() {
             for (const glm::ivec3& offset : kNEIGHBOR_OFFSETS) {
                 const glm::ivec3 kCHECK_POS = pos + offset;
 
-                // Count as possible if within world bounds (Y >= 0)
                 if (kCHECK_POS[1] >= 0) {
                     possibleNeighbors++;
                     if (_loadedChunks.contains(kCHECK_POS)) {
@@ -260,12 +253,9 @@ void WorldManager::completionProcessorLoop() {
                 }
             }
 
-            // Only re-mesh if chunk has ALL POSSIBLE neighbors
-            // Otherwise, keep it dirty and it will be picked up later
             if (loadedNeighbors == possibleNeighbors) {
                 _dirtyChunks.erase(pos);
 
-                // Re-mesh with updated neighbors
                 if (_loadedChunks.contains(pos) && !_meshingChunks.contains(pos)) {
 
                     _meshingChunks.insert(pos);
@@ -283,25 +273,26 @@ void WorldManager::completionProcessorLoop() {
                     _totalMeshingTasksEnqueued.fetch_add(1);
                 }
             }
-            // If not enough neighbors, keep it in _dirtyChunks to be retried later
         }
     }
 }
 
 bool WorldManager::enqueueMeshingTask(const glm::ivec3& pos) {
-    std::unique_lock<std::shared_mutex> lock(_chunkMutex);
+    std::shared_lock<std::shared_mutex> mapLock(_chunkMapMutex);
+    std::lock_guard<std::mutex> stateLock(_stateMutex);
     const uint32_t lodLevel = _chunkLodLevels.contains(pos) ? _chunkLodLevels[pos] : 0;
     return enqueueMeshingTaskInternal(pos, lodLevel);
 }
 
 bool WorldManager::enqueueMeshingTask(const glm::ivec3& pos, uint32_t lodLevel) {
-    std::unique_lock<std::shared_mutex> lock(_chunkMutex);
+    std::shared_lock<std::shared_mutex> mapLock(_chunkMapMutex);
+    std::lock_guard<std::mutex> stateLock(_stateMutex);
     _chunkLodLevels[pos] = lodLevel;
     return enqueueMeshingTaskInternal(pos, lodLevel);
 }
 
 bool WorldManager::enqueueMeshingTaskInternal(const glm::ivec3& pos, uint32_t lodLevel) {
-    // NOTE: This function assumes _chunkMutex is already locked by the caller!
+    // NOTE: Caller must hold _chunkMapMutex (shared) and _stateMutex before calling
 
     auto chunkIt = _loadedChunks.find(pos);
     if (chunkIt == _loadedChunks.end()) {
@@ -332,29 +323,28 @@ bool WorldManager::enqueueMeshingTaskInternal(const glm::ivec3& pos, uint32_t lo
 }
 
 void WorldManager::markChunkForUnload(const glm::ivec3& pos) {
-    std::unique_lock<std::shared_mutex> lock(_chunkMutex);
+    std::lock_guard<std::mutex> stateLock(_stateMutex);
     _chunksToUnload.insert(pos);
 }
 
 void WorldManager::unmarkChunkForUnload(const glm::ivec3& pos) {
-    std::unique_lock<std::shared_mutex> lock(_chunkMutex);
+    std::lock_guard<std::mutex> stateLock(_stateMutex);
     _chunksToUnload.erase(pos);
 }
 
 std::vector<glm::ivec3> WorldManager::unloadMarkedChunks() {
-    std::unique_lock<std::shared_mutex> lock(_chunkMutex);
+    std::unique_lock<std::shared_mutex> mapLock(_chunkMapMutex);
+    std::lock_guard<std::mutex> stateLock(_stateMutex);
     std::vector<glm::ivec3> unloadedChunks;
     unloadedChunks.reserve(_chunksToUnload.size());
 
     for (const glm::ivec3& pos : _chunksToUnload) {
-        // Remove from loaded chunks map (this frees RAM via shared_ptr)
         auto it = _loadedChunks.find(pos);
         if (it != _loadedChunks.end()) {
             _loadedChunks.erase(it);
             unloadedChunks.push_back(pos);
         }
 
-        // Also remove from other tracking sets to keep state clean
         _generatingChunks.erase(pos);
         _meshingChunks.erase(pos);
         _dirtyChunks.erase(pos);
@@ -371,7 +361,7 @@ std::vector<glm::ivec3> WorldManager::unloadMarkedChunks() {
 }
 
 std::vector<glm::ivec3> WorldManager::getLoadedChunkPositions() const {
-    std::shared_lock<std::shared_mutex> lock(_chunkMutex);
+    std::shared_lock<std::shared_mutex> mapLock(_chunkMapMutex);
     std::vector<glm::ivec3> positions;
     positions.reserve(_loadedChunks.size());
 
@@ -383,27 +373,25 @@ std::vector<glm::ivec3> WorldManager::getLoadedChunkPositions() const {
 }
 
 bool WorldManager::isChunkLoaded(const glm::ivec3& pos) const {
-    std::shared_lock<std::shared_mutex> lock(_chunkMutex);
+    std::shared_lock<std::shared_mutex> mapLock(_chunkMapMutex);
     return _loadedChunks.contains(pos);
 }
 
 void WorldManager::requestRemeshForAllChunks(const std::vector<glm::ivec3>& excludeChunks) {
-    std::unique_lock<std::shared_mutex> lock(_chunkMutex);
+    std::shared_lock<std::shared_mutex> mapLock(_chunkMapMutex);
+    std::lock_guard<std::mutex> stateLock(_stateMutex);
 
     // Convert exclude list to set for fast lookup
     std::unordered_set<glm::ivec3> excludeSet(excludeChunks.begin(), excludeChunks.end());
 
     int remeshedCount = 0;
     for (const auto& [pos, chunk] : _loadedChunks) {
-        // Skip chunks that were unloaded
         if (excludeSet.contains(pos)) {
             continue;
         }
 
-        // Mark as dirty and enqueue for meshing
         _dirtyChunks.insert(pos);
 
-        // Use internal version to avoid deadlock (we already hold _chunkMutex)
         const uint32_t lodLevel = _chunkLodLevels.contains(pos) ? _chunkLodLevels[pos] : 0;
         enqueueMeshingTaskInternal(pos, lodLevel);
         remeshedCount++;
@@ -413,7 +401,8 @@ void WorldManager::requestRemeshForAllChunks(const std::vector<glm::ivec3>& excl
 }
 
 void WorldManager::remeshChunkAtPosition(const glm::ivec3& pos) {
-    std::unique_lock<std::shared_mutex> lock(_chunkMutex);
+    std::shared_lock<std::shared_mutex> mapLock(_chunkMapMutex);
+    std::lock_guard<std::mutex> stateLock(_stateMutex);
     _dirtyChunks.insert(pos);
     const uint32_t lodLevel = _chunkLodLevels.contains(pos) ? _chunkLodLevels[pos] : 0;
     enqueueMeshingTaskInternal(pos, lodLevel);
@@ -438,8 +427,6 @@ void WorldManager::updatedBlockAt(glm::ivec3 worldPos) {
     } else if (worldToBlock(worldPos.z) == 0) {
         remeshChunkAtPosition(chunkPos + glm::ivec3(0, 0, -1));
     }
-
-    std::unique_lock<std::shared_mutex> lock(_chunkMutex);
 }
 
 std::optional<glm::vec3> WorldManager::getTargetBlock(const Camera& camera) {
@@ -526,7 +513,7 @@ uint8_t WorldManager::getBlockValue(glm::vec3 position) {
 }
 
 std::shared_ptr<Chunk> WorldManager::getChunkAtPosition(glm::ivec3 target) {
-    std::shared_lock<std::shared_mutex> lock(_chunkMutex);
+    std::shared_lock<std::shared_mutex> mapLock(_chunkMapMutex);
     auto it = _loadedChunks.find(target);
     if (it != _loadedChunks.end() && it->second) {
         return (it->second);

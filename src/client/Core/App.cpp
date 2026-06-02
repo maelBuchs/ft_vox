@@ -117,11 +117,25 @@ void App::updateUI(Renderer& renderer, InputManager& inputManager, Camera& camer
         usageColor = ImVec4(0.0F, 1.0F, 0.0F, 1.0F); // Green < 70%
     } else if (poolUsage < 0.9F) {
         usageColor = ImVec4(1.0F, 1.0F, 0.0F, 1.0F); // Yellow 70-90%
+    } else {
+        usageColor = ImVec4(1.0F, 0.2F, 0.2F, 1.0F); // Red >= 90%
     }
+    ImGui::TextColored(usageColor, "  Mesh Pool Usage: %.1f%%", poolUsage * 100.0F);
     ImGui::Text("  Generating: %zu", queueStats.generatingChunksCount);
     ImGui::Text("  Meshing: %zu", queueStats.meshingChunksCount);
     ImGui::Text("  Requested: %zu", _requestedChunks.size());
     ImGui::Text("  Marked for Unload: %zu", queueStats.chunksToUnloadCount);
+
+    ImGui::Separator();
+    ImGui::Text("LOD Debug (resident/submitted/remeshed):");
+    ImGui::Text("  LOD0: %u / %u / %u", renderer.getLodResidentCount(0),
+                renderer.getLodSubmittedCount(0), renderer.getLodMeshUpdateCount(0));
+    ImGui::Text("  LOD1: %u / %u / %u", renderer.getLodResidentCount(1),
+                renderer.getLodSubmittedCount(1), renderer.getLodMeshUpdateCount(1));
+    ImGui::Text("  LOD2+: %u / %u / %u", renderer.getLodResidentCount(2),
+                renderer.getLodSubmittedCount(2), renderer.getLodMeshUpdateCount(2));
+    ImGui::Text("  LOD transitions this frame: +%u / -%u", renderer.getLodUpgradeCount(),
+                renderer.getLodDowngradeCount());
     ImGui::Separator();
 
     bool wireframeMode = renderer.isWireframeMode();

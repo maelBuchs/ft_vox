@@ -14,21 +14,47 @@
 #include "common/World/Chunk.hpp"
 
 namespace {
+uint32_t lodBucket(uint32_t lodLevel) {
+    return std::min(lodLevel, 2u);
+}
+
 uint32_t computeChunkLodLevel(const glm::ivec3& cameraChunkPos, const glm::ivec3& chunkCoords,
-                              int maxLoadDistance) {
+                              int maxLoadDistance, uint32_t currentLod) {
     const glm::ivec3 offset = chunkCoords - cameraChunkPos;
     const int chebyshevDistance = std::max({std::abs(offset.x), std::abs(offset.y), std::abs(offset.z)});
 
     const int lod1Start = std::max(6, maxLoadDistance / 3);
     const int lod2Start = std::max(lod1Start + 4, (maxLoadDistance * 2) / 3);
+    const int hysteresis = 2;
+    const int lod1Exit = std::max(0, lod1Start - hysteresis);
+    const int lod2Exit = std::max(lod1Start, lod2Start - hysteresis);
 
-    if (chebyshevDistance >= lod2Start) {
+    switch (lodBucket(currentLod)) {
+    case 0:
+        if (chebyshevDistance >= lod2Start) {
+            return 2;
+        }
+        if (chebyshevDistance >= lod1Start) {
+            return 1;
+        }
+        return 0;
+    case 1:
+        if (chebyshevDistance >= lod2Start) {
+            return 2;
+        }
+        if (chebyshevDistance < lod1Exit) {
+            return 0;
+        }
+        return 1;
+    default:
+        if (chebyshevDistance < lod2Exit) {
+            if (chebyshevDistance < lod1Exit) {
+                return 0;
+            }
+            return 1;
+        }
         return 2;
     }
-    if (chebyshevDistance >= lod1Start) {
-        return 1;
-    }
-    return 0;
 }
 
 } // namespace
@@ -379,6 +405,9 @@ void ChunkBufferManager::beginFrame() {
 void ChunkBufferManager::update(const glm::ivec3& cameraChunkPos, int maxLoadDistance) {
     ZoneScoped;
     _maxLoadDistance = maxLoadDistance;
+    _lodMeshUpdateCounts.fill(0);
+    _lodUpgradeCount = 0;
+    _lodDowngradeCount = 0;
 
     if (!_hasLastCameraChunkPos || _lastCameraChunkPos != cameraChunkPos) {
         _hasLastCameraChunkPos = true;
@@ -507,8 +536,11 @@ void ChunkBufferManager::update(const glm::ivec3& cameraChunkPos, int maxLoadDis
                 info.chunkCoords = chunkCoords;
                 info.worldPosition = chunkWorldPos;
                 info.lodLevel =
-                    std::max(meshData.lodLevel, computeChunkLodLevel(cameraChunkPos, chunkCoords, maxLoadDistance));
+                    std::max(meshData.lodLevel,
+                             computeChunkLodLevel(cameraChunkPos, chunkCoords, maxLoadDistance,
+                                                  info.lodLevel));
                 info.meshBuffers = chunkBuffers;
+                _lodMeshUpdateCounts[lodBucket(info.lodLevel)]++;
                 _chunkDataDirty = true;
                 _dirtyChunkCount++;
 
@@ -534,8 +566,11 @@ void ChunkBufferManager::update(const glm::ivec3& cameraChunkPos, int maxLoadDis
                     info.chunkCoords = chunkCoords;
                     info.worldPosition = chunkWorldPos;
                     info.lodLevel = std::max(
-                        meshData.lodLevel, computeChunkLodLevel(cameraChunkPos, chunkCoords, maxLoadDistance));
+                        meshData.lodLevel,
+                        computeChunkLodLevel(cameraChunkPos, chunkCoords, maxLoadDistance,
+                                             meshData.lodLevel));
                     info.meshBuffers = chunkBuffers;
+                    _lodMeshUpdateCounts[lodBucket(info.lodLevel)]++;
                     _chunkDrawLookup.emplace(chunkCoords, reuseIndex);
                     chunkIndex = reuseIndex;
                 } else {
@@ -544,8 +579,11 @@ void ChunkBufferManager::update(const glm::ivec3& cameraChunkPos, int maxLoadDis
                                                             .worldPosition = chunkWorldPos,
                                                             .lodLevel = std::max(
                                                                 meshData.lodLevel,
-                                                                computeChunkLodLevel(cameraChunkPos, chunkCoords, maxLoadDistance)),
+                                                                computeChunkLodLevel(cameraChunkPos, chunkCoords,
+                                                                                     maxLoadDistance,
+                                                                                     meshData.lodLevel)),
                                                             .meshBuffers = chunkBuffers});
+                    _lodMeshUpdateCounts[lodBucket(_chunkDrawInfos.back().lodLevel)]++;
                     _chunkDrawLookup.emplace(chunkCoords, chunkIndex);
                 }
                 _chunkDataDirty = true;
@@ -572,11 +610,18 @@ void ChunkBufferManager::update(const glm::ivec3& cameraChunkPos, int maxLoadDis
     // Re-evaluate LOD bands as camera moves so far chunks can switch to coarser detail.
     for (size_t i = 0; i < _chunkDrawInfos.size(); ++i) {
         ChunkDrawInfo& info = _chunkDrawInfos[i];
-        const uint32_t newLod = computeChunkLodLevel(cameraChunkPos, info.chunkCoords, maxLoadDistance);
+        const uint32_t oldLod = info.lodLevel;
+        const uint32_t newLod =
+            computeChunkLodLevel(cameraChunkPos, info.chunkCoords, maxLoadDistance, oldLod);
         if (newLod == info.lodLevel) {
             continue;
         }
         info.lodLevel = newLod;
+        if (newLod > oldLod) {
+            _lodUpgradeCount++;
+        } else {
+            _lodDowngradeCount++;
+        }
         _chunkDataDirty = true;
         _dirtyChunkCount++;
         if (i >= _dirtyChunkIndices.size()) {
@@ -615,12 +660,14 @@ void ChunkBufferManager::update(const glm::ivec3& cameraChunkPos, int maxLoadDis
 
         _chunkDrawData.clear();
         _chunkDrawData.reserve(_chunkDrawInfos.size());
+        _lodResidentCounts.fill(0);
 
         for (const ChunkDrawInfo& drawInfo : _chunkDrawInfos) {
             const ChunkMeshBuffers& buffers = drawInfo.meshBuffers;
             if (buffers.indexCount == 0) {
                 continue;
             }
+            _lodResidentCounts[lodBucket(drawInfo.lodLevel)]++;
             GPUChunkData chunkData{};
             chunkData.chunkWorldPos = drawInfo.worldPosition;
             chunkData.indexCount = buffers.indexCount;
@@ -628,6 +675,10 @@ void ChunkBufferManager::update(const glm::ivec3& cameraChunkPos, int maxLoadDis
             chunkData.firstIndex = buffers.firstIndex;
             chunkData.lodLevel = drawInfo.lodLevel;
             _chunkDrawData.push_back(chunkData);
+        }
+        _lodSubmittedCounts.fill(0);
+        for (const GPUChunkData& chunkData : _chunkDrawData) {
+            _lodSubmittedCounts[lodBucket(chunkData.lodLevel)]++;
         }
 
         if (!_chunkDrawData.empty()) {
@@ -660,12 +711,14 @@ void ChunkBufferManager::buildIndirectCommands() {
 
     _chunkDrawData.clear();
     _chunkDrawData.reserve(_chunkDrawInfos.size());
+    _lodResidentCounts.fill(0);
 
     for (const ChunkDrawInfo& drawInfo : _chunkDrawInfos) {
         const ChunkMeshBuffers& buffers = drawInfo.meshBuffers;
         if (buffers.indexCount == 0) {
             continue;
         }
+        _lodResidentCounts[lodBucket(drawInfo.lodLevel)]++;
         GPUChunkData chunkData{};
         chunkData.chunkWorldPos = drawInfo.worldPosition;
         chunkData.indexCount = buffers.indexCount;
@@ -677,8 +730,10 @@ void ChunkBufferManager::buildIndirectCommands() {
 
     _indirectCommands.clear();
     _indirectCommands.reserve(_chunkDrawInfos.size());
+    _lodSubmittedCounts.fill(0);
 
     for (const auto& chunkData : _chunkDrawData) {
+        _lodSubmittedCounts[lodBucket(chunkData.lodLevel)]++;
 
         VkDrawIndexedIndirectCommand indirectCmd{};
         indirectCmd.indexCount = chunkData.indexCount;
@@ -734,4 +789,16 @@ float ChunkBufferManager::getMeshPoolUsage() const {
     }
 
     return std::min(1.0f, static_cast<float>(totalIndexBytes) / static_cast<float>(indexCapacity));
+}
+
+uint32_t ChunkBufferManager::getLodResidentCount(uint32_t lodLevel) const {
+    return _lodResidentCounts[lodBucket(lodLevel)];
+}
+
+uint32_t ChunkBufferManager::getLodSubmittedCount(uint32_t lodLevel) const {
+    return _lodSubmittedCounts[lodBucket(lodLevel)];
+}
+
+uint32_t ChunkBufferManager::getLodMeshUpdateCount(uint32_t lodLevel) const {
+    return _lodMeshUpdateCounts[lodBucket(lodLevel)];
 }

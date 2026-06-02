@@ -83,6 +83,7 @@ void Chunk::setBlock(int x, int y, int z, uint8_t blockId) {
         return;
     }
     _blocks.at(static_cast<decltype(_blocks)::size_type>(getIndex(x, y, z))) = blockId;
+    _blocksVersion++;
     if (blockId != 0) {
         _isEmpty = false;
     }
@@ -124,7 +125,6 @@ void Chunk::buildPadding(const Chunk* neighborNorth, const Chunk* neighborSouth,
         }
     }
 
-    // +X border (x = CHUNK_SIZE, from neighborEast x = 0)
     if (neighborEast) {
         for (int z = 0; z < CHUNK_SIZE; z++) {
             for (int y = 0; y < CHUNK_SIZE; y++) {
@@ -133,7 +133,6 @@ void Chunk::buildPadding(const Chunk* neighborNorth, const Chunk* neighborSouth,
         }
     }
 
-    // -X border (x = -1, from neighborWest x = CHUNK_SIZE-1)
     if (neighborWest) {
         for (int z = 0; z < CHUNK_SIZE; z++) {
             for (int y = 0; y < CHUNK_SIZE; y++) {
@@ -142,7 +141,6 @@ void Chunk::buildPadding(const Chunk* neighborNorth, const Chunk* neighborSouth,
         }
     }
 
-    // +Y border (y = CHUNK_SIZE, from neighborTop y = 0)
     if (neighborTop) {
         for (int z = 0; z < CHUNK_SIZE; z++) {
             for (int x = 0; x < CHUNK_SIZE; x++) {
@@ -151,7 +149,6 @@ void Chunk::buildPadding(const Chunk* neighborNorth, const Chunk* neighborSouth,
         }
     }
 
-    // -Y border (y = -1, from neighborBottom y = CHUNK_SIZE-1)
     if (neighborBottom) {
         for (int z = 0; z < CHUNK_SIZE; z++) {
             for (int x = 0; x < CHUNK_SIZE; x++) {
@@ -160,7 +157,6 @@ void Chunk::buildPadding(const Chunk* neighborNorth, const Chunk* neighborSouth,
         }
     }
 
-    // +Z border (z = CHUNK_SIZE, from neighborNorth z = 0)
     if (neighborNorth) {
         for (int y = 0; y < CHUNK_SIZE; y++) {
             for (int x = 0; x < CHUNK_SIZE; x++) {
@@ -169,7 +165,6 @@ void Chunk::buildPadding(const Chunk* neighborNorth, const Chunk* neighborSouth,
         }
     }
 
-    // -Z border (z = -1, from neighborSouth z = CHUNK_SIZE-1)
     if (neighborSouth) {
         for (int y = 0; y < CHUNK_SIZE; y++) {
             for (int x = 0; x < CHUNK_SIZE; x++) {
@@ -177,4 +172,32 @@ void Chunk::buildPadding(const Chunk* neighborNorth, const Chunk* neighborSouth,
             }
         }
     }
+
+    _paddingVersion = _blocksVersion;
+    _paddingNeighborVersions[0] = getNeighborVersion(neighborNorth);
+    _paddingNeighborVersions[1] = getNeighborVersion(neighborSouth);
+    _paddingNeighborVersions[2] = getNeighborVersion(neighborEast);
+    _paddingNeighborVersions[3] = getNeighborVersion(neighborWest);
+    _paddingNeighborVersions[4] = getNeighborVersion(neighborTop);
+    _paddingNeighborVersions[5] = getNeighborVersion(neighborBottom);
+}
+
+bool Chunk::isPaddingValid(const Chunk* neighborNorth, const Chunk* neighborSouth,
+                            const Chunk* neighborEast, const Chunk* neighborWest,
+                            const Chunk* neighborTop, const Chunk* neighborBottom) const {
+    if (_paddingVersion != _blocksVersion)
+        return false;
+    if (getNeighborVersion(neighborNorth) != _paddingNeighborVersions[0])
+        return false;
+    if (getNeighborVersion(neighborSouth) != _paddingNeighborVersions[1])
+        return false;
+    if (getNeighborVersion(neighborEast) != _paddingNeighborVersions[2])
+        return false;
+    if (getNeighborVersion(neighborWest) != _paddingNeighborVersions[3])
+        return false;
+    if (getNeighborVersion(neighborTop) != _paddingNeighborVersions[4])
+        return false;
+    if (getNeighborVersion(neighborBottom) != _paddingNeighborVersions[5])
+        return false;
+    return true;
 }

@@ -66,6 +66,11 @@ class Renderer {
     void rebuildMeshPool(const std::vector<glm::ivec3>& unloadedChunks);
     [[nodiscard]] size_t getLoadedChunkCount() const;
     [[nodiscard]] float getMeshPoolUsage() const;
+    [[nodiscard]] uint32_t getLodResidentCount(uint32_t lodLevel) const;
+    [[nodiscard]] uint32_t getLodSubmittedCount(uint32_t lodLevel) const;
+    [[nodiscard]] uint32_t getLodMeshUpdateCount(uint32_t lodLevel) const;
+    [[nodiscard]] uint32_t getLodUpgradeCount() const;
+    [[nodiscard]] uint32_t getLodDowngradeCount() const;
 
     [[nodiscard]] bool needsGammaCorrection() const;
 

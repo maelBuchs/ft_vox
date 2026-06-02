@@ -176,13 +176,16 @@ class WorldManager {
     std::unique_ptr<std::thread> _completionProcessor;
     static constexpr int kNUM_GENERATION_WORKERS = 4; // Parallel generation threads
 
-    // Chunk storage and tracking (protected by mutex)
-    mutable std::shared_mutex _chunkMutex;
+    // Chunk storage (protected by _chunkMapMutex - shared_mutex for read-heavy workloads)
+    mutable std::shared_mutex _chunkMapMutex;
     std::unordered_map<glm::ivec3, std::shared_ptr<Chunk>> _loadedChunks;
-    std::unordered_set<glm::ivec3> _generatingChunks; // Chunks currently being generated
-    std::unordered_set<glm::ivec3> _meshingChunks;    // Chunks currently being meshed
-    std::unordered_set<glm::ivec3> _dirtyChunks;      // Chunks that need re-meshing
-    std::unordered_set<glm::ivec3> _chunksToUnload;   // Chunks marked for unloading
+
+    // Chunk state tracking (protected by _stateMutex - short-lock operations only)
+    mutable std::mutex _stateMutex;
+    std::unordered_set<glm::ivec3> _generatingChunks;
+    std::unordered_set<glm::ivec3> _meshingChunks;
+    std::unordered_set<glm::ivec3> _dirtyChunks;
+    std::unordered_set<glm::ivec3> _chunksToUnload;
     std::unordered_map<glm::ivec3, uint32_t> _chunkLodLevels;
 
     // Performance instrumentation

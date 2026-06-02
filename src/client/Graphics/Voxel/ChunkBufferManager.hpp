@@ -97,6 +97,11 @@ class ChunkBufferManager {
     [[nodiscard]] size_t getLoadedChunkCount() const { return _chunkDrawInfos.size(); }
     [[nodiscard]] float getMeshPoolUsage() const;
     [[nodiscard]] int getMaxLoadDistance() const { return _maxLoadDistance; }
+    [[nodiscard]] uint32_t getLodResidentCount(uint32_t lodLevel) const;
+    [[nodiscard]] uint32_t getLodSubmittedCount(uint32_t lodLevel) const;
+    [[nodiscard]] uint32_t getLodMeshUpdateCount(uint32_t lodLevel) const;
+    [[nodiscard]] uint32_t getLodUpgradeCount() const { return _lodUpgradeCount; }
+    [[nodiscard]] uint32_t getLodDowngradeCount() const { return _lodDowngradeCount; }
 
     // Buffers
     [[nodiscard]] VkBuffer getIndirectBuffer() const { return _indirectBuffer.buffer; }
@@ -223,4 +228,10 @@ class ChunkBufferManager {
     float _avgFrameTimeMs = 16.67f;
 
     bool _indexBufferResizePending = false;
+
+    std::array<uint32_t, 3> _lodResidentCounts{};
+    std::array<uint32_t, 3> _lodSubmittedCounts{};
+    std::array<uint32_t, 3> _lodMeshUpdateCounts{};
+    uint32_t _lodUpgradeCount = 0;
+    uint32_t _lodDowngradeCount = 0;
 };

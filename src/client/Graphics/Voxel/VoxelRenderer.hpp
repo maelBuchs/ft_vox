@@ -86,6 +86,11 @@ class VoxelRenderer {
      * @brief Get mesh buffer pool usage (0.0 to 1.0).
      */
     [[nodiscard]] float getMeshPoolUsage() const;
+    [[nodiscard]] uint32_t getLodResidentCount(uint32_t lodLevel) const;
+    [[nodiscard]] uint32_t getLodSubmittedCount(uint32_t lodLevel) const;
+    [[nodiscard]] uint32_t getLodMeshUpdateCount(uint32_t lodLevel) const;
+    [[nodiscard]] uint32_t getLodUpgradeCount() const;
+    [[nodiscard]] uint32_t getLodDowngradeCount() const;
 
   private:
     VulkanDevice& _device;
@@ -100,4 +105,3 @@ class VoxelRenderer {
     // GPU culling flag (currently disabled - task shader does culling)
     bool _enableGPUCulling = false;
 };
-
